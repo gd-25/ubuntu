@@ -41,11 +41,25 @@ survit aux reboots caméra, coupures Wi-Fi et crashs.
 
 ## Windows (fallback)
 
-1. Installer Python 3.11+ et ffmpeg (dans le PATH).
-2. `pip install -r requirements.txt` — si `tflite-runtime` n'est pas dispo,
-   `pip install tensorflow` à la place.
-3. Lancer `run.bat` (boucle avec redémarrage auto). Pour le démarrage au boot :
-   Planificateur de tâches → déclencheur « Au démarrage » → action `run.bat`.
+1. Installer les prérequis (PowerShell) puis **rouvrir le terminal** :
+   ```powershell
+   winget install -e --id Python.Python.3.12
+   winget install -e --id Git.Git
+   winget install -e --id Gyan.FFmpeg
+   ```
+2. Dans `agent\` :
+   ```powershell
+   py -3.12 -m venv venv
+   .\venv\Scripts\pip install -r requirements.txt
+   .\venv\Scripts\pip install tensorflow    # remplace tflite-runtime (Linux only)
+   powershell -ExecutionPolicy Bypass -File download_model.ps1
+   copy .env.example .env                   # puis remplir
+   ```
+3. Calibration : `.\venv\Scripts\python main.py --dry-run`
+4. Lancer `run.bat` (boucle avec redémarrage auto). Pour le démarrage au boot :
+   Planificateur de tâches → déclencheur « Au démarrage » → action `run.bat`,
+   cocher « Exécuter même si l'utilisateur n'est pas connecté ». Désactiver la
+   mise en veille dans les paramètres d'alimentation.
 
 ## Comportement
 
