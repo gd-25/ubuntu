@@ -1,0 +1,29 @@
+# Unité systemd pour l'agent UBUNTU.
+# Installation :
+#   sudo cp ubuntu-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ubuntu-agent
+# Logs :  journalctl -u ubuntu-agent -f
+#
+# Adapter User= et les chemins si l'agent n'est pas dans /home/greg/ubuntu/agent.
+
+[Unit]
+Description=UBUNTU Dog Alone Monitor - agent audio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=greg
+WorkingDirectory=/home/greg/ubuntu/agent
+ExecStart=/home/greg/ubuntu/agent/venv/bin/python main.py
+Restart=always
+RestartSec=5
+# Garde-fous vieux portable : ~1 cœur CPU, 500 Mo RAM max.
+CPUQuota=100%
+MemoryMax=500M
+# L'agent gère lui-même la reconnexion RTSP ; systemd ne redémarre
+# que si le process meurt vraiment.
+
+[Install]
+WantedBy=multi-user.target

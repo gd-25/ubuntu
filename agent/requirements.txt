@@ -1,0 +1,9 @@
+# Agent UBUNTU — Python 3.11+
+numpy>=1.26
+requests>=2.31
+# Interpréteur TFLite léger (cible principale : Linux).
+# Sur Windows/macOS, tflite-runtime n'existe pas : installer tensorflow>=2.16 à la place.
+tflite-runtime>=2.14 ; sys_platform == "linux"
+
+# Dev / tests
+pytest>=8.0

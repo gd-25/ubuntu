@@ -1,0 +1,23 @@
+# Secrets — ne jamais commiter
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+
+# Agent
+agent/queue.db
+agent/models/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
+
+# Divers
+.DS_Store
