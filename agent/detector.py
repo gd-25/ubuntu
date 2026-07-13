@@ -267,7 +267,9 @@ class YamnetClassifier:
             from tflite_runtime.interpreter import Interpreter
         except ImportError:
             try:
-                from tensorflow.lite import Interpreter  # type: ignore
+                import tensorflow as tf
+
+                Interpreter = tf.lite.Interpreter  # module lazy : pas de from-import
             except ImportError as exc:
                 raise RuntimeError(
                     "Ni tflite-runtime ni tensorflow ne sont installés. "
