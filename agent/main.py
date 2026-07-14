@@ -17,6 +17,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -170,6 +171,8 @@ class Agent:
             "-nostdin",
             "-loglevel", "error",
             "-rtsp_transport", "tcp",
+            # Timestamps Tapo cassés → warnings dts en boucle sinon.
+            "-use_wallclock_as_timestamps", "1",
             "-i", self.rtsp_url,
             "-vn",
             "-ac", "1",
@@ -178,7 +181,10 @@ class Agent:
             "-",
         ]
         log.info("connexion au flux RTSP…")
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # stderr dans un fichier : un pipe jamais consommé finit par se remplir
+        # (warnings dts répétés des Tapo) et bloque ffmpeg en silence.
+        stderr_file = tempfile.TemporaryFile()
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_file)
         buffer = bytearray()
         last_loud = time.time()
         try:
@@ -229,9 +235,13 @@ class Agent:
             stderr = b""
             try:
                 proc.kill()
-                _, stderr = proc.communicate(timeout=5)
+                proc.wait(timeout=5)
+                stderr_file.seek(0)
+                stderr = stderr_file.read()
             except Exception:
                 pass
+            finally:
+                stderr_file.close()
             if stderr:
                 log.warning("ffmpeg : %s", stderr.decode(errors="replace").strip()[-500:])
 
