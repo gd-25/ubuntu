@@ -70,7 +70,9 @@ create index notification_log_rule_idx on public.notification_log (rule, dog_id,
 -- ------------------------------------------------- rattachement à la session
 
 -- L'agent envoie les épisodes sans session_id (il ne sait pas si une session
--- est ouverte). On rattache ici l'épisode à la session ouverte du chien.
+-- est ouverte). On rattache l'épisode à la session couvrant son début —
+-- par PLAGE TEMPORELLE, pas seulement les sessions ouvertes : un épisode
+-- arrive souvent après la clôture (délai de fusion ~5 s, file offline).
 create function public.attach_episode_to_session()
 returns trigger
 language plpgsql
@@ -83,7 +85,7 @@ begin
     from public.sessions s
     where s.dog_id = new.dog_id
       and s.started_at <= new.started_at
-      and s.ended_at is null
+      and (s.ended_at is null or new.started_at <= s.ended_at)
     order by s.started_at desc
     limit 1;
   end if;
