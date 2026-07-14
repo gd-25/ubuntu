@@ -56,12 +56,14 @@ values ('clips', 'clips', false)
 on conflict (id) do nothing;
 
 -- Lecture réservée au propriétaire du chien (chemin : {dog_id}/{episode_id}.mp4).
+-- ⚠️ `objects.name` doit être qualifié : dans le sous-select, `name` tout court
+-- désignerait dogs.name (le nom du chien) et la policy ne matcherait jamais.
 create policy clips_owner_read on storage.objects
   for select using (
     bucket_id = 'clips'
     and exists (
       select 1 from public.dogs d
       where d.owner_id = auth.uid()
-        and (storage.foldername(name))[1] = d.id::text
+        and (storage.foldername(objects.name))[1] = d.id::text
     )
   );
