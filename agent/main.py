@@ -39,6 +39,15 @@ HOP_BYTES = int(HOP_DURATION * SAMPLE_RATE) * BYTES_PER_SAMPLE
 WINDOW_BYTES = int(WINDOW_DURATION * SAMPLE_RATE) * BYTES_PER_SAMPLE
 HEARTBEAT_INTERVAL = 60  # s
 MAX_RTSP_BACKOFF = 60  # s
+# Watchdog audio : la Tapo ne sert l'audio qu'à un client RTSP à la fois, et
+# une connexion peut naître "sans audio" si le créneau est encore tenu par une
+# session fantôme. Si le flux reste sous SILENT_RMS pendant SILENT_SECONDS,
+# on se reconnecte après SILENT_RECONNECT_DELAY (le temps que la caméra libère
+# le créneau). Une maison vraiment silencieuse déclenche aussi ce cycle : sans
+# gravité, la coupure dure ~2 s toutes les 10 min.
+SILENT_RMS = 0.004
+SILENT_SECONDS = 600
+SILENT_RECONNECT_DELAY = 90  # s
 
 
 def load_env(path: Path) -> None:
@@ -110,6 +119,7 @@ class Agent:
         backoff = 1.0
         while not self._stop.is_set():
             started = time.time()
+            self._silent_reconnect = False
             try:
                 self._listen_once()
             except Exception:
@@ -120,6 +130,17 @@ class Agent:
             self._emit(episodes)
             if self._stop.is_set():
                 break
+            if self._silent_reconnect:
+                log.warning(
+                    "flux silencieux depuis %d min : reconnexion dans %ds "
+                    "(libération du créneau audio caméra)",
+                    SILENT_SECONDS // 60,
+                    SILENT_RECONNECT_DELAY,
+                )
+                if self._stop.wait(timeout=SILENT_RECONNECT_DELAY):
+                    break
+                backoff = 1.0
+                continue
             # Connexion stable pendant > 1 min : on repart d'un backoff court.
             if time.time() - started > 60:
                 backoff = 1.0
@@ -159,6 +180,7 @@ class Agent:
         log.info("connexion au flux RTSP…")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         buffer = bytearray()
+        last_loud = time.time()
         try:
             while not self._stop.is_set():
                 chunk = proc.stdout.read(HOP_BYTES)
@@ -181,6 +203,11 @@ class Agent:
                 )
                 self.last_rms = float(np.sqrt(np.mean(samples**2)))
                 self.max_rms = max(self.max_rms, self.last_rms)
+                if self.last_rms >= SILENT_RMS:
+                    last_loud = now
+                elif now - last_loud > SILENT_SECONDS:
+                    self._silent_reconnect = True
+                    return
                 confidence, family_scores = self.classifier.classify(samples)
                 window = WindowResult(
                     timestamp=now - WINDOW_DURATION,
