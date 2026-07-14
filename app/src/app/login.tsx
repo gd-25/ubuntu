@@ -1,7 +1,6 @@
-import * as Linking from 'expo-linking';
-import { Dog, MailCheck } from 'lucide-react-native';
+import { Dog } from 'lucide-react-native';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text, TextInput } from '@/components/text';
@@ -13,28 +12,39 @@ import { supabase } from '@/lib/supabase';
 export default function LoginScreen() {
   const colors = useTheme();
   const [email, setEmail] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const sendMagicLink = async () => {
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) {
+  const submit = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
       setErrorMessage('Saisissez votre adresse e-mail.');
       return;
     }
-    setIsSending(true);
-    setErrorMessage(null);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmed,
-      options: { emailRedirectTo: Linking.createURL('/') },
-    });
-    setIsSending(false);
-    if (error) {
-      setErrorMessage(error.message);
+    if (password.length < 6) {
+      setErrorMessage('Le mot de passe doit faire au moins 6 caractères.');
       return;
     }
-    setSentTo(trimmed);
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    const { error } =
+      mode === 'signin'
+        ? await supabase.auth.signInWithPassword({ email: trimmedEmail, password })
+        : await supabase.auth.signUp({ email: trimmedEmail, password });
+
+    setIsSubmitting(false);
+    if (error) {
+      setErrorMessage(translateAuthError(error.message));
+    }
+    // On success the auth listener redirects to the tabs automatically.
+  };
+
+  const toggleMode = () => {
+    setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+    setErrorMessage(null);
   };
 
   return (
@@ -51,52 +61,62 @@ export default function LoginScreen() {
             Surveillez votre chien quand il est seul à la maison
           </Text>
 
-          {sentTo ? (
-            <Card style={styles.card}>
-              <View style={styles.cardTitleRow}>
-                <MailCheck size={20} color={colors.success} />
-                <Text style={[styles.cardTitle, { color: colors.text }]}>Lien envoyé !</Text>
-              </View>
-              <Text style={[styles.cardBody, { color: colors.textSecondary }]}>
-                Un lien de connexion a été envoyé à {sentTo}. Ouvrez-le sur cet appareil pour vous
-                connecter.
+          <Card style={styles.card}>
+            <TextInput
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+              placeholder="votre@email.fr"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <TextInput
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+              placeholder="Mot de passe"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              onSubmitEditing={submit}
+            />
+            {errorMessage ? (
+              <Text style={[styles.error, { color: colors.danger }]}>{errorMessage}</Text>
+            ) : null}
+            <Button
+              label={mode === 'signin' ? 'Se connecter' : 'Créer le compte'}
+              onPress={submit}
+              loading={isSubmitting}
+            />
+            <Pressable onPress={toggleMode} hitSlop={8}>
+              <Text style={[styles.switchMode, { color: colors.accent }]}>
+                {mode === 'signin'
+                  ? 'Pas encore de compte ? Créez-en un'
+                  : 'Déjà un compte ? Connectez-vous'}
               </Text>
-              <Button
-                label="Renvoyer le lien"
-                variant="secondary"
-                onPress={sendMagicLink}
-                loading={isSending}
-              />
-            </Card>
-          ) : (
-            <Card style={styles.card}>
-              <Text style={[styles.cardBody, { color: colors.textSecondary }]}>
-                Connexion par lien magique — aucun mot de passe requis.
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                ]}
-                placeholder="votre@email.fr"
-                placeholderTextColor={colors.textSecondary}
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
-                onSubmitEditing={sendMagicLink}
-              />
-              {errorMessage ? (
-                <Text style={[styles.error, { color: colors.danger }]}>{errorMessage}</Text>
-              ) : null}
-              <Button label="Recevoir le lien de connexion" onPress={sendMagicLink} loading={isSending} />
-            </Card>
-          )}
+            </Pressable>
+          </Card>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function translateAuthError(message: string): string {
+  if (/invalid login credentials/i.test(message)) return 'E-mail ou mot de passe incorrect.';
+  if (/already registered/i.test(message)) return 'Un compte existe déjà avec cet e-mail.';
+  if (/at least 6 characters/i.test(message)) return 'Le mot de passe doit faire au moins 6 caractères.';
+  if (/rate limit|too many/i.test(message)) return 'Trop de tentatives, réessayez dans un instant.';
+  return message;
 }
 
 const styles = StyleSheet.create({
@@ -125,19 +145,6 @@ const styles = StyleSheet.create({
   card: {
     gap: Spacing.md,
   },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  cardBody: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
   input: {
     borderWidth: 1,
     borderRadius: 10,
@@ -147,5 +154,10 @@ const styles = StyleSheet.create({
   },
   error: {
     fontSize: 13,
+  },
+  switchMode: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
