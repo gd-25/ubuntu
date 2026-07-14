@@ -54,6 +54,14 @@ class Uploader:
             )
             """
         )
+        # Colonnes ajoutées après coup (files queue.db déjà en production).
+        try:
+            self._db.execute(
+                "ALTER TABLE pending_events ADD COLUMN op TEXT NOT NULL DEFAULT 'insert'"
+            )
+            self._db.execute("ALTER TABLE pending_events ADD COLUMN row_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # colonnes déjà présentes
         self._db.commit()
 
         self._worker = threading.Thread(target=self._run, daemon=True, name="uploader")
@@ -79,6 +87,20 @@ class Uploader:
             self._db.execute(
                 "INSERT INTO pending_events (table_name, payload, created_at) VALUES (?, ?, ?)",
                 ("vocal_episodes", json.dumps(payload), time.time()),
+            )
+            self._db.commit()
+        self._wakeup.set()
+
+    def enqueue_update(self, table: str, row_id: str, fields: dict) -> None:
+        """PATCH différé d'une ligne (ex. clip_path une fois le clip uploadé)."""
+        if self.dry_run:
+            log.info("[dry-run] update %s/%s : %s", table, row_id, json.dumps(fields))
+            return
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO pending_events (table_name, payload, created_at, op, row_id)"
+                " VALUES (?, ?, ?, 'update', ?)",
+                (table, json.dumps(fields), time.time(), row_id),
             )
             self._db.commit()
         self._wakeup.set()
@@ -129,20 +151,33 @@ class Uploader:
                 return
             backoff = min(backoff * 2, MAX_BACKOFF)
 
-    def _fetch_batch(self) -> list[tuple[int, str, str]]:
+    def _fetch_batch(self) -> list[tuple[int, str, str, str, str | None]]:
         with self._lock:
             return self._db.execute(
-                "SELECT id, table_name, payload FROM pending_events ORDER BY id LIMIT ?",
+                "SELECT id, table_name, payload, op, row_id FROM pending_events"
+                " ORDER BY id LIMIT ?",
                 (BATCH_SIZE,),
             ).fetchall()
 
-    def _send_batch(self, batch: list[tuple[int, str, str]]) -> bool:
-        # Regroupe par table pour poster en une requête par table.
-        by_table: dict[str, list[tuple[int, dict]]] = {}
-        for row_id, table, payload in batch:
-            by_table.setdefault(table, []).append((row_id, json.loads(payload)))
+    def _delete_rows(self, ids: list[int]) -> None:
+        with self._lock:
+            self._db.executemany(
+                "DELETE FROM pending_events WHERE id = ?", [(i,) for i in ids]
+            )
+            self._db.commit()
 
-        for table, rows in by_table.items():
+    def _send_batch(self, batch: list[tuple[int, str, str, str, str | None]]) -> bool:
+        # Regroupe les inserts par table (une requête par table) ; les updates
+        # partent individuellement.
+        inserts: dict[str, list[tuple[int, dict]]] = {}
+        updates: list[tuple[int, str, str, dict]] = []
+        for queue_id, table, payload, op, row_id in batch:
+            if op == "update" and row_id:
+                updates.append((queue_id, table, row_id, json.loads(payload)))
+            else:
+                inserts.setdefault(table, []).append((queue_id, json.loads(payload)))
+
+        for table, rows in inserts.items():
             try:
                 resp = requests.post(
                     f"{self.base_url}/{table}",
@@ -154,11 +189,21 @@ class Uploader:
             except requests.RequestException as exc:
                 log.debug("POST %s : %s", table, exc)
                 return False
-            ids = [row_id for row_id, _ in rows]
-            with self._lock:
-                self._db.executemany(
-                    "DELETE FROM pending_events WHERE id = ?", [(i,) for i in ids]
+            self._delete_rows([queue_id for queue_id, _ in rows])
+            log.info("%d événement(s) envoyé(s) vers %s", len(rows), table)
+
+        for queue_id, table, row_id, fields in updates:
+            try:
+                resp = requests.patch(
+                    f"{self.base_url}/{table}?id=eq.{row_id}",
+                    headers=self.headers,
+                    json=fields,
+                    timeout=REQUEST_TIMEOUT,
                 )
-                self._db.commit()
-            log.info("%d événement(s) envoyé(s) vers %s", len(ids), table)
+                resp.raise_for_status()
+            except requests.RequestException as exc:
+                log.debug("PATCH %s/%s : %s", table, row_id, exc)
+                return False
+            self._delete_rows([queue_id])
+            log.info("mise à jour envoyée : %s/%s", table, row_id)
         return True

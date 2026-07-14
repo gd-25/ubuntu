@@ -20,9 +20,11 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from clips import ClipRecorder, segment_output_args
 from detector import (
     HOP_DURATION,
     WINDOW_DURATION,
@@ -95,6 +97,22 @@ class Agent:
             dry_run=self.dry_run,
         )
 
+        # Clips vidéo par épisode (désactivés en dry-run et via CLIP_ENABLED=false).
+        clips_enabled = (
+            os.environ.get("CLIP_ENABLED", "true").lower() != "false" and not self.dry_run
+        )
+        self.clip_recorder = None
+        if clips_enabled:
+            self.clip_recorder = ClipRecorder(
+                clip_dir=base / "clips_buffer",
+                supabase_url=os.environ.get("SUPABASE_URL", ""),
+                service_key=os.environ.get("SUPABASE_SERVICE_KEY", ""),
+                dog_id=self.dog_id,
+                on_uploaded=lambda episode_id, clip_path: self.uploader.enqueue_update(
+                    "vocal_episodes", episode_id, {"clip_path": clip_path}
+                ),
+            )
+
         self.started_at = time.time()
         self.stream_alive = False
         self.last_rms = 0.0
@@ -112,6 +130,8 @@ class Agent:
         signal.signal(signal.SIGTERM, self._on_signal)
 
         self.uploader.start()
+        if self.clip_recorder:
+            self.clip_recorder.start()
         heartbeat = threading.Thread(
             target=self._heartbeat_loop, daemon=True, name="heartbeat"
         )
@@ -153,6 +173,8 @@ class Agent:
         with self._tracker_lock:
             episodes = self.tracker.flush()
         self._emit(episodes)
+        if self.clip_recorder:
+            self.clip_recorder.stop()
         self.uploader.stop()
         log.info("agent arrêté proprement")
 
@@ -174,12 +196,16 @@ class Agent:
             # Timestamps Tapo cassés → warnings dts en boucle sinon.
             "-use_wallclock_as_timestamps", "1",
             "-i", self.rtsp_url,
-            "-vn",
+            # Sortie 1 : audio brut pour la détection.
+            "-map", "0:a",
             "-ac", "1",
             "-ar", str(SAMPLE_RATE),
             "-f", "s16le",
-            "-",
+            "pipe:1",
         ]
+        if self.clip_recorder:
+            # Sortie 2 : segments vidéo+audio (tampon circulaire pour les clips).
+            cmd += segment_output_args(self.clip_recorder.clip_dir)
         log.info("connexion au flux RTSP…")
         # stderr dans un fichier : un pipe jamais consommé finit par se remplir
         # (warnings dts répétés des Tapo) et bloque ffmpeg en silence.
@@ -247,6 +273,7 @@ class Agent:
 
     def _emit(self, episodes) -> None:
         for ep in episodes:
+            episode_id = str(uuid.uuid4())
             log.info(
                 "🔊 épisode %s  %.1fs  avg=%.2f  peak=%.2f  (%s → %s)",
                 ep.kind,
@@ -258,6 +285,9 @@ class Agent:
             )
             self.uploader.enqueue_episode(
                 {
+                    # Id généré côté agent : permet de rattacher le clip vidéo
+                    # (PATCH clip_path) une fois l'upload terminé.
+                    "id": episode_id,
                     "dog_id": self.dog_id or None,
                     "started_at": utc_iso(ep.started_at),
                     "ended_at": utc_iso(ep.ended_at),
@@ -266,6 +296,8 @@ class Agent:
                     "peak_confidence": ep.peak_confidence,
                 }
             )
+            if self.clip_recorder:
+                self.clip_recorder.request(episode_id, ep.started_at, ep.ended_at)
 
     # ------------------------------------------------------------ heartbeat
 
