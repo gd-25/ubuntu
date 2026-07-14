@@ -31,8 +31,12 @@ FAMILY_CLASSES = {
     "howl": ("Howl",),
     "whine": ("Whimper (dog)", "Growling"),
 }
-# "Dog" compte pour la détection (positif/négatif) mais ne vote pour aucune famille.
-EXTRA_TARGET_CLASSES = ("Dog",)
+# Classes comptant pour la détection (positif/négatif) sans voter pour une
+# famille. Les classes génériques "Animal"/"Domestic animals, pets" sont là
+# parce que les vocalises dégradées (micro 8 kHz, distance) font hésiter
+# YAMNet entre chiot/chat/oiseau — mais "chien seul à la maison" implique que
+# tout son animal est le chien.
+EXTRA_TARGET_CLASSES = ("Dog", "Animal", "Domestic animals, pets")
 
 
 @dataclass
