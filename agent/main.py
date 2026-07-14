@@ -88,6 +88,9 @@ class Agent:
         self.started_at = time.time()
         self.stream_alive = False
         self.last_rms = 0.0
+        # Max depuis le dernier heartbeat : un instantané raterait les
+        # aboiements entre deux battements.
+        self.max_rms = 0.0
         self._stop = threading.Event()
         # Le tracker est partagé entre la boucle d'écoute et le thread heartbeat.
         self._tracker_lock = threading.Lock()
@@ -177,6 +180,7 @@ class Agent:
                     / 32768.0
                 )
                 self.last_rms = float(np.sqrt(np.mean(samples**2)))
+                self.max_rms = max(self.max_rms, self.last_rms)
                 confidence, family_scores = self.classifier.classify(samples)
                 window = WindowResult(
                     timestamp=now - WINDOW_DURATION,
@@ -236,12 +240,13 @@ class Agent:
                 episodes = self.tracker.poll(time.time())
             self._emit(episodes)
             status = "listening" if self.stream_alive else "camera_unreachable"
+            rms, self.max_rms = self.max_rms, self.last_rms
             self.uploader.send_heartbeat(
                 {
                     "dog_id": self.dog_id or None,
                     "at": utc_iso(time.time()),
                     "status": status,
-                    "rms_level": round(self.last_rms, 5),
+                    "rms_level": round(rms, 5),
                 }
             )
             log.debug(
