@@ -1,8 +1,9 @@
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EpisodeTimeline } from '@/components/episode-timeline';
+import { Text } from '@/components/text';
 import { StatCard } from '@/components/stat-card';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
@@ -275,7 +276,7 @@ export default function HomeScreen() {
       {!isDogLoading && !dog ? (
         <Card>
           <EmptyState
-            title="Bienvenue sur UBUNTU 🐶"
+            title="Bienvenue sur UBUNTU"
             subtitle="Commencez par créer le profil de votre chien dans l’onglet Réglages."
           />
         </Card>
@@ -302,7 +303,7 @@ export default function HomeScreen() {
               />
               {currentSessionEpisodes.length === 0 ? (
                 <Text style={[styles.chronoCaption, { color: colors.textSecondary }]}>
-                  Aucune vocalise pour l’instant. Tout va bien. 😌
+                  Aucune vocalise pour l’instant. Tout va bien.
                 </Text>
               ) : (
                 <View style={styles.episodeList}>
@@ -392,6 +393,7 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: 112,
   },
   headerRow: {
     flexDirection: 'row',

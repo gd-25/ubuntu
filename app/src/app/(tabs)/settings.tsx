@@ -1,6 +1,8 @@
+import { Check } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text, TextInput } from '@/components/text';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Button, Card, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -121,9 +123,12 @@ export default function SettingsScreen() {
           Recevez une alerte sur ce téléphone quand une vocalise est détectée pendant une session.
         </Text>
         {pushToken ? (
-          <Text style={[styles.body, { color: colors.success }]}>
-            ✓ Notifications activées sur cet appareil.
-          </Text>
+          <View style={styles.confirmRow}>
+            <Check size={16} color={colors.success} />
+            <Text style={[styles.body, { color: colors.success }]}>
+              Notifications activées sur cet appareil.
+            </Text>
+          </View>
         ) : null}
         <Button
           label={pushToken ? 'Réenregistrer cet appareil' : 'Activer les notifications'}
@@ -173,6 +178,7 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: 112,
   },
   input: {
     borderWidth: 1,
@@ -186,6 +192,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   agentInfo: {
+    gap: 6,
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   infoRow: {

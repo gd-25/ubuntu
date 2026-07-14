@@ -1,7 +1,8 @@
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { EmptyState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -94,6 +95,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     gap: Spacing.sm,
     flexGrow: 1,
+    paddingBottom: 112,
   },
   row: {
     borderRadius: 12,

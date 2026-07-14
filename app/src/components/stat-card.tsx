@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
 
 export function StatCard({ label, value }: { label: string; value: string }) {

@@ -1,3 +1,4 @@
+import { Questrial_400Regular, useFonts } from '@expo-google-fonts/questrial';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
@@ -24,6 +25,7 @@ function RootNavigator() {
   const colorScheme = useColorScheme();
   const { session, isLoading } = useAuth();
   const url = Linking.useURL();
+  const [fontsLoaded] = useFonts({ Questrial_400Regular });
 
   // Handle the magic-link deep link (ubuntu://... with tokens in the fragment).
   useEffect(() => {
@@ -33,15 +35,21 @@ function RootNavigator() {
     });
   }, [url]);
 
-  useEffect(() => {
-    if (!isLoading) SplashScreen.hideAsync();
-  }, [isLoading]);
+  const isReady = !isLoading && fontsLoaded;
 
-  if (isLoading) return null;
+  useEffect(() => {
+    if (isReady) SplashScreen.hideAsync();
+  }, [isReady]);
+
+  if (!isReady) return null;
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerTitleStyle: { fontFamily: 'Questrial_400Regular', fontSize: 17 },
+          headerBackTitleStyle: { fontFamily: 'Questrial_400Regular' },
+        }}>
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="session/[id]" options={{ title: 'Détail de la session' }} />

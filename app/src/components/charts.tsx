@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
+import { APP_FONT, Text } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
 
 const CHART_HEIGHT = 160;
@@ -59,6 +60,7 @@ export function BarChart({
               x={i * slot + slot / 2}
               y={PADDING_TOP + PLOT_HEIGHT - (point.value / max) * PLOT_HEIGHT - 5}
               fontSize={10}
+              fontFamily={APP_FONT}
               fill={colors.textSecondary}
               textAnchor="middle">
               {formatValue(point.value)}
@@ -70,6 +72,7 @@ export function BarChart({
               x={i * slot + slot / 2}
               y={CHART_HEIGHT - 8}
               fontSize={10}
+              fontFamily={APP_FONT}
               fill={colors.textSecondary}
               textAnchor="middle">
               {point.label}
@@ -128,6 +131,7 @@ export function LineChart({
                 x={xOf(i)}
                 y={CHART_HEIGHT - 8}
                 fontSize={10}
+              fontFamily={APP_FONT}
                 fill={colors.textSecondary}
                 textAnchor="middle">
                 {point.label}
@@ -138,6 +142,7 @@ export function LineChart({
             x={4}
             y={PADDING_TOP - 4}
             fontSize={10}
+              fontFamily={APP_FONT}
             fill={colors.textSecondary}
             textAnchor="start">
             {`max ${formatValue(max)}`}

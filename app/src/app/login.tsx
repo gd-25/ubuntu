@@ -1,15 +1,10 @@
 import * as Linking from 'expo-linking';
+import { Dog, MailCheck } from 'lucide-react-native';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Text, TextInput } from '@/components/text';
 import { Button, Card } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,7 +43,9 @@ export default function LoginScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.container}>
-          <Text style={styles.logo}>🐶</Text>
+          <View style={styles.logo}>
+            <Dog size={56} color={colors.accent} strokeWidth={1.6} />
+          </View>
           <Text style={[styles.title, { color: colors.text }]}>UBUNTU</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Surveillez votre chien quand il est seul à la maison
@@ -56,7 +53,10 @@ export default function LoginScreen() {
 
           {sentTo ? (
             <Card style={styles.card}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>📬 Lien envoyé !</Text>
+              <View style={styles.cardTitleRow}>
+                <MailCheck size={20} color={colors.success} />
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Lien envoyé !</Text>
+              </View>
               <Text style={[styles.cardBody, { color: colors.textSecondary }]}>
                 Un lien de connexion a été envoyé à {sentTo}. Ouvrez-le sur cet appareil pour vous
                 connecter.
@@ -109,8 +109,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   logo: {
-    fontSize: 56,
-    textAlign: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 32,
@@ -125,6 +124,11 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: Spacing.md,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   cardTitle: {
     fontSize: 18,

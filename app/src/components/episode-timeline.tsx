@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 
+import { Text } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
 import { formatTime, KIND_LABELS } from '@/lib/format';
 import type { EpisodeKind, VocalEpisode } from '@/lib/types';

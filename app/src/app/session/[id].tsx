@@ -1,15 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text, TextInput } from '@/components/text';
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import { StatCard } from '@/components/stat-card';
 import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
@@ -163,7 +156,7 @@ export default function SessionDetailScreen() {
         <SectionTitle>Épisodes ({episodes.length})</SectionTitle>
         {episodes.length === 0 ? (
           <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-            Aucune vocalise pendant cette session. 🎉
+            Aucune vocalise pendant cette session.
           </Text>
         ) : (
           episodes.map((episode) => (
