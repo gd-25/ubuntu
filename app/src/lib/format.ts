@@ -109,3 +109,10 @@ export const KIND_LABELS: Record<string, string> = {
   howl: 'Hurlement',
   whine: 'Gémissement',
 };
+
+export const ACTIVITY_LABELS: Record<string, string> = {
+  walk: '🚶 Sortie',
+  meal: '🍽️ Repas',
+  play: '🎾 Jeu',
+  other: '📝 Autre',
+};

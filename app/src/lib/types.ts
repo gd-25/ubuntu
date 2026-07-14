@@ -40,6 +40,17 @@ export interface AgentHeartbeat {
   rms_level: number;
 }
 
+export type ActivityKind = 'walk' | 'meal' | 'play' | 'other';
+
+export interface Activity {
+  id: string;
+  dog_id: string;
+  kind: ActivityKind;
+  at: string;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface PushToken {
   id: string;
   user_id: string;

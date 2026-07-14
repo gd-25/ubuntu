@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
 
 import { BarChart, ChartCaption, LineChart, type ChartPoint } from '@/components/charts';
+import { ScreenTitle } from '@/components/screen-title';
 import { Card, EmptyState, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -97,6 +98,7 @@ export default function TrendsScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}>
+      <ScreenTitle title="Tendances" />
       {!hasData && !isLoading ? (
         <EmptyState
           title="Pas encore de tendances"

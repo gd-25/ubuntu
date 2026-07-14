@@ -2,6 +2,7 @@ import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { ScreenTitle } from '@/components/screen-title';
 import { Text } from '@/components/text';
 import { EmptyState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -51,6 +52,7 @@ export default function HistoryScreen() {
       contentContainerStyle={styles.content}
       data={summaries}
       keyExtractor={(item) => item.session_id}
+      ListHeaderComponent={<ScreenTitle title="Historique" />}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       ListEmptyComponent={
         isLoading ? null : (

@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { CalendarDays, House, Settings, TrendingUp } from 'lucide-react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,35 +7,57 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { APP_FONT } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
 
+const Icon = NativeTabs.Trigger.Icon;
+const Label = NativeTabs.Trigger.Label;
+
 export default function TabsLayout() {
+  // iOS : tab bar 100 % native (liquid glass sur iOS 26), compacte et translucide.
+  if (Platform.OS === 'ios') {
+    return (
+      <NativeTabs
+        labelStyle={{ fontFamily: APP_FONT, fontSize: 11 }}
+        blurEffect="systemChromeMaterial"
+        disableTransparentOnScrollEdge>
+        <NativeTabs.Trigger name="index">
+          <Icon sf="waveform" />
+          <Label>Direct</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="history">
+          <Icon sf="calendar" />
+          <Label>Historique</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="trends">
+          <Icon sf="chart.line.uptrend.xyaxis" />
+          <Label>Tendances</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="settings">
+          <Icon sf="gearshape.fill" />
+          <Label>Réglages</Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
+    );
+  }
+
+  return <FallbackTabs />;
+}
+
+/** Android / web : tabs JS classiques (pas de tab bar native liquid glass). */
+function FallbackTabs() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textSecondary,
-        headerTitleStyle: { fontFamily: APP_FONT, fontSize: 17 },
         tabBarLabelStyle: { fontFamily: APP_FONT, fontSize: 11 },
-        // Floating pill tab bar.
         tabBarStyle: {
-          position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: Math.max(insets.bottom, 16),
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 10,
-          borderRadius: 32,
-          borderTopWidth: 0,
+          paddingBottom: Math.max(insets.bottom, 6),
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
           backgroundColor: colors.card,
-          shadowColor: '#000',
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
-          ...Platform.select({ android: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border } }),
         },
       }}>
       <Tabs.Screen

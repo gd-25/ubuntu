@@ -1,8 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
+import { Play } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text, TextInput } from '@/components/text';
+import { openEpisodeClip } from '@/lib/clips';
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import { StatCard } from '@/components/stat-card';
 import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
@@ -167,6 +169,9 @@ export default function SessionDetailScreen() {
                 {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))} ·
                 conf. {Math.round(episode.avg_confidence * 100)} %
               </Text>
+              {episode.clip_path ? (
+                <ClipButton clipPath={episode.clip_path} />
+              ) : null}
             </View>
           ))
         )}
@@ -188,6 +193,41 @@ export default function SessionDetailScreen() {
         <Button label="Enregistrer les notes" onPress={saveNotes} loading={isSaving} />
       </Card>
     </ScrollView>
+  );
+}
+
+/** Bouton « voir le clip vidéo » d'un épisode. */
+function ClipButton({ clipPath }: { clipPath: string }) {
+  const colors = useTheme();
+  const [isOpening, setIsOpening] = useState(false);
+
+  const open = async () => {
+    setIsOpening(true);
+    try {
+      await openEpisodeClip(clipPath);
+    } catch (error) {
+      Alert.alert('Erreur', error instanceof Error ? error.message : 'Clip indisponible.');
+    } finally {
+      setIsOpening(false);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={open}
+      disabled={isOpening}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.clipButton,
+        { backgroundColor: colors.accent, opacity: pressed || isOpening ? 0.6 : 1 },
+      ]}>
+      {isOpening ? (
+        <ActivityIndicator size="small" color={colors.accentText} />
+      ) : (
+        <Play size={12} color={colors.accentText} fill={colors.accentText} />
+      )}
+      <Text style={[styles.clipButtonText, { color: colors.accentText }]}>Clip</Text>
+    </Pressable>
   );
 }
 
@@ -228,6 +268,19 @@ const styles = StyleSheet.create({
   episodeText: {
     fontSize: 14,
     flexShrink: 1,
+    flex: 1,
+  },
+  clipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  clipButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   notesInput: {
     borderWidth: 1,

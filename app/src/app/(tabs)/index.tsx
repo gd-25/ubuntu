@@ -1,8 +1,9 @@
-import { Link } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EpisodeTimeline } from '@/components/episode-timeline';
+import { ScreenTitle } from '@/components/screen-title';
 import { Text } from '@/components/text';
 import { StatCard } from '@/components/stat-card';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
@@ -10,15 +11,17 @@ import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  ACTIVITY_LABELS,
   episodeDurationSeconds,
   formatChrono,
+  formatDateTime,
   formatDuration,
   formatTime,
   KIND_LABELS,
   secondsSince,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type { AgentHeartbeat, Session, SessionSummary, VocalEpisode } from '@/lib/types';
+import type { Activity, AgentHeartbeat, Session, SessionSummary, VocalEpisode } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
 /** Agent considered online if last heartbeat is fresher than 2 minutes. */
@@ -28,12 +31,14 @@ const ONGOING_EPISODE_SECONDS = 5;
 
 export default function HomeScreen() {
   const colors = useTheme();
+  const router = useRouter();
   const { dog, isLoading: isDogLoading } = useDog();
 
   const [lastHeartbeat, setLastHeartbeat] = useState<AgentHeartbeat | null>(null);
   const [lastEpisode, setLastEpisode] = useState<VocalEpisode | null>(null);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessionEpisodes, setSessionEpisodes] = useState<VocalEpisode[]>([]);
+  const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -48,7 +53,7 @@ export default function HomeScreen() {
   const fetchData = useCallback(async () => {
     if (!dog) return null;
 
-    const [heartbeatRes, episodeRes, sessionRes] = await Promise.all([
+    const [heartbeatRes, episodeRes, sessionRes, activitiesRes] = await Promise.all([
       supabase
         .from('agent_heartbeats')
         .select('*')
@@ -68,6 +73,12 @@ export default function HomeScreen() {
         .is('ended_at', null)
         .order('started_at', { ascending: false })
         .limit(1),
+      supabase
+        .from('activities')
+        .select('*')
+        .eq('dog_id', dog.id)
+        .order('at', { ascending: false })
+        .limit(3),
     ]);
 
     const firstError = heartbeatRes.error ?? episodeRes.error ?? sessionRes.error;
@@ -89,6 +100,7 @@ export default function HomeScreen() {
       episode: (episodeRes.data?.[0] as VocalEpisode | undefined) ?? null,
       session,
       sessionEpisodes: sessionEpisodeRows,
+      activities: (activitiesRes.data as Activity[] | null) ?? [],
     };
   }, [dog]);
 
@@ -99,21 +111,26 @@ export default function HomeScreen() {
     setLastEpisode(snapshot.episode);
     setActiveSession(snapshot.session);
     setSessionEpisodes(snapshot.sessionEpisodes);
+    setRecentActivities(snapshot.activities);
   }, [fetchData]);
 
-  useEffect(() => {
-    let ignore = false;
-    fetchData().then((snapshot) => {
-      if (ignore || !snapshot) return;
-      setLastHeartbeat(snapshot.heartbeat);
-      setLastEpisode(snapshot.episode);
-      setActiveSession(snapshot.session);
-      setSessionEpisodes(snapshot.sessionEpisodes);
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [fetchData]);
+  // Recharge au focus (retour de la feuille « Enregistrer une activité », etc.).
+  useFocusEffect(
+    useCallback(() => {
+      let ignore = false;
+      fetchData().then((snapshot) => {
+        if (ignore || !snapshot) return;
+        setLastHeartbeat(snapshot.heartbeat);
+        setLastEpisode(snapshot.episode);
+        setActiveSession(snapshot.session);
+        setSessionEpisodes(snapshot.sessionEpisodes);
+        setRecentActivities(snapshot.activities);
+      });
+      return () => {
+        ignore = true;
+      };
+    }, [fetchData])
+  );
 
   // Realtime: new episodes and heartbeats for this dog.
   useEffect(() => {
@@ -250,10 +267,20 @@ export default function HomeScreen() {
       );
     }
 
-    const calmSince = lastEpisode?.ended_at ?? activeSession?.started_at ?? null;
-    if (!calmSince) {
-      return <Text style={[styles.dogState, { color: colors.text }]}>😌 Calme</Text>;
+    // « Calme depuis X » n'a de sens que pendant une session.
+    if (!activeSession) {
+      return (
+        <View>
+          <Text style={[styles.dogState, { color: colors.text }]}>Aucune session en cours</Text>
+          <Text style={[styles.dogStateDetail, { color: colors.textSecondary }]}>
+            Démarrez une session quand vous laissez {dog?.name ?? 'votre chien'} seul.
+          </Text>
+        </View>
+      );
     }
+
+    const sessionEnd = sessionEpisodes.filter((e) => e.session_id === activeSession.id).at(-1);
+    const calmSince = sessionEnd?.ended_at ?? activeSession.started_at;
     return (
       <Text style={[styles.dogState, { color: colors.text }]}>
         😌 Calme depuis {formatDuration(secondsSince(calmSince, now))}
@@ -266,12 +293,11 @@ export default function HomeScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.dogName, { color: colors.text }]}>
-          {dog ? dog.name : 'UBUNTU'}
-        </Text>
-        <StatusBadge status={agentStatus} />
-      </View>
+      <ScreenTitle
+        title="Direct"
+        subtitle={dog?.name}
+        right={<StatusBadge status={agentStatus} />}
+      />
 
       {!isDogLoading && !dog ? (
         <Card>
@@ -337,6 +363,13 @@ export default function HomeScreen() {
             />
           )}
 
+          <Button
+            label="Enregistrer une activité"
+            variant="secondary"
+            onPress={() => router.push('/activity-log')}
+            disabled={!dog}
+          />
+
           {recap ? (
             <Card>
               <SectionTitle>Récap de la session</SectionTitle>
@@ -368,7 +401,7 @@ export default function HomeScreen() {
           ) : null}
 
           <Card>
-            <SectionTitle>Dernière activité</SectionTitle>
+            <SectionTitle>Dernière vocalise</SectionTitle>
             {lastEpisode ? (
               <Text style={[styles.episodeText, { color: colors.text }]}>
                 {KIND_LABELS[lastEpisode.kind]} à {formatTime(lastEpisode.started_at)} (
@@ -383,6 +416,20 @@ export default function HomeScreen() {
               </Text>
             )}
           </Card>
+
+          {recentActivities.length > 0 ? (
+            <Card>
+              <SectionTitle>Activités récentes</SectionTitle>
+              {recentActivities.map((activity) => (
+                <View key={activity.id} style={styles.episodeRow}>
+                  <Text style={[styles.episodeText, { color: colors.text }]}>
+                    {ACTIVITY_LABELS[activity.kind]} · {formatDateTime(activity.at)}
+                    {activity.notes ? ` · ${activity.notes}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </Card>
+          ) : null}
         </>
       )}
     </ScrollView>
@@ -394,17 +441,6 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     gap: Spacing.md,
     paddingBottom: 112,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  dogName: {
-    fontSize: 24,
-    fontWeight: '800',
-    flexShrink: 1,
   },
   dogState: {
     fontSize: 22,

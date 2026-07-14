@@ -2,6 +2,7 @@ import { Check } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ScreenTitle } from '@/components/screen-title';
 import { Text, TextInput } from '@/components/text';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Button, Card, SectionTitle } from '@/components/ui';
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}>
+      <ScreenTitle title="Réglages" />
       <Card>
         <SectionTitle>Mon chien</SectionTitle>
         <TextInput
