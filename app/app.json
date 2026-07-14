@@ -10,7 +10,10 @@
     "ios": {
       "bundleIdentifier": "com.gregdeshusses.ubuntu",
       "supportsTablet": false,
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.gregdeshusses.ubuntu",
