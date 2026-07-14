@@ -38,8 +38,8 @@ export default function SessionDetailScreen() {
   // Static "now" for the timeline right edge when viewing an ongoing session.
   const [nowMs] = useState(() => Date.now());
 
-  const load = useCallback(async () => {
-    if (!id) return;
+  const fetchDetail = useCallback(async () => {
+    if (!id) return null;
     const [sessionRes, summaryRes, episodesRes] = await Promise.all([
       supabase.from('sessions').select('*').eq('id', id).maybeSingle(),
       supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
@@ -49,17 +49,29 @@ export default function SessionDetailScreen() {
         .eq('session_id', id)
         .order('started_at', { ascending: true }),
     ]);
-    const sessionRow = sessionRes.data as Session | null;
-    setSession(sessionRow);
-    setNotes(sessionRow?.notes ?? '');
-    setSummary(summaryRes.data as SessionSummary | null);
-    setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
-    setIsLoading(false);
+    const firstError = sessionRes.error ?? summaryRes.error ?? episodesRes.error;
+    if (firstError) console.warn('Chargement de la session incomplet :', firstError.message);
+    return {
+      session: sessionRes.data as Session | null,
+      summary: summaryRes.data as SessionSummary | null,
+      episodes: (episodesRes.data as VocalEpisode[] | null) ?? [],
+    };
   }, [id]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let ignore = false;
+    fetchDetail().then((detail) => {
+      if (ignore || !detail) return;
+      setSession(detail.session);
+      setNotes(detail.session?.notes ?? '');
+      setSummary(detail.summary);
+      setEpisodes(detail.episodes);
+      setIsLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [fetchDetail]);
 
   const saveNotes = async () => {
     if (!session) return;

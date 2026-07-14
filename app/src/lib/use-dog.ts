@@ -13,25 +13,37 @@ export function useDog() {
   const [dog, setDog] = useState<Dog | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const reload = useCallback(async () => {
-    if (!user) {
-      setDog(null);
-      setIsLoading(false);
-      return;
-    }
-    const { data } = await supabase
+  const fetchDog = useCallback(async (): Promise<Dog | null> => {
+    if (!user) return null;
+    const { data, error } = await supabase
       .from('dogs')
       .select('*')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: true })
       .limit(1);
-    setDog((data?.[0] as Dog | undefined) ?? null);
-    setIsLoading(false);
+    if (error) {
+      console.warn('Chargement du profil du chien impossible :', error.message);
+      return null;
+    }
+    return (data?.[0] as Dog | undefined) ?? null;
   }, [user]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    let ignore = false;
+    fetchDog().then((next) => {
+      if (ignore) return;
+      setDog(next);
+      setIsLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [fetchDog]);
+
+  const reload = useCallback(async () => {
+    setDog(await fetchDog());
+    setIsLoading(false);
+  }, [fetchDog]);
 
   const saveName = useCallback(
     async (name: string): Promise<Dog | null> => {

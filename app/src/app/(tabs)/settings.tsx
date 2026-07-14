@@ -25,24 +25,39 @@ export default function SettingsScreen() {
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<AgentHeartbeat | null>(null);
 
-  useEffect(() => {
+  // Sync the input with the loaded dog name (state adjusted during render,
+  // see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevDog, setPrevDog] = useState(dog);
+  if (dog !== prevDog) {
+    setPrevDog(dog);
     setNameInput(dog?.name ?? '');
-  }, [dog]);
+  }
 
-  const loadHeartbeat = useCallback(async () => {
-    if (!dog) return;
-    const { data } = await supabase
+  const fetchHeartbeat = useCallback(async (): Promise<AgentHeartbeat | null> => {
+    if (!dog) return null;
+    const { data, error } = await supabase
       .from('agent_heartbeats')
       .select('*')
       .eq('dog_id', dog.id)
       .order('at', { ascending: false })
       .limit(1);
-    setLastHeartbeat((data?.[0] as AgentHeartbeat | undefined) ?? null);
+    if (error) console.warn('Chargement du dernier signal impossible :', error.message);
+    return (data?.[0] as AgentHeartbeat | undefined) ?? null;
   }, [dog]);
 
   useEffect(() => {
-    loadHeartbeat();
-  }, [loadHeartbeat]);
+    let ignore = false;
+    fetchHeartbeat().then((heartbeat) => {
+      if (!ignore) setLastHeartbeat(heartbeat);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [fetchHeartbeat]);
+
+  const loadHeartbeat = useCallback(async () => {
+    setLastHeartbeat(await fetchHeartbeat());
+  }, [fetchHeartbeat]);
 
   const onSaveName = async () => {
     setIsSavingName(true);

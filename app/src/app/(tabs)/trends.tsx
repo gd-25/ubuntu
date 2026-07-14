@@ -17,12 +17,13 @@ export default function TrendsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('session_summaries')
       .select('*')
       .not('ended_at', 'is', null)
       .order('started_at', { ascending: true })
       .limit(500);
+    if (error) console.warn('Chargement des tendances impossible :', error.message);
     setSummaries((data as SessionSummary[] | null) ?? []);
     setIsLoading(false);
   }, []);

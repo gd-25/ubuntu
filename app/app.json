@@ -8,9 +8,12 @@
     "scheme": "ubuntu",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.gregdeshusses.ubuntu",
+      "supportsTablet": false,
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.gregdeshusses.ubuntu",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

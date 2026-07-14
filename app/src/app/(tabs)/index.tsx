@@ -44,8 +44,8 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!dog) return;
+  const fetchData = useCallback(async () => {
+    if (!dog) return null;
 
     const [heartbeatRes, episodeRes, sessionRes] = await Promise.all([
       supabase
@@ -69,26 +69,50 @@ export default function HomeScreen() {
         .limit(1),
     ]);
 
-    setLastHeartbeat((heartbeatRes.data?.[0] as AgentHeartbeat | undefined) ?? null);
-    setLastEpisode((episodeRes.data?.[0] as VocalEpisode | undefined) ?? null);
+    const firstError = heartbeatRes.error ?? episodeRes.error ?? sessionRes.error;
+    if (firstError) console.warn('Chargement du direct incomplet :', firstError.message);
 
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
-    setActiveSession(session);
-    if (!session) {
-      setSessionEpisodes([]);
-      return;
+    let sessionEpisodeRows: VocalEpisode[] = [];
+    if (session) {
+      const { data: episodes } = await supabase
+        .from('vocal_episodes')
+        .select('*')
+        .eq('session_id', session.id)
+        .order('started_at', { ascending: true });
+      sessionEpisodeRows = (episodes as VocalEpisode[] | null) ?? [];
     }
-    const { data: episodes } = await supabase
-      .from('vocal_episodes')
-      .select('*')
-      .eq('session_id', session.id)
-      .order('started_at', { ascending: true });
-    setSessionEpisodes((episodes as VocalEpisode[] | null) ?? []);
+
+    return {
+      heartbeat: (heartbeatRes.data?.[0] as AgentHeartbeat | undefined) ?? null,
+      episode: (episodeRes.data?.[0] as VocalEpisode | undefined) ?? null,
+      session,
+      sessionEpisodes: sessionEpisodeRows,
+    };
   }, [dog]);
 
+  const loadData = useCallback(async () => {
+    const snapshot = await fetchData();
+    if (!snapshot) return;
+    setLastHeartbeat(snapshot.heartbeat);
+    setLastEpisode(snapshot.episode);
+    setActiveSession(snapshot.session);
+    setSessionEpisodes(snapshot.sessionEpisodes);
+  }, [fetchData]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let ignore = false;
+    fetchData().then((snapshot) => {
+      if (ignore || !snapshot) return;
+      setLastHeartbeat(snapshot.heartbeat);
+      setLastEpisode(snapshot.episode);
+      setActiveSession(snapshot.session);
+      setSessionEpisodes(snapshot.sessionEpisodes);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [fetchData]);
 
   // Realtime: new episodes and heartbeats for this dog.
   useEffect(() => {
@@ -333,7 +357,10 @@ export default function HomeScreen() {
                 <StatCard label="% calme" value={`${Math.round(recap.calm_percent)} %`} />
               </View>
               <Link href={{ pathname: '/session/[id]', params: { id: recap.session_id } }} asChild>
-                <Text style={[styles.link, { color: colors.accent }]}>Voir le détail →</Text>
+                {/* Link asChild (Slot) rejects style arrays — pass a flattened object. */}
+                <Text style={StyleSheet.flatten([styles.link, { color: colors.accent }])}>
+                  Voir le détail →
+                </Text>
               </Link>
               <Button label="Fermer le récap" variant="secondary" onPress={() => setRecap(null)} />
             </Card>

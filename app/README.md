@@ -12,6 +12,12 @@ le direct, les sessions, l'historique et les tendances, et reçoit des notificat
 2. `npm install`
 3. `npx expo start`
 
+## Vérifications
+
+- `npm run typecheck` — TypeScript strict, sans émission.
+- `npm run lint` — ESLint (config Expo).
+- `npm test` — tests unitaires Jest (`jest-expo`).
+
 ## Configuration Supabase requise
 
 - **Magic link / deep linking** : dans le dashboard Supabase (Authentication > URL

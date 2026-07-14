@@ -16,12 +16,13 @@ export default function HistoryScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('session_summaries')
       .select('*')
       .not('ended_at', 'is', null)
       .order('started_at', { ascending: false })
       .limit(100);
+    if (error) console.warn('Chargement de l’historique impossible :', error.message);
     setSummaries((data as SessionSummary[] | null) ?? []);
     setIsLoading(false);
   }, []);
@@ -61,10 +62,13 @@ export default function HistoryScreen() {
       renderItem={({ item }) => (
         <Link href={{ pathname: '/session/[id]', params: { id: item.session_id } }} asChild>
           <Pressable
-            style={({ pressed }) => [
-              styles.row,
-              { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
-            ]}>
+            style={({ pressed }) =>
+              // Link asChild (Slot) rejects style arrays — return a flattened object.
+              StyleSheet.flatten([
+                styles.row,
+                { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+              ])
+            }>
             <View style={styles.rowHeader}>
               <Text style={[styles.rowTitle, { color: colors.text }]}>
                 {formatDateTime(item.started_at)}
