@@ -1,17 +1,15 @@
 @echo off
-REM Fallback Windows : lance l'agent UBUNTU en boucle (redemarrage auto en cas de crash).
-REM Pour un demarrage automatique au boot :
-REM   Planificateur de taches -> Creer une tache -> Declencheur "Au demarrage"
-REM   -> Action "Demarrer un programme" -> ce fichier run.bat
-REM   -> cocher "Executer meme si l'utilisateur n'est pas connecte".
-REM Prerequis : python 3.11+, ffmpeg dans le PATH, pip install -r requirements.txt
-REM (sur Windows, remplacer tflite-runtime par tensorflow si necessaire).
-
+REM Agent UBUNTU : boucle avec redemarrage auto, logs dans agent.log.
+REM Lance au boot par la tache planifiee "UbuntuAgent" (schtasks).
 cd /d "%~dp0"
+set PYTHONIOENCODING=utf-8
+REM ffmpeg local (independant du PATH du compte SYSTEM)
+if exist "%~dp0..\tools\ffmpeg.exe" set PATH=%~dp0..\tools;%PATH%
 set PYTHON=python
 if exist venv\Scripts\python.exe set PYTHON=venv\Scripts\python.exe
 :loop
-%PYTHON% main.py
-echo Agent arrete (code %errorlevel%), redemarrage dans 5 s...
+echo [%date% %time%] demarrage de l'agent >> agent.log
+%PYTHON% main.py >> agent.log 2>&1
+echo [%date% %time%] agent arrete (code %errorlevel%), redemarrage dans 5 s >> agent.log
 timeout /t 5 /nobreak >nul
 goto loop

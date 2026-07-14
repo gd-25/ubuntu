@@ -21,3 +21,5 @@ dist/
 
 # Divers
 .DS_Store
+agent/agent.log
+agent/dry_run_test.py
