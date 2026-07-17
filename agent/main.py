@@ -51,6 +51,13 @@ MAX_RTSP_BACKOFF = 60  # s
 SILENT_RMS = 0.004
 SILENT_SECONDS = 600
 SILENT_RECONNECT_DELAY = 90  # s
+# Détection de gel : si aucune fenêtre audio n'est traitée pendant ce délai
+# alors que le flux est censé être vivant (socket TCP morte après un reboot
+# caméra : read() bloque sans erreur), le thread heartbeat tue ffmpeg pour
+# forcer la reconnexion, et le statut devient camera_unreachable.
+STALL_SECONDS = 30
+# Timeout I/O réseau de ffmpeg (µs) : une socket muette meurt au lieu de bloquer.
+FFMPEG_RW_TIMEOUT_US = "15000000"
 
 
 def load_env(path: Path) -> None:
@@ -119,6 +126,8 @@ class Agent:
         # Max depuis le dernier heartbeat : un instantané raterait les
         # aboiements entre deux battements.
         self.max_rms = 0.0
+        self.last_window_at = 0.0
+        self._ffmpeg_proc = None
         self._stop = threading.Event()
         # Le tracker est partagé entre la boucle d'écoute et le thread heartbeat.
         self._tracker_lock = threading.Lock()
@@ -193,6 +202,8 @@ class Agent:
             "-nostdin",
             "-loglevel", "error",
             "-rtsp_transport", "tcp",
+            # Socket muette (reboot caméra) → erreur au lieu de blocage infini.
+            "-rw_timeout", FFMPEG_RW_TIMEOUT_US,
             # Timestamps Tapo cassés → warnings dts en boucle sinon.
             "-use_wallclock_as_timestamps", "1",
             "-i", self.rtsp_url,
@@ -211,6 +222,7 @@ class Agent:
         # (warnings dts répétés des Tapo) et bloque ffmpeg en silence.
         stderr_file = tempfile.TemporaryFile()
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_file)
+        self._ffmpeg_proc = proc
         buffer = bytearray()
         last_loud = time.time()
         try:
@@ -220,6 +232,7 @@ class Agent:
                     break
                 if not self.stream_alive:
                     self.stream_alive = True
+                    self.last_window_at = time.time()
                     log.info("flux RTSP connecté, écoute en cours")
                 buffer.extend(chunk)
                 # Garde exactement une fenêtre glissante.
@@ -229,6 +242,7 @@ class Agent:
                     continue
 
                 now = time.time()
+                self.last_window_at = now
                 samples = (
                     np.frombuffer(bytes(buffer), dtype=np.int16).astype(np.float32)
                     / 32768.0
@@ -258,6 +272,7 @@ class Agent:
                     episodes = self.tracker.push(window)
                 self._emit(episodes)
         finally:
+            self._ffmpeg_proc = None
             stderr = b""
             try:
                 proc.kill()
@@ -308,7 +323,27 @@ class Agent:
             with self._tracker_lock:
                 episodes = self.tracker.poll(time.time())
             self._emit(episodes)
-            status = "listening" if self.stream_alive else "camera_unreachable"
+            # Flux gelé (socket morte) : le read() de la boucle principale
+            # bloque sans erreur — on tue ffmpeg d'ici pour la débloquer, et
+            # on dit la vérité dans le statut.
+            stalled = (
+                self.stream_alive and time.time() - self.last_window_at > STALL_SECONDS
+            )
+            if stalled:
+                log.warning(
+                    "aucune fenêtre audio depuis %.0fs : flux gelé, arrêt de "
+                    "ffmpeg pour forcer la reconnexion",
+                    time.time() - self.last_window_at,
+                )
+                proc = self._ffmpeg_proc
+                if proc is not None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            status = (
+                "listening" if self.stream_alive and not stalled else "camera_unreachable"
+            )
             rms, self.max_rms = self.max_rms, self.last_rms
             self.uploader.send_heartbeat(
                 {
