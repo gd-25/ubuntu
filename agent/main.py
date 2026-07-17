@@ -56,8 +56,9 @@ SILENT_RECONNECT_DELAY = 90  # s
 # caméra : read() bloque sans erreur), le thread heartbeat tue ffmpeg pour
 # forcer la reconnexion, et le statut devient camera_unreachable.
 STALL_SECONDS = 30
-# Timeout I/O réseau de ffmpeg (µs) : une socket muette meurt au lieu de bloquer.
-FFMPEG_RW_TIMEOUT_US = "15000000"
+# Timeout I/O socket du démuxeur RTSP (µs) : une socket muette meurt au lieu
+# de bloquer. (Option `-timeout` de rtsp ; `-rw_timeout` a disparu de ffmpeg 8.)
+FFMPEG_SOCKET_TIMEOUT_US = "15000000"
 
 
 def load_env(path: Path) -> None:
@@ -203,7 +204,7 @@ class Agent:
             "-loglevel", "error",
             "-rtsp_transport", "tcp",
             # Socket muette (reboot caméra) → erreur au lieu de blocage infini.
-            "-rw_timeout", FFMPEG_RW_TIMEOUT_US,
+            "-timeout", FFMPEG_SOCKET_TIMEOUT_US,
             # Timestamps Tapo cassés → warnings dts en boucle sinon.
             "-use_wallclock_as_timestamps", "1",
             "-i", self.rtsp_url,
