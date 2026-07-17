@@ -40,6 +40,20 @@ export interface AgentHeartbeat {
   rms_level: number;
 }
 
+/** Particularité de session ("Tapis de léchage", …), liste éditable par chien. */
+export interface Tag {
+  id: string;
+  dog_id: string;
+  label: string;
+  created_at: string;
+}
+
+export interface SessionTag {
+  session_id: string;
+  tag_id: string;
+  created_at: string;
+}
+
 export type ActivityKind = 'walk' | 'meal' | 'play' | 'other';
 
 export interface Activity {

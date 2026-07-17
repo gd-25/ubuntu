@@ -18,7 +18,7 @@ import {
   KIND_LABELS,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type { Session, SessionSummary, VocalEpisode } from '@/lib/types';
+import type { Session, SessionSummary, Tag, VocalEpisode } from '@/lib/types';
 
 export default function SessionDetailScreen() {
   const colors = useTheme();
@@ -27,6 +27,8 @@ export default function SessionDetailScreen() {
   const [session, setSession] = useState<Session | null>(null);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [episodes, setEpisodes] = useState<VocalEpisode[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -35,7 +37,7 @@ export default function SessionDetailScreen() {
 
   const fetchDetail = useCallback(async () => {
     if (!id) return null;
-    const [sessionRes, summaryRes, episodesRes] = await Promise.all([
+    const [sessionRes, summaryRes, episodesRes, sessionTagsRes] = await Promise.all([
       supabase.from('sessions').select('*').eq('id', id).maybeSingle(),
       supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
       supabase
@@ -43,13 +45,29 @@ export default function SessionDetailScreen() {
         .select('*')
         .eq('session_id', id)
         .order('started_at', { ascending: true }),
+      supabase.from('session_tags').select('tag_id').eq('session_id', id),
     ]);
     const firstError = sessionRes.error ?? summaryRes.error ?? episodesRes.error;
     if (firstError) console.warn('Chargement de la session incomplet :', firstError.message);
+
+    const session = sessionRes.data as Session | null;
+    let tagRows: Tag[] = [];
+    if (session) {
+      const { data } = await supabase
+        .from('tags')
+        .select('*')
+        .eq('dog_id', session.dog_id)
+        .order('created_at', { ascending: true });
+      tagRows = (data as Tag[] | null) ?? [];
+    }
     return {
-      session: sessionRes.data as Session | null,
+      session,
       summary: summaryRes.data as SessionSummary | null,
       episodes: (episodesRes.data as VocalEpisode[] | null) ?? [],
+      tags: tagRows,
+      selectedTagIds: new Set(
+        ((sessionTagsRes.data as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id)
+      ),
     };
   }, [id]);
 
@@ -61,12 +79,42 @@ export default function SessionDetailScreen() {
       setNotes(detail.session?.notes ?? '');
       setSummary(detail.summary);
       setEpisodes(detail.episodes);
+      setTags(detail.tags);
+      setSelectedTagIds(detail.selectedTagIds);
       setIsLoading(false);
     });
     return () => {
       ignore = true;
     };
   }, [fetchDetail]);
+
+  const toggleTag = async (tag: Tag) => {
+    if (!session) return;
+    const isSelected = selectedTagIds.has(tag.id);
+    // Optimiste : on met à jour l'UI puis on annule si la requête échoue.
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (isSelected) next.delete(tag.id);
+      else next.add(tag.id);
+      return next;
+    });
+    const { error } = isSelected
+      ? await supabase
+          .from('session_tags')
+          .delete()
+          .eq('session_id', session.id)
+          .eq('tag_id', tag.id)
+      : await supabase.from('session_tags').insert({ session_id: session.id, tag_id: tag.id });
+    if (error) {
+      setSelectedTagIds((prev) => {
+        const next = new Set(prev);
+        if (isSelected) next.add(tag.id);
+        else next.delete(tag.id);
+        return next;
+      });
+      Alert.alert('Erreur', `Impossible de modifier la particularité : ${error.message}`);
+    }
+  };
 
   const saveNotes = async () => {
     if (!session) return;
@@ -178,6 +226,41 @@ export default function SessionDetailScreen() {
       </Card>
 
       <Card>
+        <SectionTitle>Particularités</SectionTitle>
+        {tags.length === 0 ? (
+          <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
+            Aucune particularité définie. Ajoutez-en dans l&apos;onglet Réglages.
+          </Text>
+        ) : (
+          <View style={styles.tagRow}>
+            {tags.map((tag) => {
+              const selected = selectedTagIds.has(tag.id);
+              return (
+                <Pressable
+                  key={tag.id}
+                  onPress={() => toggleTag(tag)}
+                  style={[
+                    styles.tagChip,
+                    {
+                      backgroundColor: selected ? colors.accent : colors.background,
+                      borderColor: selected ? colors.accent : colors.border,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.tagChipText,
+                      { color: selected ? colors.accentText : colors.text },
+                    ]}>
+                    {tag.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+
+      <Card>
         <SectionTitle>Notes</SectionTitle>
         <TextInput
           style={[
@@ -281,6 +364,21 @@ const styles = StyleSheet.create({
   clipButtonText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tagChip: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  tagChipText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   notesInput: {
     borderWidth: 1,

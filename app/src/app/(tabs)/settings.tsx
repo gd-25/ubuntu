@@ -1,6 +1,6 @@
-import { Check } from 'lucide-react-native';
+import { Check, Plus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ScreenTitle } from '@/components/screen-title';
 import { Text, TextInput } from '@/components/text';
@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth-context';
 import { formatDateTime, secondsSince } from '@/lib/format';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
-import type { AgentHeartbeat } from '@/lib/types';
+import type { AgentHeartbeat, Tag } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
@@ -27,6 +27,9 @@ export default function SettingsScreen() {
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<AgentHeartbeat | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [newTagLabel, setNewTagLabel] = useState('');
+  const [isAddingTag, setIsAddingTag] = useState(false);
 
   // Sync the input with the loaded dog name (state adjusted during render,
   // see https://react.dev/learn/you-might-not-need-an-effect).
@@ -61,6 +64,65 @@ export default function SettingsScreen() {
   const loadHeartbeat = useCallback(async () => {
     setLastHeartbeat(await fetchHeartbeat());
   }, [fetchHeartbeat]);
+
+  // Particularités de session (liste par chien).
+  useEffect(() => {
+    if (!dog) return;
+    let ignore = false;
+    supabase
+      .from('tags')
+      .select('*')
+      .eq('dog_id', dog.id)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.warn('Chargement des particularités impossible :', error.message);
+        if (!ignore) setTags((data as Tag[] | null) ?? []);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [dog]);
+
+  const addTag = async () => {
+    if (!dog) return;
+    const label = newTagLabel.trim();
+    if (!label) return;
+    setIsAddingTag(true);
+    const { data, error } = await supabase
+      .from('tags')
+      .insert({ dog_id: dog.id, label })
+      .select()
+      .single();
+    setIsAddingTag(false);
+    if (error) {
+      const isDuplicate = error.code === '23505';
+      Alert.alert(
+        'Erreur',
+        isDuplicate ? 'Cette particularité existe déjà.' : `Ajout impossible : ${error.message}`
+      );
+      return;
+    }
+    setTags((prev) => [...prev, data as Tag]);
+    setNewTagLabel('');
+  };
+
+  const removeTag = (tag: Tag) => {
+    Alert.alert('Supprimer ?', `« ${tag.label} » sera retirée de toutes les sessions.`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('tags').delete().eq('id', tag.id);
+          if (error) {
+            Alert.alert('Erreur', `Suppression impossible : ${error.message}`);
+            return;
+          }
+          setTags((prev) => prev.filter((t) => t.id !== tag.id));
+        },
+      },
+    ]);
+  };
 
   const onSaveName = async () => {
     setIsSavingName(true);
@@ -118,6 +180,48 @@ export default function SettingsScreen() {
           disabled={!nameInput.trim()}
         />
       </Card>
+
+      {dog ? (
+        <Card>
+          <SectionTitle>Particularités de session</SectionTitle>
+          <Text style={[styles.body, { color: colors.textSecondary }]}>
+            Ce que vous avez fait de particulier avant/pendant une absence — à cocher ensuite dans
+            le détail d&apos;une session.
+          </Text>
+          {tags.map((tag) => (
+            <View key={tag.id} style={styles.tagRow}>
+              <Text style={[styles.body, { color: colors.text, flex: 1 }]}>{tag.label}</Text>
+              <Pressable onPress={() => removeTag(tag)} hitSlop={8}>
+                <X size={18} color={colors.danger} />
+              </Pressable>
+            </View>
+          ))}
+          <View style={styles.addTagRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.addTagInput,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+              placeholder="Nouvelle particularité…"
+              placeholderTextColor={colors.textSecondary}
+              value={newTagLabel}
+              onChangeText={setNewTagLabel}
+              onSubmitEditing={addTag}
+              returnKeyType="done"
+            />
+            <Pressable
+              onPress={addTag}
+              disabled={isAddingTag || !newTagLabel.trim()}
+              style={[
+                styles.addTagButton,
+                { backgroundColor: colors.accent, opacity: isAddingTag || !newTagLabel.trim() ? 0.5 : 1 },
+              ]}>
+              <Plus size={20} color={colors.accentText} />
+            </Pressable>
+          </View>
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Notifications push</SectionTitle>
@@ -205,5 +309,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: Spacing.sm,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  addTagRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  addTagInput: {
+    flex: 1,
+  },
+  addTagButton: {
+    borderRadius: 10,
+    padding: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
