@@ -1,6 +1,6 @@
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import { ScreenTitle } from '@/components/screen-title';
@@ -18,10 +18,18 @@ import {
   formatDuration,
   formatTime,
   KIND_LABELS,
+  OBSERVED_LABELS,
   secondsSince,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type { Activity, AgentHeartbeat, Session, SessionSummary, VocalEpisode } from '@/lib/types';
+import type {
+  Activity,
+  AgentHeartbeat,
+  ObservedKind,
+  Session,
+  SessionSummary,
+  VocalEpisode,
+} from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
 /** Agent considered online if last heartbeat is fresher than 2 minutes. */
@@ -39,6 +47,7 @@ export default function HomeScreen() {
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessionEpisodes, setSessionEpisodes] = useState<VocalEpisode[]>([]);
   const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
+  const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -249,6 +258,39 @@ export default function HomeScreen() {
     setIsBusy(false);
   };
 
+  // Signalement rapide pendant la session : couinement entendu (→ épisode
+  // manuel de 5 s qui compte dans les stats) ou observation comportementale.
+  const logManualWhine = async () => {
+    if (!dog || !activeSession) return;
+    const now = new Date();
+    const { error } = await supabase.from('vocal_episodes').insert({
+      dog_id: dog.id,
+      session_id: activeSession.id,
+      started_at: new Date(now.getTime() - 5000).toISOString(),
+      ended_at: now.toISOString(),
+      kind: 'whine',
+      source: 'manual',
+    });
+    if (error) {
+      Alert.alert('Erreur', `Impossible d'enregistrer : ${error.message}`);
+      return;
+    }
+    setLastQuickLog(`😢 Couinement noté à ${formatTime(now.toISOString())}`);
+  };
+
+  const logObservation = async (kind: ObservedKind) => {
+    if (!dog || !activeSession) return;
+    const at = new Date().toISOString();
+    const { error } = await supabase
+      .from('observed_events')
+      .insert({ dog_id: dog.id, session_id: activeSession.id, kind, at });
+    if (error) {
+      Alert.alert('Erreur', `Impossible d'enregistrer : ${error.message}`);
+      return;
+    }
+    setLastQuickLog(`${OBSERVED_LABELS[kind]} noté à ${formatTime(at)}`);
+  };
+
   // --- Render ---
 
   const renderDogState = () => {
@@ -260,8 +302,10 @@ export default function HomeScreen() {
             🔊 Vocalise depuis {formatDuration(sinceSeconds)}
           </Text>
           <Text style={[styles.dogStateDetail, { color: colors.textSecondary }]}>
-            {KIND_LABELS[lastEpisode.kind]} — confiance{' '}
-            {Math.round(lastEpisode.peak_confidence * 100)} %
+            {KIND_LABELS[lastEpisode.kind]}
+            {lastEpisode.peak_confidence !== null
+              ? ` — confiance ${Math.round(lastEpisode.peak_confidence * 100)} %`
+              : ' — signalé manuellement'}
           </Text>
         </View>
       );
@@ -347,6 +391,16 @@ export default function HomeScreen() {
                     ))}
                 </View>
               )}
+              <View style={styles.quickLogRow}>
+                <QuickLogChip label="😢 Couinement" onPress={logManualWhine} />
+                <QuickLogChip label="😌 Soulagement" onPress={() => logObservation('relief')} />
+                <QuickLogChip label="😰 Panique" onPress={() => logObservation('panic')} />
+              </View>
+              {lastQuickLog ? (
+                <Text style={[styles.chronoCaption, { color: colors.textSecondary }]}>
+                  {lastQuickLog}
+                </Text>
+              ) : null}
               <Button
                 label="Arrêter la session"
                 variant="danger"
@@ -436,11 +490,41 @@ export default function HomeScreen() {
   );
 }
 
+/** Petit bouton de signalement rapide pendant la session. */
+function QuickLogChip({ label, onPress }: { label: string; onPress: () => void }) {
+  const colors = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.quickLogChip,
+        { backgroundColor: colors.background, borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+      ]}>
+      <Text style={[styles.quickLogChipText, { color: colors.text }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   content: {
     padding: Spacing.md,
     gap: Spacing.md,
     paddingBottom: 112,
+  },
+  quickLogRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  quickLogChip: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  quickLogChipText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   dogState: {
     fontSize: 22,

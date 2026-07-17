@@ -27,9 +27,23 @@ export interface VocalEpisode {
   started_at: string;
   ended_at: string;
   kind: EpisodeKind;
-  avg_confidence: number;
-  peak_confidence: number;
+  avg_confidence: number | null;
+  peak_confidence: number | null;
   clip_path: string | null;
+  /** 'agent' = détecté par YAMNet ; 'manual' = saisi par l'utilisateur. */
+  source: 'agent' | 'manual';
+}
+
+/** Observation comportementale pendant une session (pas une vocalise). */
+export type ObservedKind = 'relief' | 'panic';
+
+export interface ObservedEvent {
+  id: string;
+  dog_id: string;
+  session_id: string | null;
+  kind: ObservedKind;
+  at: string;
+  created_at: string;
 }
 
 export interface AgentHeartbeat {

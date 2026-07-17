@@ -116,3 +116,8 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   play: '🎾 Jeu',
   other: '📝 Autre',
 };
+
+export const OBSERVED_LABELS: Record<string, string> = {
+  relief: '😌 Soulagement',
+  panic: '😰 Panique',
+};
