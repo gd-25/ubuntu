@@ -589,7 +589,7 @@ export default function HouseScreen() {
             {/* Statut de la caméra, posée face à la porte des WC (emplacement réel) */}
             <View
               pointerEvents="none"
-              style={[styles.cameraBadge, { left: 200 * scale, top: 526 * scale }]}>
+              style={[styles.cameraBadge, { left: 200 * scale, top: 542 * scale }]}>
               <StatusBadge status={agentStatus} />
             </View>
           </View>
