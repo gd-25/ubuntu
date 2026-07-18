@@ -15,7 +15,7 @@ export const MAP_W = 360;
 export const MAP_H = 700;
 
 /** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 339;
+export const OUTSIDE_BOTTOM = 351;
 export const BALCONY_BOTTOM = 449;
 /** Bas de l'appartement (mur avec le palier). */
 export const FLAT_BOTTOM = 640;
@@ -34,13 +34,13 @@ export interface Rect {
  * balcon. L'union pave toute la carte.
  */
 export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
-  { space: 'wc', rect: { x: 196, y: 527, w: 78, h: 62 } },
-  { space: 'sdb', rect: { x: 0, y: 527, w: 72, h: 113 } },
+  { space: 'wc', rect: { x: 196, y: 547, w: 78, h: 42 } },
+  { space: 'sdb', rect: { x: 0, y: 547, w: 72, h: 93 } },
   { space: 'chambre', rect: { x: 105, y: 449, w: 91, h: 140 } },
   { space: 'bureau', rect: { x: 0, y: 449, w: 105, h: 134 } },
   { space: 'couloir_int', rect: { x: 72, y: 583, w: 124, h: 57 } },
   // Avancée du salon sur le balcon (avant le balcon dans l'ordre).
-  { space: 'salon', rect: { x: 262, y: 376, w: 98, h: 73 } },
+  { space: 'salon', rect: { x: 262, y: 393, w: 98, h: 56 } },
   { space: 'salon', rect: { x: 196, y: 449, w: 164, h: 191 } },
   { space: 'balcon', rect: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM } },
   { space: 'dehors', rect: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM } },
@@ -95,9 +95,9 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 302, y: 606 },
   },
   wc: {
-    greg: { x: 244, y: 548 },
-    fiona: { x: 226, y: 570 },
-    ubuntu: { x: 252, y: 572 },
+    greg: { x: 246, y: 558 },
+    fiona: { x: 226, y: 572 },
+    ubuntu: { x: 254, y: 574 },
   },
   couloir_int: {
     greg: { x: 92, y: 610 },

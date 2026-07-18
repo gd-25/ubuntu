@@ -55,9 +55,9 @@ import { useDog } from '@/lib/use-dog';
 const HEARTBEAT_FRESH_SECONDS = 120;
 
 const AVATARS: Record<Person, { source: number; w: number; h: number; z: number }> = {
-  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 34, h: 46, z: 10 },
-  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 36, h: 48, z: 11 },
-  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 50, h: 53, z: 20 },
+  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 28, h: 38, z: 10 },
+  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 30, h: 40, z: 11 },
+  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 40, h: 42, z: 20 },
 };
 
 const MEAL_FRACTIONS = [

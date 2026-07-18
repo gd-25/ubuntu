@@ -13,11 +13,11 @@ import { FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
 
 // Repères verticaux du bâtiment.
 const HOUSE_TOP = 449;
-const WET_TOP = 527; // haut de la sdb et des WC
+const WET_TOP = 547; // haut de la sdb (≈ 5 carreaux) et des WC (2 carreaux)
 const BUREAU_BOT = 583;
 const CHAMBRE_BOT = 589;
-// Avancée du salon sur le balcon : 2/3 de la profondeur du balcon.
-const EXT_TOP = 376;
+// Avancée du salon sur le balcon : les 2 dalles du bas.
+const EXT_TOP = 393;
 
 interface Palette {
   grass: string;
@@ -143,7 +143,7 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 }
 
 /** Sentier en L : sortie de l'immeuble à droite, puis parallèle au balcon. */
-const TRAIL_Y = 269;
+const TRAIL_Y = 276;
 const TRAIL_H = 30;
 const TRAIL_STUB_X = 288;
 const TRAIL_STUB_W = 30;
@@ -169,52 +169,47 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           ) : null
         )
       )}
-      {/* Branche horizontale du sentier (parallèle au balcon) */}
-      <Rect x={20} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W - 20} height={TRAIL_H} fill={p.path} />
-      <Rect x={20} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W - 20} height={3} fill={p.pathEdge} />
-      <Rect x={20} y={TRAIL_Y + TRAIL_H - 3} width={TRAIL_STUB_X - 20} height={3} fill={p.pathEdge} />
+      {/* Branche horizontale du sentier : bord à bord */}
+      <Rect x={0} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W} height={TRAIL_H} fill={p.path} />
+      <Rect x={0} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W} height={3} fill={p.pathEdge} />
+      <Rect x={0} y={TRAIL_Y + TRAIL_H - 3} width={TRAIL_STUB_X} height={3} fill={p.pathEdge} />
       {/* Branche verticale : sortie de l'immeuble, à droite */}
       <Rect x={TRAIL_STUB_X} y={TRAIL_Y + 3} width={TRAIL_STUB_W} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.path} />
       <Rect x={TRAIL_STUB_X} y={TRAIL_Y + TRAIL_H} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - TRAIL_H} fill={p.pathEdge} />
       <Rect x={TRAIL_STUB_X + TRAIL_STUB_W - 3} y={TRAIL_Y + 3} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.pathEdge} />
-      {/* Forêt clairsemée en haut, dense près du sentier */}
-      <Tree x={30} y={40} p={p} />
-      <Tree x={150} y={30} p={p} />
-      <Tree x={268} y={44} p={p} />
-      <Tree x={90} y={110} p={p} />
-      <Tree x={210} y={100} p={p} />
-      <Tree x={320} y={114} p={p} />
-      <Tree x={20} y={170} p={p} />
-      <Tree x={140} y={180} p={p} />
-      <Tree x={260} y={168} p={p} />
-      {/* Rangée au-dessus du sentier */}
-      <Tree x={16} y={223} p={p} />
-      <Tree x={76} y={217} p={p} />
-      <Tree x={136} y={225} p={p} />
-      <Tree x={196} y={215} p={p} />
-      <Tree x={250} y={223} p={p} />
-      <Tree x={312} y={217} p={p} />
+      {/* Une rangée d'arbres au-dessus du sentier, une en dessous — que de
+          l'herbe au-dessus */}
+      <Tree x={4} y={232} p={p} />
+      <Tree x={64} y={232} p={p} />
+      <Tree x={124} y={232} p={p} />
+      <Tree x={184} y={232} p={p} />
+      <Tree x={244} y={232} p={p} />
+      <Tree x={306} y={232} p={p} />
+      <Tree x={4} y={308} p={p} />
+      <Tree x={64} y={308} p={p} />
+      <Tree x={124} y={308} p={p} />
+      <Tree x={184} y={308} p={p} />
+      <Tree x={244} y={308} p={p} />
+      <Tree x={326} y={308} p={p} />
       {/* Fleurs */}
-      <Flower x={60} y={253} color={p.flower1} />
-      <Flower x={150} y={247} color={p.flower2} />
-      <Flower x={262} y={251} color={p.flower1} />
-      <Flower x={70} y={311} color={p.flower2} />
-      <Flower x={180} y={315} color={p.flower1} />
-      <Flower x={240} y={309} color={p.flower2} />
-      <Flower x={110} y={80} color={p.flower1} />
-      <Flower x={250} y={70} color={p.flower2} />
-      <Flower x={40} y={130} color={p.flower2} />
-      <Flower x={300} y={60} color={p.flower1} />
+      <Flower x={60} y={80} color={p.flower1} />
+      <Flower x={170} y={140} color={p.flower2} />
+      <Flower x={280} y={70} color={p.flower1} />
+      <Flower x={110} y={200} color={p.flower2} />
+      <Flower x={230} y={190} color={p.flower1} />
+      <Flower x={320} y={150} color={p.flower2} />
+      <Flower x={30} y={160} color={p.flower2} />
 
       {/* ---------------- Balcon (béton) ---------------- */}
       <Rect x={0} y={OUTSIDE_BOTTOM} width={MAP_W} height={HOUSE_TOP - OUTSIDE_BOTTOM} fill={p.concrete} />
+      {/* 3 rangées de dalles égales (28 unités) sous la rambarde */}
       {[0, 1].map((i) => (
         <Line
           key={`cj${i}`}
           x1={0}
-          y1={OUTSIDE_BOTTOM + 36 + i * 32}
+          y1={OUTSIDE_BOTTOM + 42 + i * 28}
           x2={MAP_W}
-          y2={OUTSIDE_BOTTOM + 36 + i * 32}
+          y2={OUTSIDE_BOTTOM + 42 + i * 28}
           stroke={p.concreteLine}
           strokeWidth={2}
         />
@@ -259,7 +254,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       {/* Salle de bain + WC : carrelage */}
       <Rect x={0} y={WET_TOP} width={72} height={FLAT_BOTTOM - WET_TOP} fill={p.tile} />
       {Array.from({ length: 4 }).map((_, col) =>
-        Array.from({ length: 6 }).map((_, row) =>
+        Array.from({ length: 5 }).map((_, row) =>
           (col + row) % 2 === 0 ? (
             <Rect
               key={`t${col}-${row}`}
@@ -274,7 +269,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       )}
       <Rect x={196} y={WET_TOP} width={78} height={CHAMBRE_BOT - WET_TOP} fill={p.tile} />
       {Array.from({ length: 4 }).map((_, col) =>
-        Array.from({ length: 4 }).map((_, row) =>
+        Array.from({ length: 2 }).map((_, row) =>
           (col + row) % 2 === 0 ? (
             <Rect
               key={`w${col}-${row}`}
@@ -309,27 +304,27 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
 
       {/* Salle de bain, de bas en haut : baignoire / évier à gauche / douche */}
       {/* Douche (tiers haut, toute la largeur) */}
-      <Rect x={4} y={WET_TOP + 4} width={64} height={30} fill={p.tub} />
-      <Rect x={8} y={WET_TOP + 8} width={56} height={22} fill={p.water} />
-      <Circle cx={36} cy={WET_TOP + 19} r={3} fill={p.tub} />
+      <Rect x={4} y={WET_TOP + 4} width={64} height={26} fill={p.tub} />
+      <Rect x={8} y={WET_TOP + 8} width={56} height={18} fill={p.water} />
+      <Circle cx={36} cy={WET_TOP + 17} r={3} fill={p.tub} />
       {/* Évier (tiers milieu, à gauche) */}
-      <Rect x={4} y={WET_TOP + 42} width={26} height={26} fill={p.tub} />
-      <Rect x={9} y={WET_TOP + 47} width={16} height={16} fill={p.water} />
-      {/* Baignoire (tiers bas, toute la largeur) */}
-      <Rect x={4} y={FLAT_BOTTOM - 36} width={64} height={30} fill={p.tub} />
-      <Rect x={9} y={FLAT_BOTTOM - 31} width={54} height={20} fill={p.water} />
+      <Rect x={4} y={WET_TOP + 34} width={26} height={24} fill={p.tub} />
+      <Rect x={9} y={WET_TOP + 39} width={16} height={14} fill={p.water} />
+      {/* Baignoire (tiers bas, toute la largeur) — forme pilule */}
+      <Rect x={4} y={FLAT_BOTTOM - 32} width={64} height={28} rx={14} fill={p.tub} />
+      <Rect x={10} y={FLAT_BOTTOM - 27} width={52} height={18} rx={9} fill={p.water} />
 
       {/* Chambre : lit 140×200 (50×71) contre le mur droit */}
-      <Rect x={144} y={506} width={50} height={71} fill={p.wood} />
-      <Rect x={147} y={509} width={44} height={65} fill={p.mattress} />
-      <Rect x={151} y={513} width={36} height={12} fill={p.pillow} />
-      <Rect x={147} y={529} width={44} height={45} fill={p.blanket} />
-      <Rect x={147} y={529} width={44} height={4} fill={p.pillow} />
+      <Rect x={144} y={516} width={50} height={71} fill={p.wood} />
+      <Rect x={147} y={519} width={44} height={65} fill={p.mattress} />
+      <Rect x={151} y={523} width={36} height={12} fill={p.pillow} />
+      <Rect x={147} y={539} width={44} height={45} fill={p.blanket} />
+      <Rect x={147} y={539} width={44} height={4} fill={p.pillow} />
 
       {/* WC : cuvette à gauche, tournée vers la droite (un peu plus grande) */}
-      <Rect x={200} y={WET_TOP + 19} width={8} height={30} fill={p.porcelain} />
-      <Rect x={208} y={WET_TOP + 22} width={22} height={24} fill={p.porcelain} />
-      <Rect x={212} y={WET_TOP + 26} width={13} height={16} fill={p.tileAlt} />
+      <Rect x={200} y={WET_TOP + 8} width={8} height={26} fill={p.porcelain} />
+      <Rect x={208} y={WET_TOP + 11} width={22} height={20} fill={p.porcelain} />
+      <Rect x={212} y={WET_TOP + 15} width={13} height={12} fill={p.tileAlt} />
 
       {/* Salon : canapé (90×180 → 32×64) vertical contre le mur droit */}
       <Rect x={322} y={486} width={34} height={68} fill={p.sofaDark} />
@@ -360,17 +355,13 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       {/* Cloison chambre / salon+WC (aucune porte) */}
       <Rect x={194} y={HOUSE_TOP} width={4} height={CHAMBRE_BOT - HOUSE_TOP} fill={p.wall} />
 
-      {/* Mur bas du bureau vers le couloir (la porte occupe presque tout) */}
-      <Rect x={72} y={BUREAU_BOT - 2} width={6} height={4} fill={p.wall} />
-      <Rect x={100} y={BUREAU_BOT - 2} width={5} height={4} fill={p.wall} />
+      {/* Bureau → couloir : la porte occupe toute l'ouverture (aucun mur) */}
 
       {/* Salle de bain : mur haut plein + mur droit avec porte vers le couloir */}
       <Rect x={0} y={WET_TOP - 2} width={72} height={4} fill={p.wall} />
-      <Rect x={70} y={WET_TOP} width={4} height={62} fill={p.wall} />
-      <Rect x={70} y={FLAT_BOTTOM - 14} width={4} height={14} fill={p.wall} />
+      <Rect x={70} y={WET_TOP} width={4} height={42} fill={p.wall} />
 
       {/* Chambre : mur bas avec porte vers le couloir (x112..140) */}
-      <Rect x={105} y={CHAMBRE_BOT - 2} width={7} height={4} fill={p.wall} />
       <Rect x={140} y={CHAMBRE_BOT - 2} width={56} height={4} fill={p.wall} />
 
       {/* WC : mur haut, mur droit, mur bas avec porte (x234..262) — caméra devant */}
