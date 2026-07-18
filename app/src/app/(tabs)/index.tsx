@@ -31,12 +31,10 @@ import {
   computeTransition,
   DEFAULT_POSITIONS,
   isUbuntuAlone,
-  LABEL_POSITIONS,
   MAP_H,
   MAP_W,
   SLOTS,
   solitudeTypeOf,
-  SPACE_LABELS,
   ZONE_RECTS,
   type Positions,
 } from '@/lib/house';
@@ -515,24 +513,6 @@ export default function HouseScreen() {
           <View style={{ width: MAP_W * scale, height: mapHeight, alignSelf: 'center' }}>
             <HouseMap night={scheme === 'dark'} />
 
-            {/* Étiquettes de zones (pièces principales uniquement) */}
-            {(Object.keys(LABEL_POSITIONS) as Space[]).map((zone) => (
-              <Text
-                key={zone}
-                style={[
-                  styles.zoneLabel,
-                  {
-                    left: (LABEL_POSITIONS[zone]?.x ?? 0) * scale,
-                    top: (LABEL_POSITIONS[zone]?.y ?? 0) * scale,
-                    color: zone === 'dehors' || zone === 'balcon' ? '#FFFFFF' : colors.border,
-                    backgroundColor:
-                      zone === 'dehors' || zone === 'balcon' ? '#00000055' : '#FFFFFF44',
-                  },
-                ]}>
-                {SPACE_LABELS[zone]}
-              </Text>
-            ))}
-
             {/* Surbrillance de la zone survolée (l'aimant « s'allume ») —
                 une zone peut couvrir plusieurs rectangles (salon + avancée). */}
             {hoverZone
@@ -589,7 +569,7 @@ export default function HouseScreen() {
             {/* Statut de la caméra, posée face à la porte des WC (emplacement réel) */}
             <View
               pointerEvents="none"
-              style={[styles.cameraBadge, { left: 200 * scale, top: 542 * scale }]}>
+              style={[styles.cameraBadge, { left: 198 * scale, top: 594 * scale }]}>
               <StatusBadge status={agentStatus} />
             </View>
           </View>
@@ -847,14 +827,6 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     position: 'absolute',
-  },
-  zoneLabel: {
-    position: 'absolute',
-    fontSize: 7,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 2,
-    overflow: 'hidden',
   },
   zoneHighlight: {
     position: 'absolute',

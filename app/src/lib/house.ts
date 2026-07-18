@@ -15,8 +15,8 @@ export const MAP_W = 360;
 export const MAP_H = 700;
 
 /** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 190;
-export const BALCONY_BOTTOM = 300;
+export const OUTSIDE_BOTTOM = 339;
+export const BALCONY_BOTTOM = 449;
 /** Bas de l'appartement (mur avec le palier). */
 export const FLAT_BOTTOM = 640;
 
@@ -34,14 +34,14 @@ export interface Rect {
  * balcon. L'union pave toute la carte.
  */
 export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
-  { space: 'wc', rect: { x: 196, y: 471, w: 78, h: 64 } },
-  { space: 'sdb', rect: { x: 0, y: 471, w: 72, h: 169 } },
-  { space: 'chambre', rect: { x: 105, y: 300, w: 91, h: 235 } },
-  { space: 'bureau', rect: { x: 0, y: 300, w: 105, h: 229 } },
-  { space: 'couloir_int', rect: { x: 72, y: 529, w: 124, h: 111 } },
+  { space: 'wc', rect: { x: 196, y: 527, w: 78, h: 62 } },
+  { space: 'sdb', rect: { x: 0, y: 527, w: 72, h: 113 } },
+  { space: 'chambre', rect: { x: 105, y: 449, w: 91, h: 140 } },
+  { space: 'bureau', rect: { x: 0, y: 449, w: 105, h: 134 } },
+  { space: 'couloir_int', rect: { x: 72, y: 583, w: 124, h: 57 } },
   // Avancée du salon sur le balcon (avant le balcon dans l'ordre).
-  { space: 'salon', rect: { x: 262, y: 214, w: 98, h: 86 } },
-  { space: 'salon', rect: { x: 196, y: 300, w: 164, h: 340 } },
+  { space: 'salon', rect: { x: 262, y: 376, w: 98, h: 73 } },
+  { space: 'salon', rect: { x: 196, y: 449, w: 164, h: 191 } },
   { space: 'balcon', rect: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM } },
   { space: 'dehors', rect: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM } },
   { space: 'couloir_ext', rect: { x: 0, y: FLAT_BOTTOM, w: MAP_W, h: MAP_H - FLAT_BOTTOM } },
@@ -59,59 +59,50 @@ export const SPACE_LABELS: Record<Space, string> = {
   wc: 'WC',
 };
 
-/** Étiquettes affichées sur la carte : espace → position (coordonnées carte). */
-export const LABEL_POSITIONS: Partial<Record<Space, { x: number; y: number }>> = {
-  dehors: { x: 6, y: 28 },
-  balcon: { x: 6, y: 210 },
-  bureau: { x: 6, y: 308 },
-  chambre: { x: 110, y: 308 },
-  salon: { x: 202, y: 308 },
-};
-
 /**
  * Point d'ancrage (centre de l'avatar) par personne et par zone : chacun a
  * son emplacement fixe pour que les avatars ne se recouvrent jamais.
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   dehors: {
-    greg: { x: 84, y: 136 },
-    fiona: { x: 170, y: 132 },
-    ubuntu: { x: 250, y: 140 },
+    greg: { x: 84, y: 286 },
+    fiona: { x: 170, y: 282 },
+    ubuntu: { x: 250, y: 290 },
   },
   balcon: {
-    greg: { x: 60, y: 254 },
-    fiona: { x: 148, y: 254 },
-    ubuntu: { x: 218, y: 258 },
+    greg: { x: 60, y: 402 },
+    fiona: { x: 148, y: 402 },
+    ubuntu: { x: 218, y: 406 },
   },
   bureau: {
-    greg: { x: 36, y: 368 },
-    fiona: { x: 70, y: 416 },
-    ubuntu: { x: 48, y: 458 },
+    greg: { x: 34, y: 506 },
+    fiona: { x: 72, y: 538 },
+    ubuntu: { x: 46, y: 556 },
   },
   sdb: {
-    greg: { x: 36, y: 558 },
-    fiona: { x: 38, y: 594 },
-    ubuntu: { x: 40, y: 620 },
+    greg: { x: 36, y: 560 },
+    fiona: { x: 38, y: 592 },
+    ubuntu: { x: 40, y: 616 },
   },
   chambre: {
-    greg: { x: 124, y: 372 },
-    fiona: { x: 168, y: 342 },
-    ubuntu: { x: 124, y: 482 },
+    greg: { x: 124, y: 500 },
+    fiona: { x: 168, y: 478 },
+    ubuntu: { x: 124, y: 552 },
   },
   salon: {
-    greg: { x: 240, y: 382 },
-    fiona: { x: 300, y: 352 },
-    ubuntu: { x: 274, y: 586 },
+    greg: { x: 240, y: 500 },
+    fiona: { x: 300, y: 472 },
+    ubuntu: { x: 302, y: 606 },
   },
   wc: {
-    greg: { x: 214, y: 496 },
-    fiona: { x: 246, y: 512 },
-    ubuntu: { x: 218, y: 514 },
+    greg: { x: 244, y: 548 },
+    fiona: { x: 226, y: 570 },
+    ubuntu: { x: 252, y: 572 },
   },
   couloir_int: {
-    greg: { x: 92, y: 562 },
-    fiona: { x: 134, y: 600 },
-    ubuntu: { x: 172, y: 564 },
+    greg: { x: 92, y: 610 },
+    fiona: { x: 134, y: 614 },
+    ubuntu: { x: 172, y: 612 },
   },
   couloir_ext: {
     greg: { x: 80, y: 668 },
