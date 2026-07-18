@@ -30,9 +30,12 @@ import {
 import {
   computeTransition,
   DEFAULT_POSITIONS,
+  isUbuntuAlone,
+  LABELED_SPACES,
   MAP_H,
   MAP_W,
   SLOTS,
+  solitudeTypeOf,
   SPACE_LABELS,
   ZONES,
   type Positions,
@@ -103,6 +106,16 @@ export default function HouseScreen() {
     activeSessionRef.current = activeSession;
     activeWalkRef.current = activeWalk;
   }, [positions, activeSession, activeWalk]);
+
+  // Délai de grâce avant de déclarer Ubuntu seul (le temps de déplacer
+  // les autres avatars de pièce en pièce sans démarrer de session).
+  const aloneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (aloneTimerRef.current) clearTimeout(aloneTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -371,13 +384,26 @@ export default function HouseScreen() {
       const transition = computeTransition(prev, next);
       if (transition.walkStarted) startWalk();
       if (transition.walkEnded) endWalk();
+      // Session démarrée seulement si Ubuntu reste seul 5 s (délai de grâce).
       if (transition.aloneStarted && !activeSessionRef.current) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        startSession(transition.solitudeType);
+        if (aloneTimerRef.current) clearTimeout(aloneTimerRef.current);
+        aloneTimerRef.current = setTimeout(() => {
+          aloneTimerRef.current = null;
+          const current = positionsRef.current;
+          if (!isUbuntuAlone(current) || activeSessionRef.current) return;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          startSession(solitudeTypeOf(current));
+        }, 5000);
       }
-      if (transition.aloneEnded && activeSessionRef.current) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        stopSession();
+      if (transition.aloneEnded) {
+        if (aloneTimerRef.current) {
+          clearTimeout(aloneTimerRef.current);
+          aloneTimerRef.current = null;
+        }
+        if (activeSessionRef.current) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          stopSession();
+        }
       }
     },
     [persistPosition, startWalk, endWalk, startSession, stopSession]
@@ -489,8 +515,8 @@ export default function HouseScreen() {
           <View style={{ width: MAP_W * scale, height: mapHeight, alignSelf: 'center' }}>
             <HouseMap night={scheme === 'dark'} />
 
-            {/* Étiquettes de zones */}
-            {(Object.keys(ZONES) as Space[]).map((zone) => (
+            {/* Étiquettes de zones (pièces principales uniquement) */}
+            {LABELED_SPACES.map((zone) => (
               <Text
                 key={zone}
                 style={[
@@ -583,8 +609,8 @@ export default function HouseScreen() {
       {/* Toast rétro */}
       {toast ? (
         <Animated.View
-          entering={SlideInUp.springify().damping(16)}
-          exiting={SlideOutUp.duration(200)}
+          entering={SlideInUp.duration(220)}
+          exiting={SlideOutUp.duration(160)}
           style={[
             styles.toast,
             { top: insets.top + 44, backgroundColor: colors.card, borderColor: colors.border },
@@ -596,7 +622,7 @@ export default function HouseScreen() {
       {/* Panneau session en cours (boîte de dialogue Pokémon) */}
       {activeSession ? (
         <Animated.View
-          entering={SlideInUp.springify().damping(15)}
+          entering={SlideInUp.duration(260)}
           style={[
             styles.sessionPanel,
             {
@@ -648,8 +674,8 @@ export default function HouseScreen() {
         <>
           <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
           <Animated.View
-            entering={ZoomIn.springify().damping(13)}
-            exiting={ZoomOut.duration(150)}
+            entering={ZoomIn.duration(180)}
+            exiting={ZoomOut.duration(130)}
             style={[
               styles.ubuntuMenu,
               {
@@ -675,7 +701,7 @@ export default function HouseScreen() {
       <Modal visible={feedOpen} transparent animationType="fade" onRequestClose={() => setFeedOpen(false)}>
         <View style={styles.modalBackdrop}>
           <Animated.View
-            entering={ZoomIn.springify().damping(14)}
+            entering={ZoomIn.duration(200)}
             style={[
               styles.dialog,
               {
@@ -743,7 +769,7 @@ export default function HouseScreen() {
         <View style={styles.modalBackdrop}>
           {recap ? (
             <Animated.View
-              entering={ZoomIn.springify().damping(14)}
+              entering={ZoomIn.duration(200)}
               style={[
                 styles.dialog,
                 {
@@ -898,7 +924,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: Spacing.md,
     right: Spacing.md,
-    bottom: Spacing.md,
+    bottom: 118,
     borderWidth: 3,
     borderRadius: 2,
     padding: Spacing.md,

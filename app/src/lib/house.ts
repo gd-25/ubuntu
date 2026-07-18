@@ -1,20 +1,22 @@
 import type { Person, SolitudeType, Space } from '@/lib/types';
 
 /**
- * Géométrie du plan de la maison (repère « carte » en unités fixes,
- * mis à l'échelle à la largeur de l'écran) et règles de la vie de famille.
+ * Géométrie du plan (repère « carte » en unités fixes, mis à l'échelle à
+ * l'écran) et règles de la vie de famille.
  *
- *   DEHORS  (forêt)
- *   BALCON
- *   BUREAU | CHAMBRE | SALON
+ *   DEHORS   (forêt, sentier en L le long du balcon)
+ *   BALCON   (béton)
+ *   BUREAU  | CHAMBRE | SALON
+ *   SDB     | COULOIR INT
+ *   COULOIR EXT (palier, moquette noire)
  */
 
 export const MAP_W = 360;
 export const MAP_H = 640;
 
-/** Frontières horizontales des bandes. */
-export const OUTSIDE_BOTTOM = 220;
-export const BALCONY_BOTTOM = 290;
+/** Frontières horizontales des bandes hautes. */
+export const OUTSIDE_BOTTOM = 170;
+export const BALCONY_BOTTOM = 230;
 
 export interface Rect {
   x: number;
@@ -23,13 +25,20 @@ export interface Rect {
   h: number;
 }
 
-/** Zones de hit-test (l'aimant s'active dès qu'on lâche l'avatar dedans). */
+/**
+ * Zones de hit-test (l'aimant s'active dès qu'on lâche l'avatar dedans).
+ * Elles pavent exactement toute la carte — la détection de zone dans les
+ * worklets de geste itère sur cet objet.
+ */
 export const ZONES: Record<Space, Rect> = {
   dehors: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM },
   balcon: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM },
-  bureau: { x: 0, y: BALCONY_BOTTOM, w: 120, h: MAP_H - BALCONY_BOTTOM },
-  chambre: { x: 120, y: BALCONY_BOTTOM, w: 120, h: MAP_H - BALCONY_BOTTOM },
-  salon: { x: 240, y: BALCONY_BOTTOM, w: 120, h: MAP_H - BALCONY_BOTTOM },
+  bureau: { x: 0, y: 230, w: 100, h: 220 },
+  sdb: { x: 0, y: 450, w: 100, h: 122 },
+  chambre: { x: 100, y: 230, w: 130, h: 262 },
+  salon: { x: 230, y: 230, w: 130, h: 262 },
+  couloir_int: { x: 100, y: 492, w: 260, h: 80 },
+  couloir_ext: { x: 0, y: 572, w: MAP_W, h: 68 },
 };
 
 export const SPACE_LABELS: Record<Space, string> = {
@@ -38,7 +47,13 @@ export const SPACE_LABELS: Record<Space, string> = {
   bureau: 'BUREAU',
   chambre: 'CHAMBRE',
   salon: 'SALON',
+  sdb: 'SDB',
+  couloir_int: 'COULOIR',
+  couloir_ext: 'PALIER',
 };
+
+/** Zones affichant leur étiquette sur la carte (les autres restent nues). */
+export const LABELED_SPACES: Space[] = ['dehors', 'balcon', 'bureau', 'chambre', 'salon'];
 
 /**
  * Point d'ancrage (centre de l'avatar) par personne et par zone : chacun a
@@ -46,38 +61,53 @@ export const SPACE_LABELS: Record<Space, string> = {
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   dehors: {
-    greg: { x: 80, y: 150 },
-    fiona: { x: 180, y: 112 },
-    ubuntu: { x: 272, y: 156 },
+    greg: { x: 84, y: 104 },
+    fiona: { x: 170, y: 100 },
+    ubuntu: { x: 252, y: 108 },
   },
   balcon: {
-    greg: { x: 70, y: 258 },
-    fiona: { x: 180, y: 258 },
-    ubuntu: { x: 286, y: 260 },
+    greg: { x: 70, y: 200 },
+    fiona: { x: 176, y: 200 },
+    ubuntu: { x: 268, y: 202 },
   },
   bureau: {
-    greg: { x: 38, y: 450 },
-    fiona: { x: 90, y: 400 },
-    ubuntu: { x: 62, y: 546 },
+    greg: { x: 36, y: 306 },
+    fiona: { x: 66, y: 366 },
+    ubuntu: { x: 48, y: 418 },
+  },
+  sdb: {
+    greg: { x: 70, y: 486 },
+    fiona: { x: 36, y: 522 },
+    ubuntu: { x: 68, y: 540 },
   },
   chambre: {
-    greg: { x: 152, y: 450 },
-    fiona: { x: 208, y: 400 },
-    ubuntu: { x: 180, y: 546 },
+    greg: { x: 136, y: 344 },
+    fiona: { x: 196, y: 304 },
+    ubuntu: { x: 166, y: 432 },
   },
   salon: {
-    greg: { x: 270, y: 450 },
-    fiona: { x: 326, y: 400 },
-    ubuntu: { x: 296, y: 528 },
+    greg: { x: 266, y: 344 },
+    fiona: { x: 326, y: 304 },
+    ubuntu: { x: 294, y: 424 },
+  },
+  couloir_int: {
+    greg: { x: 150, y: 532 },
+    fiona: { x: 232, y: 528 },
+    ubuntu: { x: 312, y: 534 },
+  },
+  couloir_ext: {
+    greg: { x: 80, y: 606 },
+    fiona: { x: 180, y: 602 },
+    ubuntu: { x: 276, y: 608 },
   },
 };
 
 /** Zone contenant le point (x, y) — coordonnées carte. */
 export function spaceAt(x: number, y: number): Space {
-  if (y < OUTSIDE_BOTTOM) return 'dehors';
-  if (y < BALCONY_BOTTOM) return 'balcon';
-  if (x < 120) return 'bureau';
-  if (x < 240) return 'chambre';
+  for (const space of Object.keys(ZONES) as Space[]) {
+    const r = ZONES[space];
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return space;
+  }
   return 'salon';
 }
 

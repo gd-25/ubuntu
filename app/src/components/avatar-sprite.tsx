@@ -15,10 +15,23 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { BALCONY_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM, SLOTS } from '@/lib/house';
+import { MAP_H, MAP_W, SLOTS, ZONES } from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
 
-const SPRING = { damping: 14, stiffness: 160 };
+/** Ressort sec : l'aimant claque en ~250 ms avec un seul petit rebond. */
+const SPRING = { damping: 20, stiffness: 320 };
+
+const SPACES = Object.keys(ZONES) as Space[];
+
+/** Zone contenant le point (x, y) — version worklet de spaceAt. */
+function zoneAt(x: number, y: number): Space {
+  'worklet';
+  for (const space of SPACES) {
+    const r = ZONES[space];
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return space;
+  }
+  return 'salon';
+}
 
 /**
  * Un avatar déplaçable sur le plan. Les coordonnées internes sont en unités
@@ -87,33 +100,14 @@ export function AvatarSprite({
       const ny = startY.value + e.translationY / scale;
       x.value = Math.min(Math.max(nx, 14), MAP_W - 14);
       y.value = Math.min(Math.max(ny, 20), MAP_H - 20);
-      // Détection de zone (dupliquée de spaceAt pour rester dans le worklet).
-      const zone: Space =
-        y.value < OUTSIDE_BOTTOM
-          ? 'dehors'
-          : y.value < BALCONY_BOTTOM
-            ? 'balcon'
-            : x.value < 120
-              ? 'bureau'
-              : x.value < 240
-                ? 'chambre'
-                : 'salon';
+      const zone = zoneAt(x.value, y.value);
       if (zone !== hover.value) {
         hover.value = zone;
         runOnJS(onHoverSpace)(zone);
       }
     })
     .onEnd(() => {
-      const zone: Space =
-        y.value < OUTSIDE_BOTTOM
-          ? 'dehors'
-          : y.value < BALCONY_BOTTOM
-            ? 'balcon'
-            : x.value < 120
-              ? 'bureau'
-              : x.value < 240
-                ? 'chambre'
-                : 'salon';
+      const zone = zoneAt(x.value, y.value);
       // Aimant immédiat (même zone → l'effet React ne re-déclenchera pas).
       x.value = withSpring(SLOTS[zone][person].x, SPRING);
       y.value = withSpring(SLOTS[zone][person].y, SPRING);

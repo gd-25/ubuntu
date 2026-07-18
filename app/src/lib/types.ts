@@ -90,8 +90,16 @@ export interface Activity {
 /** Membres de la famille sur le plan de la maison. */
 export type Person = 'greg' | 'fiona' | 'ubuntu';
 
-/** Espaces du plan : trois pièces, le balcon et le dehors (forêt). */
-export type Space = 'bureau' | 'chambre' | 'salon' | 'balcon' | 'dehors';
+/** Espaces du plan : pièces, balcon, palier et dehors (forêt). */
+export type Space =
+  | 'bureau'
+  | 'chambre'
+  | 'salon'
+  | 'balcon'
+  | 'dehors'
+  | 'sdb'
+  | 'couloir_int'
+  | 'couloir_ext';
 
 export interface AvatarPosition {
   dog_id: string;

@@ -1,11 +1,13 @@
 import { memo } from 'react';
 import Svg, { G, Line, Rect } from 'react-native-svg';
 
-import { BALCONY_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
+import { BALCONY_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM, ZONES } from '@/lib/house';
 
 /**
- * Le plan de la maison en pixel-art SVG, façon carte Pokémon GBA :
- * forêt en haut, balcon, puis les trois pièces. Entièrement statique
+ * Le plan de l'appartement en pixel-art SVG, façon carte Pokémon GBA.
+ * Forêt avec sentier en L (on sort de l'immeuble à droite puis le sentier
+ * longe le balcon), balcon en béton, trois pièces, salle de bain, couloir
+ * intérieur et palier d'immeuble à moquette noire. Entièrement statique
  * (memo) — les avatars et surbrillances vivent au-dessus.
  */
 
@@ -18,14 +20,24 @@ interface Palette {
   trunk: string;
   path: string;
   pathEdge: string;
-  plank: string;
-  plankLine: string;
+  concrete: string;
+  concreteLine: string;
   railing: string;
   wall: string;
   floorBureau: string;
   floorBureauLine: string;
   floorChambre: string;
   floorSalon: string;
+  floorCouloir: string;
+  runner: string;
+  runnerEdge: string;
+  carpet: string;
+  carpetLine: string;
+  doormat: string;
+  tile: string;
+  tileAlt: string;
+  tub: string;
+  water: string;
   wood: string;
   screen: string;
   mattress: string;
@@ -49,14 +61,24 @@ const DAY: Palette = {
   trunk: '#7A4A28',
   path: '#D8B078',
   pathEdge: '#BC9258',
-  plank: '#C08850',
-  plankLine: '#A06838',
-  railing: '#8A5830',
+  concrete: '#C2C2C6',
+  concreteLine: '#A9A9AE',
+  railing: '#7E7E88',
   wall: '#584050',
   floorBureau: '#C8B088',
   floorBureauLine: '#B89868',
   floorChambre: '#E0C8A0',
   floorSalon: '#D0A878',
+  floorCouloir: '#D8C098',
+  runner: '#A83838',
+  runnerEdge: '#8A2E2E',
+  carpet: '#2E2E36',
+  carpetLine: '#3A3A44',
+  doormat: '#8A6030',
+  tile: '#CFE8EC',
+  tileAlt: '#BEDDE2',
+  tub: '#F4F4F0',
+  water: '#7EC8E0',
   wood: '#7A4A28',
   screen: '#2870C0',
   mattress: '#F0ECE0',
@@ -80,14 +102,24 @@ const NIGHT: Palette = {
   trunk: '#4A3020',
   path: '#8A7450',
   pathEdge: '#6E5A40',
-  plank: '#7A5638',
-  plankLine: '#5E4028',
-  railing: '#52381E',
+  concrete: '#60606A',
+  concreteLine: '#50505A',
+  railing: '#3C3C46',
   wall: '#2E2436',
   floorBureau: '#786650',
   floorBureauLine: '#685846',
   floorChambre: '#887250',
   floorSalon: '#7A6248',
+  floorCouloir: '#6E5C42',
+  runner: '#6E2626',
+  runnerEdge: '#571E1E',
+  carpet: '#212129',
+  carpetLine: '#2B2B35',
+  doormat: '#5E401E',
+  tile: '#5E7880',
+  tileAlt: '#526A72',
+  tub: '#B8BCB4',
+  water: '#4E90A8',
   wood: '#4A3020',
   screen: '#88C8F0',
   mattress: '#B8B4A8',
@@ -117,17 +149,28 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
   return <Rect x={x} y={y} width={5} height={5} fill={color} />;
 }
 
+/** Sentier en L : sortie de l'immeuble à droite, puis parallèle au balcon. */
+const TRAIL_Y = 92;
+const TRAIL_H = 30;
+const TRAIL_STUB_X = 288;
+const TRAIL_STUB_W = 30;
+
 export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
   const p = night ? NIGHT : DAY;
   const houseTop = BALCONY_BOTTOM;
+  const B = ZONES.bureau;
+  const S = ZONES.sdb;
+  const C = ZONES.chambre;
+  const L = ZONES.salon;
+  const CI = ZONES.couloir_int;
+  const CE = ZONES.couloir_ext;
 
   return (
     <Svg width="100%" height="100%" viewBox={`0 0 ${MAP_W} ${MAP_H}`}>
-      {/* ---------------- Dehors : clairière + forêt ---------------- */}
+      {/* ---------------- Dehors : forêt + sentier en L ---------------- */}
       <Rect x={0} y={0} width={MAP_W} height={OUTSIDE_BOTTOM} fill={p.grass} />
-      {/* Damier d'herbe */}
       {Array.from({ length: 9 }).map((_, col) =>
-        Array.from({ length: 6 }).map((_, row) =>
+        Array.from({ length: 5 }).map((_, row) =>
           (col + row) % 2 === 0 ? (
             <Rect
               key={`g${col}-${row}`}
@@ -140,112 +183,180 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           ) : null
         )
       )}
-      {/* Chemin de terre vers la maison */}
-      <Rect x={168} y={40} width={24} height={OUTSIDE_BOTTOM - 40} fill={p.path} />
-      <Rect x={168} y={40} width={3} height={OUTSIDE_BOTTOM - 40} fill={p.pathEdge} />
-      <Rect x={189} y={40} width={3} height={OUTSIDE_BOTTOM - 40} fill={p.pathEdge} />
-      {/* Forêt */}
-      <Tree x={6} y={2} p={p} />
-      <Tree x={40} y={14} p={p} />
-      <Tree x={86} y={0} p={p} />
-      <Tree x={126} y={16} p={p} />
-      <Tree x={210} y={10} p={p} />
-      <Tree x={252} y={0} p={p} />
-      <Tree x={296} y={14} p={p} />
-      <Tree x={328} y={2} p={p} />
-      <Tree x={6} y={96} p={p} />
-      <Tree x={324} y={100} p={p} />
-      <Tree x={44} y={150} p={p} />
-      <Tree x={290} y={154} p={p} />
-      <Tree x={6} y={172} p={p} />
-      <Tree x={326} y={176} p={p} />
+      {/* Branche horizontale du sentier (parallèle au balcon) */}
+      <Rect x={20} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W - 20} height={TRAIL_H} fill={p.path} />
+      <Rect x={20} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W - 20} height={3} fill={p.pathEdge} />
+      <Rect x={20} y={TRAIL_Y + TRAIL_H - 3} width={TRAIL_STUB_X - 20} height={3} fill={p.pathEdge} />
+      {/* Branche verticale : sortie de l'immeuble, à droite */}
+      <Rect x={TRAIL_STUB_X} y={TRAIL_Y + 3} width={TRAIL_STUB_W} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.path} />
+      <Rect x={TRAIL_STUB_X} y={TRAIL_Y + TRAIL_H} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - TRAIL_H} fill={p.pathEdge} />
+      <Rect x={TRAIL_STUB_X + TRAIL_STUB_W - 3} y={TRAIL_Y + 3} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.pathEdge} />
+      {/* Rangée d'arbres au-dessus du sentier */}
+      <Tree x={16} y={30} p={p} />
+      <Tree x={72} y={22} p={p} />
+      <Tree x={128} y={32} p={p} />
+      <Tree x={186} y={20} p={p} />
+      <Tree x={242} y={30} p={p} />
+      <Tree x={306} y={24} p={p} />
+      {/* Rangée d'arbres en dessous du sentier */}
+      <Tree x={28} y={128} p={p} />
+      <Tree x={92} y={132} p={p} />
+      <Tree x={158} y={128} p={p} />
+      <Tree x={224} y={132} p={p} />
       {/* Fleurs */}
-      <Flower x={70} y={70} color={p.flower1} />
-      <Flower x={112} y={104} color={p.flower2} />
-      <Flower x={230} y={78} color={p.flower2} />
-      <Flower x={288} y={64} color={p.flower1} />
-      <Flower x={52} y={126} color={p.flower2} />
-      <Flower x={130} y={158} color={p.flower1} />
-      <Flower x={238} y={166} color={p.flower2} />
+      <Flower x={60} y={74} color={p.flower1} />
+      <Flower x={150} y={68} color={p.flower2} />
+      <Flower x={262} y={72} color={p.flower1} />
+      <Flower x={70} y={162} color={p.flower2} />
+      <Flower x={200} y={166} color={p.flower1} />
+      <Flower x={330} y={140} color={p.flower2} />
 
-      {/* ---------------- Balcon ---------------- */}
-      <Rect x={0} y={OUTSIDE_BOTTOM} width={MAP_W} height={BALCONY_BOTTOM - OUTSIDE_BOTTOM} fill={p.plank} />
-      {[0, 1, 2, 3].map((i) => (
+      {/* ---------------- Balcon (béton) ---------------- */}
+      <Rect x={0} y={OUTSIDE_BOTTOM} width={MAP_W} height={BALCONY_BOTTOM - OUTSIDE_BOTTOM} fill={p.concrete} />
+      {/* Joints des dalles */}
+      {[0, 1].map((i) => (
         <Line
-          key={`pl${i}`}
+          key={`cj${i}`}
           x1={0}
-          y1={OUTSIDE_BOTTOM + 14 + i * 14}
+          y1={OUTSIDE_BOTTOM + 22 + i * 20}
           x2={MAP_W}
-          y2={OUTSIDE_BOTTOM + 14 + i * 14}
-          stroke={p.plankLine}
+          y2={OUTSIDE_BOTTOM + 22 + i * 20}
+          stroke={p.concreteLine}
           strokeWidth={2}
         />
       ))}
-      {/* Rambarde côté forêt (avec un portillon au niveau du chemin) */}
-      <Rect x={0} y={OUTSIDE_BOTTOM} width={166} height={6} fill={p.railing} />
-      <Rect x={194} y={OUTSIDE_BOTTOM} width={166} height={6} fill={p.railing} />
+      {Array.from({ length: 9 }).map((_, i) => (
+        <Line
+          key={`cv${i}`}
+          x1={20 + i * 40}
+          y1={OUTSIDE_BOTTOM}
+          x2={20 + i * 40}
+          y2={BALCONY_BOTTOM}
+          stroke={p.concreteLine}
+          strokeWidth={2}
+        />
+      ))}
+      {/* Rambarde côté forêt, portillon aligné sur le sentier */}
+      <Rect x={0} y={OUTSIDE_BOTTOM} width={TRAIL_STUB_X - 2} height={6} fill={p.railing} />
+      <Rect x={TRAIL_STUB_X + TRAIL_STUB_W + 2} y={OUTSIDE_BOTTOM} width={MAP_W - TRAIL_STUB_X - TRAIL_STUB_W - 2} height={6} fill={p.railing} />
       {Array.from({ length: 15 }).map((_, i) => {
         const x = 4 + i * 24;
-        if (x > 160 && x < 194) return null;
+        if (x > TRAIL_STUB_X - 8 && x < TRAIL_STUB_X + TRAIL_STUB_W + 4) return null;
         return <Rect key={`post${i}`} x={x} y={OUTSIDE_BOTTOM + 6} width={5} height={8} fill={p.railing} />;
       })}
 
-      {/* ---------------- Maison ---------------- */}
-      {/* Sols */}
-      <Rect x={0} y={houseTop} width={120} height={MAP_H - houseTop} fill={p.floorBureau} />
-      <Rect x={120} y={houseTop} width={120} height={MAP_H - houseTop} fill={p.floorChambre} />
-      <Rect x={240} y={houseTop} width={120} height={MAP_H - houseTop} fill={p.floorSalon} />
+      {/* ---------------- Sols de l'appartement ---------------- */}
+      <Rect x={B.x} y={B.y} width={B.w} height={B.h} fill={p.floorBureau} />
+      <Rect x={S.x} y={S.y} width={S.w} height={S.h} fill={p.tile} />
+      <Rect x={C.x} y={C.y} width={C.w} height={C.h} fill={p.floorChambre} />
+      <Rect x={L.x} y={L.y} width={L.w} height={L.h} fill={p.floorSalon} />
+      <Rect x={CI.x} y={CI.y} width={CI.w} height={CI.h} fill={p.floorCouloir} />
+      <Rect x={CE.x} y={CE.y} width={CE.w} height={CE.h} fill={p.carpet} />
+
       {/* Parquet du bureau */}
-      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+      {[0, 1, 2, 3, 4].map((i) => (
         <Line
           key={`pq${i}`}
           x1={16 + i * 16}
-          y1={houseTop}
+          y1={B.y}
           x2={16 + i * 16}
-          y2={MAP_H}
+          y2={B.y + B.h}
           stroke={p.floorBureauLine}
           strokeWidth={1.5}
         />
       ))}
+      {/* Carrelage damier de la salle de bain */}
+      {Array.from({ length: 5 }).map((_, col) =>
+        Array.from({ length: 7 }).map((_, row) =>
+          (col + row) % 2 === 0 ? (
+            <Rect
+              key={`t${col}-${row}`}
+              x={S.x + col * 20}
+              y={S.y + row * 20}
+              width={20}
+              height={Math.min(20, S.y + S.h - (S.y + row * 20))}
+              fill={p.tileAlt}
+            />
+          ) : null
+        )
+      )}
+      {/* Moquette noire du palier : trame discrète */}
+      {[0, 1].map((i) => (
+        <Line
+          key={`ca${i}`}
+          x1={0}
+          y1={CE.y + 24 + i * 22}
+          x2={MAP_W}
+          y2={CE.y + 24 + i * 22}
+          stroke={p.carpetLine}
+          strokeWidth={2}
+        />
+      ))}
 
-      {/* Meubles — bureau */}
-      <Rect x={12} y={houseTop + 26} width={64} height={24} fill={p.wood} />
-      <Rect x={26} y={houseTop + 10} width={24} height={18} fill={p.screen} />
-      <Rect x={26} y={houseTop + 10} width={24} height={4} fill={p.wall} />
-      <Rect x={88} y={houseTop + 30} width={20} height={18} fill={p.railing} />
+      {/* ---------------- Meubles ---------------- */}
+      {/* Bureau : bureau + écran + chaise */}
+      <Rect x={10} y={B.y + 22} width={72} height={22} fill={p.wood} />
+      <Rect x={28} y={B.y + 8} width={24} height={16} fill={p.screen} />
+      <Rect x={28} y={B.y + 8} width={24} height={4} fill={p.wall} />
+      <Rect x={34} y={B.y + 50} width={20} height={16} fill={p.railing} />
 
-      {/* Meubles — chambre : lit */}
-      <Rect x={134} y={houseTop + 16} width={52} height={70} fill={p.wood} />
-      <Rect x={138} y={houseTop + 20} width={44} height={62} fill={p.mattress} />
-      <Rect x={142} y={houseTop + 24} width={36} height={14} fill={p.pillow} />
-      <Rect x={138} y={houseTop + 44} width={44} height={38} fill={p.blanket} />
-      <Rect x={138} y={houseTop + 44} width={44} height={5} fill={p.pillow} />
-      {/* Tapis de la chambre */}
-      <Rect x={196} y={houseTop + 30} width={34} height={26} fill={p.rug} />
+      {/* Salle de bain : baignoire + lavabo */}
+      <Rect x={S.x + 8} y={S.y + 12} width={38} height={76} fill={p.tub} />
+      <Rect x={S.x + 13} y={S.y + 18} width={28} height={64} fill={p.water} />
+      <Rect x={S.x + 70} y={S.y + 16} width={22} height={16} fill={p.tub} />
 
-      {/* Meubles — salon : canapé + tapis + télé */}
-      <Rect x={252} y={houseTop + 12} width={76} height={16} fill={p.sofaDark} />
-      <Rect x={252} y={houseTop + 24} width={76} height={16} fill={p.sofa} />
-      <Rect x={256} y={houseTop + 26} width={20} height={12} fill={p.sofaDark} />
-      <Rect x={280} y={houseTop + 26} width={20} height={12} fill={p.sofaDark} />
-      <Rect x={304} y={houseTop + 26} width={20} height={12} fill={p.sofaDark} />
-      <Rect x={252} y={houseTop + 74} width={76} height={52} fill={p.rugEdge} />
-      <Rect x={256} y={houseTop + 78} width={68} height={44} fill={p.rug} />
-      <Rect x={296} y={MAP_H - 40} width={44} height={14} fill={p.wall} />
-      <Rect x={300} y={MAP_H - 37} width={36} height={8} fill={p.screen} />
+      {/* Chambre : lit + tapis */}
+      <Rect x={C.x + 12} y={C.y + 16} width={52} height={70} fill={p.wood} />
+      <Rect x={C.x + 16} y={C.y + 20} width={44} height={62} fill={p.mattress} />
+      <Rect x={C.x + 20} y={C.y + 24} width={36} height={14} fill={p.pillow} />
+      <Rect x={C.x + 16} y={C.y + 44} width={44} height={38} fill={p.blanket} />
+      <Rect x={C.x + 16} y={C.y + 44} width={44} height={5} fill={p.pillow} />
+      <Rect x={C.x + 96} y={C.y + 36} width={26} height={22} fill={p.rug} />
 
-      {/* Cloisons intérieures (avec passage de porte) */}
-      <Rect x={118} y={houseTop} width={4} height={220} fill={p.wall} />
-      <Rect x={118} y={houseTop + 262} width={4} height={MAP_H - houseTop - 262} fill={p.wall} />
-      <Rect x={238} y={houseTop} width={4} height={220} fill={p.wall} />
-      <Rect x={238} y={houseTop + 262} width={4} height={MAP_H - houseTop - 262} fill={p.wall} />
+      {/* Salon : canapé + tapis + télé */}
+      <Rect x={L.x + 12} y={L.y + 12} width={106} height={16} fill={p.sofaDark} />
+      <Rect x={L.x + 12} y={L.y + 24} width={106} height={16} fill={p.sofa} />
+      <Rect x={L.x + 16} y={L.y + 26} width={28} height={12} fill={p.sofaDark} />
+      <Rect x={L.x + 50} y={L.y + 26} width={28} height={12} fill={p.sofaDark} />
+      <Rect x={L.x + 84} y={L.y + 26} width={28} height={12} fill={p.sofaDark} />
+      <Rect x={L.x + 14} y={L.y + 120} width={102} height={56} fill={p.rugEdge} />
+      <Rect x={L.x + 18} y={L.y + 124} width={94} height={48} fill={p.rug} />
+      <Rect x={L.x + 60} y={L.y + L.h - 22} width={50} height={14} fill={p.wall} />
+      <Rect x={L.x + 64} y={L.y + L.h - 19} width={42} height={8} fill={p.screen} />
 
-      {/* Mur de façade (côté balcon) avec baie vitrée dans la chambre */}
-      <Rect x={0} y={houseTop} width={150} height={7} fill={p.wall} />
-      <Rect x={210} y={houseTop} width={150} height={7} fill={p.wall} />
-      {/* Fenêtres */}
+      {/* Couloir intérieur : tapis de couloir */}
+      <Rect x={CI.x + 18} y={CI.y + 24} width={CI.w - 44} height={32} fill={p.runnerEdge} />
+      <Rect x={CI.x + 22} y={CI.y + 28} width={CI.w - 52} height={24} fill={p.runner} />
+
+      {/* Palier : paillasson devant la porte d'entrée */}
+      <Rect x={306} y={CE.y + 6} width={40} height={16} fill={p.doormat} />
+
+      {/* ---------------- Murs ---------------- */}
+      {/* Façade côté balcon, avec baie vitrée (chambre) et fenêtres */}
+      <Rect x={0} y={houseTop} width={140} height={7} fill={p.wall} />
+      <Rect x={196} y={houseTop} width={164} height={7} fill={p.wall} />
       <Rect x={40} y={houseTop - 1} width={36} height={8} fill={p.window} />
-      <Rect x={272} y={houseTop - 1} width={36} height={8} fill={p.window} />
+      <Rect x={266} y={houseTop - 1} width={36} height={8} fill={p.window} />
+
+      {/* Colonne bureau/sdb : cloison verticale x=100 (portes vers chambre/couloir) */}
+      <Rect x={B.w - 2} y={houseTop} width={4} height={120} fill={p.wall} />
+      <Rect x={B.w - 2} y={houseTop + 160} width={4} height={CI.y + CI.h - houseTop - 160} fill={p.wall} />
+      {/* Séparation bureau / sdb (porte côté est) */}
+      <Rect x={0} y={S.y - 2} width={30} height={4} fill={p.wall} />
+      <Rect x={70} y={S.y - 2} width={30} height={4} fill={p.wall} />
+
+      {/* Cloison chambre / salon (porte en bas) */}
+      <Rect x={C.x + C.w - 2} y={houseTop} width={4} height={170} fill={p.wall} />
+      <Rect x={C.x + C.w - 2} y={houseTop + 210} width={4} height={C.h - 210} fill={p.wall} />
+
+      {/* Chambre & salon / couloir intérieur (une porte par pièce) */}
+      <Rect x={CI.x} y={CI.y - 2} width={40} height={4} fill={p.wall} />
+      <Rect x={CI.x + 80} y={CI.y - 2} width={110} height={4} fill={p.wall} />
+      <Rect x={CI.x + 230} y={CI.y - 2} width={30} height={4} fill={p.wall} />
+
+      {/* Mur de l'appartement vs palier, avec porte d'entrée (paillasson) */}
+      <Rect x={0} y={CE.y - 3} width={308} height={6} fill={p.wall} />
+      <Rect x={348} y={CE.y - 3} width={12} height={6} fill={p.wall} />
 
       {/* Murs extérieurs */}
       <Rect x={0} y={houseTop} width={4} height={MAP_H - houseTop} fill={p.wall} />

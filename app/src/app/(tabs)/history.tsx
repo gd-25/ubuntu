@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Link, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeOut } from 'react-native-reanimated';
 
@@ -10,9 +10,14 @@ import { Text } from '@/components/text';
 import { EmptyState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDateTime, formatDuration } from '@/lib/format';
+import { formatDate, formatDuration, formatTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { SessionSummary } from '@/lib/types';
+
+interface DaySection {
+  title: string;
+  data: SessionSummary[];
+}
 
 export default function HistoryScreen() {
   const colors = useTheme();
@@ -43,6 +48,18 @@ export default function HistoryScreen() {
     await load();
     setIsRefreshing(false);
   }, [load]);
+
+  // Sessions regroupées par jour (l'ordre du fetch — récentes d'abord — est conservé).
+  const sections = useMemo<DaySection[]>(() => {
+    const byDay: DaySection[] = [];
+    for (const summary of summaries) {
+      const title = formatDate(summary.started_at);
+      const last = byDay[byDay.length - 1];
+      if (last && last.title === title) last.data.push(summary);
+      else byDay.push({ title, data: [summary] });
+    }
+    return byDay;
+  }, [summaries]);
 
   const deleteSession = useCallback((summary: SessionSummary) => {
     Alert.alert(
@@ -76,11 +93,12 @@ export default function HistoryScreen() {
   };
 
   return (
-    <FlatList
+    <SectionList
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
-      data={summaries}
+      sections={sections}
       keyExtractor={(item) => item.session_id}
+      stickySectionHeadersEnabled
       ListHeaderComponent={<ScreenTitle title="JOURNAL" />}
       onRefresh={onRefresh}
       refreshing={isRefreshing}
@@ -92,8 +110,18 @@ export default function HistoryScreen() {
           />
         )
       }
+      renderSectionHeader={({ section }) => (
+        <View style={[styles.dayHeader, { backgroundColor: colors.background }]}>
+          <View
+            style={[styles.dayChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.dayChipText, { color: colors.text }]}>
+              {section.title.toUpperCase()}
+            </Text>
+          </View>
+        </View>
+      )}
       renderItem={({ item }) => (
-        <SwipeableRow item={item} onDelete={() => deleteSession(item)}>
+        <SwipeableRow onDelete={() => deleteSession(item)}>
           <Link href={{ pathname: '/session/[id]', params: { id: item.session_id } }} asChild>
             <Pressable
               style={({ pressed }) =>
@@ -109,15 +137,18 @@ export default function HistoryScreen() {
               }>
               <View style={styles.rowHeader}>
                 <Text style={[styles.rowTitle, { color: colors.text }]}>
-                  {formatDateTime(item.started_at)}
+                  {formatTime(item.started_at)}
+                  {item.ended_at ? ` → ${formatTime(item.ended_at)}` : ''}
                 </Text>
                 <Text style={[styles.calm, { color: colors.success }]}>
-                  {Math.round(item.calm_percent)} %
+                  {Math.round(item.calm_percent)} % CALME
                 </Text>
               </View>
               <Text style={[styles.rowDetail, { color: colors.textSecondary }]}>
-                {formatDuration(sessionDuration(item))} · {item.episode_count} épisode
-                {item.episode_count > 1 ? 's' : ''} · vocal{' '}
+                Durée {formatDuration(sessionDuration(item))}
+              </Text>
+              <Text style={[styles.rowDetail, { color: colors.textSecondary }]}>
+                {item.episode_count} épisode{item.episode_count > 1 ? 's' : ''} · vocal{' '}
                 {formatDuration(item.total_vocal_seconds)}
               </Text>
             </Pressable>
@@ -130,17 +161,15 @@ export default function HistoryScreen() {
 
 /** Swipe vers la gauche → bouton SUPPRIMER pixel. */
 function SwipeableRow({
-  item,
   onDelete,
   children,
 }: {
-  item: SessionSummary;
   onDelete: () => void;
   children: React.ReactNode;
 }) {
   const colors = useTheme();
   return (
-    <Animated.View exiting={FadeOut.duration(180)}>
+    <Animated.View exiting={FadeOut.duration(160)} style={styles.rowWrapper}>
       <ReanimatedSwipeable
         friction={2}
         rightThreshold={40}
@@ -152,8 +181,7 @@ function SwipeableRow({
               styles.deleteAction,
               { backgroundColor: colors.danger, borderColor: colors.border },
             ]}>
-            <Text style={styles.deleteIcon}>🗑</Text>
-            <Text style={[styles.deleteText, { color: colors.accentText }]}>SUPPR.</Text>
+            <Text style={[styles.deleteText, { color: colors.accentText }]}>SUPPRIMER</Text>
           </Pressable>
         )}>
         {children}
@@ -165,15 +193,33 @@ function SwipeableRow({
 const styles = StyleSheet.create({
   content: {
     padding: Spacing.md,
-    gap: Spacing.sm,
     flexGrow: 1,
     paddingBottom: 24,
+  },
+  dayHeader: {
+    paddingVertical: 6,
+  },
+  dayChip: {
+    alignSelf: 'flex-start',
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  dayChipText: {
+    fontSize: 8,
+  },
+  rowWrapper: {
+    marginBottom: Spacing.sm,
   },
   row: {
     borderRadius: 2,
     borderWidth: 3,
-    padding: Spacing.md,
-    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 18,
+    minHeight: 96,
+    justifyContent: 'center',
+    gap: 8,
   },
   rowHeader: {
     flexDirection: 'row',
@@ -182,30 +228,25 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   rowTitle: {
-    fontSize: 9,
+    fontSize: 10,
     flexShrink: 1,
-    textTransform: 'capitalize',
   },
   calm: {
-    fontSize: 9,
+    fontSize: 8,
   },
   rowDetail: {
-    fontSize: 7,
-    lineHeight: 12,
+    fontSize: 8,
+    lineHeight: 13,
   },
   deleteAction: {
-    width: 86,
+    width: 104,
     marginLeft: Spacing.sm,
     borderWidth: 3,
     borderRadius: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-  },
-  deleteIcon: {
-    fontSize: 16,
   },
   deleteText: {
-    fontSize: 7,
+    fontSize: 8,
   },
 });
