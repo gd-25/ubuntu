@@ -55,9 +55,9 @@ import { useDog } from '@/lib/use-dog';
 const HEARTBEAT_FRESH_SECONDS = 120;
 
 const AVATARS: Record<Person, { source: number; w: number; h: number; z: number }> = {
-  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 28, h: 38, z: 10 },
-  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 30, h: 40, z: 11 },
-  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 40, h: 42, z: 20 },
+  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 22, h: 30, z: 10 },
+  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32, z: 11 },
+  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 32, h: 34, z: 20 },
 };
 
 const MEAL_FRACTIONS = [
@@ -566,14 +566,15 @@ export default function HouseScreen() {
               </View>
             ) : null}
 
-            {/* Statut de la caméra, posée face à la porte des WC (emplacement réel) */}
-            <View
-              pointerEvents="none"
-              style={[styles.cameraBadge, { left: 198 * scale, top: 594 * scale }]}>
-              <StatusBadge status={agentStatus} />
-            </View>
           </View>
         ) : null}
+      </View>
+
+      {/* Statut de la caméra, en haut à droite de l'écran */}
+      <View
+        pointerEvents="none"
+        style={[styles.cameraBadge, { top: insets.top + 6, right: Spacing.md }]}>
+        <StatusBadge status={agentStatus} />
       </View>
 
       {/* Toast rétro */}

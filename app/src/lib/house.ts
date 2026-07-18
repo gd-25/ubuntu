@@ -15,10 +15,10 @@ export const MAP_W = 360;
 export const MAP_H = 700;
 
 /** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 351;
+export const OUTSIDE_BOTTOM = 384;
 export const BALCONY_BOTTOM = 449;
 /** Bas de l'appartement (mur avec le palier). */
-export const FLAT_BOTTOM = 640;
+export const FLAT_BOTTOM = 660;
 
 export interface Rect {
   x: number;
@@ -34,14 +34,14 @@ export interface Rect {
  * balcon. L'union pave toute la carte.
  */
 export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
-  { space: 'wc', rect: { x: 196, y: 547, w: 78, h: 42 } },
-  { space: 'sdb', rect: { x: 0, y: 547, w: 72, h: 93 } },
-  { space: 'chambre', rect: { x: 105, y: 449, w: 91, h: 140 } },
-  { space: 'bureau', rect: { x: 0, y: 449, w: 105, h: 134 } },
-  { space: 'couloir_int', rect: { x: 72, y: 583, w: 124, h: 57 } },
+  { space: 'wc', rect: { x: 184, y: 559, w: 56, h: 30 } },
+  { space: 'sdb', rect: { x: 0, y: 567, w: 72, h: 93 } },
+  { space: 'chambre', rect: { x: 105, y: 449, w: 79, h: 140 } },
+  { space: 'bureau', rect: { x: 0, y: 449, w: 105, h: 140 } },
+  { space: 'couloir_int', rect: { x: 72, y: 589, w: 124, h: 71 } },
   // Avancée du salon sur le balcon (avant le balcon dans l'ordre).
-  { space: 'salon', rect: { x: 262, y: 393, w: 98, h: 56 } },
-  { space: 'salon', rect: { x: 196, y: 449, w: 164, h: 191 } },
+  { space: 'salon', rect: { x: 262, y: 410, w: 98, h: 39 } },
+  { space: 'salon', rect: { x: 184, y: 449, w: 176, h: 211 } },
   { space: 'balcon', rect: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM } },
   { space: 'dehors', rect: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM } },
   { space: 'couloir_ext', rect: { x: 0, y: FLAT_BOTTOM, w: MAP_W, h: MAP_H - FLAT_BOTTOM } },
@@ -65,14 +65,14 @@ export const SPACE_LABELS: Record<Space, string> = {
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   dehors: {
-    greg: { x: 84, y: 286 },
-    fiona: { x: 170, y: 282 },
-    ubuntu: { x: 250, y: 290 },
+    greg: { x: 84, y: 319 },
+    fiona: { x: 170, y: 315 },
+    ubuntu: { x: 250, y: 323 },
   },
   balcon: {
-    greg: { x: 60, y: 402 },
-    fiona: { x: 148, y: 402 },
-    ubuntu: { x: 218, y: 406 },
+    greg: { x: 60, y: 418 },
+    fiona: { x: 148, y: 418 },
+    ubuntu: { x: 218, y: 420 },
   },
   bureau: {
     greg: { x: 34, y: 506 },
@@ -80,24 +80,24 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 46, y: 556 },
   },
   sdb: {
-    greg: { x: 36, y: 560 },
-    fiona: { x: 38, y: 592 },
-    ubuntu: { x: 40, y: 616 },
+    greg: { x: 36, y: 584 },
+    fiona: { x: 38, y: 606 },
+    ubuntu: { x: 40, y: 622 },
   },
   chambre: {
     greg: { x: 124, y: 500 },
-    fiona: { x: 168, y: 478 },
+    fiona: { x: 156, y: 478 },
     ubuntu: { x: 124, y: 552 },
   },
   salon: {
-    greg: { x: 240, y: 500 },
-    fiona: { x: 300, y: 472 },
-    ubuntu: { x: 302, y: 606 },
+    greg: { x: 228, y: 504 },
+    fiona: { x: 252, y: 470 },
+    ubuntu: { x: 214, y: 542 },
   },
   wc: {
-    greg: { x: 246, y: 558 },
-    fiona: { x: 226, y: 572 },
-    ubuntu: { x: 254, y: 574 },
+    greg: { x: 216, y: 568 },
+    fiona: { x: 198, y: 578 },
+    ubuntu: { x: 224, y: 578 },
   },
   couloir_int: {
     greg: { x: 92, y: 610 },
@@ -105,9 +105,9 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 172, y: 612 },
   },
   couloir_ext: {
-    greg: { x: 80, y: 668 },
-    fiona: { x: 180, y: 664 },
-    ubuntu: { x: 276, y: 670 },
+    greg: { x: 80, y: 679 },
+    fiona: { x: 180, y: 677 },
+    ubuntu: { x: 276, y: 681 },
   },
 };
 

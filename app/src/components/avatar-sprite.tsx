@@ -18,8 +18,8 @@ import Animated, {
 import { MAP_H, MAP_W, SLOTS, ZONE_RECTS } from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
 
-/** Ressort sec : l'aimant claque en ~250 ms avec un seul petit rebond. */
-const SPRING = { damping: 20, stiffness: 320 };
+/** Aimant très sec : ~150 ms, quasi aucun dépassement de la cible. */
+const SPRING = { damping: 32, stiffness: 900, overshootClamping: true };
 
 /** Zone contenant le point (x, y) — version worklet de spaceAt. */
 function zoneAt(x: number, y: number): Space {
