@@ -1,45 +1,50 @@
 import { Platform } from 'react-native';
 
+/**
+ * Palette rétro « jeu Game Boy Advance » : tons parchemin le jour,
+ * nuit bleutée le soir. Les clés restent celles de l'ancien thème
+ * pour ne pas casser les écrans existants.
+ */
 export const Colors = {
   light: {
-    text: '#111113',
-    textSecondary: '#60646C',
-    background: '#F7F7F8',
-    card: '#FFFFFF',
-    border: '#E0E1E6',
-    accent: '#4F6D7A',
-    accentText: '#FFFFFF',
-    success: '#2E8B57',
-    warning: '#C77D1E',
-    danger: '#C0392B',
-    bark: '#E4572E',
-    howl: '#7768AE',
-    whine: '#F3A712',
-    calm: '#DDE6DD',
+    text: '#2A2A33',
+    textSecondary: '#6B6555',
+    background: '#E8DFC8',
+    card: '#F8F4E0',
+    border: '#33323E',
+    accent: '#C84C34',
+    accentText: '#F8F4E0',
+    success: '#3C8C50',
+    warning: '#C08828',
+    danger: '#B03028',
+    bark: '#D85C30',
+    howl: '#7858B0',
+    whine: '#D89820',
+    calm: '#A8C890',
   },
   dark: {
-    text: '#F2F2F3',
-    textSecondary: '#A6ABB3',
-    background: '#101114',
-    card: '#1C1E22',
-    border: '#2E3135',
-    accent: '#8FB3C2',
-    accentText: '#101114',
-    success: '#5DBB85',
-    warning: '#E0A458',
-    danger: '#E26D5C',
-    bark: '#F0704B',
-    howl: '#998BD0',
-    whine: '#F5BA45',
-    calm: '#2A332A',
+    text: '#EFEADB',
+    textSecondary: '#9C99A8',
+    background: '#171928',
+    card: '#232842',
+    border: '#6E7494',
+    accent: '#E06048',
+    accentText: '#171928',
+    success: '#58B070',
+    warning: '#D8A040',
+    danger: '#E05848',
+    bark: '#F07048',
+    howl: '#9880D8',
+    whine: '#E8B040',
+    calm: '#2E4030',
   },
 } as const;
 
 export type ThemeColors = Record<keyof typeof Colors.light, string>;
 
 export const Fonts = Platform.select({
-  ios: { sans: 'system-ui', mono: 'ui-monospace' },
-  default: { sans: 'normal', mono: 'monospace' },
+  ios: { sans: 'PokemonClassic', mono: 'PokemonClassic' },
+  default: { sans: 'PokemonClassic', mono: 'PokemonClassic' },
 });
 
 export const Spacing = {

@@ -44,11 +44,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: {
-    fontSize: 34,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontSize: 18,
+    lineHeight: 26,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 9,
   },
 });

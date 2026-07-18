@@ -12,6 +12,10 @@ import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/**
+ * Boîte style « dialogue Pokémon » : coins carrés, double bordure épaisse
+ * et ombre portée nette (pas de flou — pixel art oblige).
+ */
 export function Card({
   children,
   style,
@@ -24,7 +28,11 @@ export function Card({
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          boxShadow: `4px 4px 0px 0px ${colors.border}`,
+        },
         style,
       ]}>
       {children}
@@ -54,7 +62,6 @@ export function Button({
   const background =
     variant === 'danger' ? colors.danger : variant === 'secondary' ? colors.card : colors.accent;
   const textColor = variant === 'secondary' ? colors.text : colors.accentText;
-  const borderColor = variant === 'secondary' ? colors.border : background;
 
   return (
     <Pressable
@@ -62,12 +69,19 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: background, borderColor, opacity: disabled || pressed ? 0.6 : 1 },
+        {
+          backgroundColor: background,
+          borderColor: colors.border,
+          opacity: disabled ? 0.5 : 1,
+          // Enfoncement « physique » : le bouton descend sur son ombre.
+          boxShadow: pressed ? '0px 0px 0px 0px transparent' : `3px 3px 0px 0px ${colors.border}`,
+          transform: pressed ? [{ translateX: 3 }, { translateY: 3 }] : [],
+        },
       ]}>
       {loading ? (
         <ActivityIndicator color={textColor} />
       ) : (
-        <Text style={[styles.buttonLabel, { color: textColor }]}>{label}</Text>
+        <Text style={[styles.buttonLabel, { color: textColor }]}>{label.toUpperCase()}</Text>
       )}
     </Pressable>
   );
@@ -87,42 +101,41 @@ export function EmptyState({ title, subtitle }: { title: string; subtitle?: stri
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
+    borderWidth: 3,
     padding: Spacing.md,
     gap: Spacing.sm,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 9,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   button: {
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 14,
+    borderRadius: 2,
+    borderWidth: 3,
+    paddingVertical: 13,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 11,
   },
   empty: {
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
     paddingVertical: Spacing.xl,
     paddingHorizontal: Spacing.md,
   },
   emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 12,
     textAlign: 'center',
+    lineHeight: 18,
   },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: 9,
     textAlign: 'center',
+    lineHeight: 15,
   },
 });

@@ -1,11 +1,13 @@
-import { Questrial_400Regular, useFonts } from '@expo-google-fonts/questrial';
+import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { APP_FONT } from '@/components/text';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 // Side effect: installs the foreground notification handler.
 import '@/lib/notifications';
@@ -15,9 +17,11 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -25,7 +29,9 @@ function RootNavigator() {
   const colorScheme = useColorScheme();
   const { session, isLoading } = useAuth();
   const url = Linking.useURL();
-  const [fontsLoaded] = useFonts({ Questrial_400Regular });
+  const [fontsLoaded] = useFonts({
+    [APP_FONT]: require('../../assets/fonts/PokemonClassic.ttf'),
+  });
 
   // Handle the magic-link deep link (ubuntu://... with tokens in the fragment).
   useEffect(() => {
@@ -47,8 +53,8 @@ function RootNavigator() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack
         screenOptions={{
-          headerTitleStyle: { fontFamily: 'Questrial_400Regular', fontSize: 17 },
-          headerBackTitleStyle: { fontFamily: 'Questrial_400Regular' },
+          headerTitleStyle: { fontFamily: APP_FONT, fontSize: 12 },
+          headerBackTitleStyle: { fontFamily: APP_FONT },
         }}>
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

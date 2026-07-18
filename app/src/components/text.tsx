@@ -6,18 +6,21 @@ import {
   type TextProps,
 } from 'react-native';
 
-/** App-wide font (single 400 weight — hierarchy comes from sizes). */
-export const APP_FONT = 'Questrial_400Regular';
+/** Police pixel unique de l'app (Pokemon Classic, un seul poids). */
+export const APP_FONT = 'PokemonClassic';
 
-/** Drop-in replacements for RN Text/TextInput with the app font applied. */
+/**
+ * Text/TextInput avec la police pixel imposée. La base est appliquée EN
+ * DERNIER : un fontWeight hérité ferait retomber iOS sur la police système.
+ */
 export function Text({ style, ...props }: TextProps) {
-  return <RNText {...props} style={[styles.base, style]} />;
+  return <RNText {...props} style={[style, styles.base]} />;
 }
 
 export function TextInput({ style, ...props }: TextInputProps) {
-  return <RNTextInput {...props} style={[styles.base, style]} />;
+  return <RNTextInput {...props} style={[style, styles.base]} />;
 }
 
 const styles = StyleSheet.create({
-  base: { fontFamily: APP_FONT },
+  base: { fontFamily: APP_FONT, fontWeight: 'normal' },
 });

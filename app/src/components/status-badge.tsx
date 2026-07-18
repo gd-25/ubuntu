@@ -7,13 +7,14 @@ import type { AgentStatus } from '@/lib/types';
 export type AgentDisplayStatus = AgentStatus | 'stale' | 'unknown';
 
 const LABELS: Record<AgentDisplayStatus, string> = {
-  listening: 'En ligne — à l’écoute',
-  camera_unreachable: 'Caméra injoignable',
-  offline: 'Hors ligne',
-  stale: 'Hors ligne (aucun signal récent)',
-  unknown: 'Statut inconnu',
+  listening: 'À L’ÉCOUTE',
+  camera_unreachable: 'CAMÉRA HS',
+  offline: 'HORS LIGNE',
+  stale: 'HORS LIGNE',
+  unknown: 'INCONNU',
 };
 
+/** Badge pixel : carré de statut + label en majuscules. */
 export function StatusBadge({ status }: { status: AgentDisplayStatus }) {
   const colors = useTheme();
   const dotColor =
@@ -27,7 +28,7 @@ export function StatusBadge({ status }: { status: AgentDisplayStatus }) {
 
   return (
     <View style={[styles.badge, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.dot, { backgroundColor: dotColor }]} />
+      <View style={[styles.dot, { backgroundColor: dotColor, borderColor: colors.border }]} />
       <Text style={[styles.label, { color: colors.text }]}>{LABELS[status]}</Text>
     </View>
   );
@@ -37,20 +38,19 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     alignSelf: 'flex-start',
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    borderRadius: 2,
+    borderWidth: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
   },
   dot: {
     width: 10,
     height: 10,
-    borderRadius: 5,
+    borderWidth: 1,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 8,
   },
 });

@@ -11,6 +11,9 @@ export interface Dog {
   created_at: string;
 }
 
+/** 'away' = humains partis de la maison ; 'in_home' = isolé dans une pièce. */
+export type SolitudeType = 'away' | 'in_home';
+
 export interface Session {
   id: string;
   dog_id: string;
@@ -18,6 +21,7 @@ export interface Session {
   ended_at: string | null;
   trigger: SessionTrigger;
   notes: string | null;
+  solitude_type: SolitudeType | null;
 }
 
 export interface VocalEpisode {
@@ -75,8 +79,25 @@ export interface Activity {
   dog_id: string;
   kind: ActivityKind;
   at: string;
+  /** Fin de balade (null tant que la balade est en cours). */
+  ended_at: string | null;
+  /** Repas : fraction de la ration (0.25 / 0.5 / 0.75 / 1). */
+  meal_fraction: number | null;
   notes: string | null;
   created_at: string;
+}
+
+/** Membres de la famille sur le plan de la maison. */
+export type Person = 'greg' | 'fiona' | 'ubuntu';
+
+/** Espaces du plan : trois pièces, le balcon et le dehors (forêt). */
+export type Space = 'bureau' | 'chambre' | 'salon' | 'balcon' | 'dehors';
+
+export interface AvatarPosition {
+  dog_id: string;
+  person: Person;
+  space: Space;
+  updated_at: string;
 }
 
 export interface PushToken {

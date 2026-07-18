@@ -1,93 +1,117 @@
+import * as Haptics from 'expo-haptics';
 import { Tabs } from 'expo-router';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { CalendarDays, House, Settings, TrendingUp } from 'lucide-react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { APP_FONT } from '@/components/text';
+import { Text } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
 
-const Icon = NativeTabs.Trigger.Icon;
-const Label = NativeTabs.Trigger.Label;
+const TAB_ICONS: Record<string, string> = {
+  index: '🏠',
+  history: '📖',
+  trends: '📊',
+  settings: '⚙️',
+};
+
+const TAB_TITLES: Record<string, string> = {
+  index: 'MAISON',
+  history: 'JOURNAL',
+  trends: 'STATS',
+  settings: 'OPTIONS',
+};
 
 export default function TabsLayout() {
-  // iOS : tab bar 100 % native (liquid glass sur iOS 26), compacte et translucide.
-  if (Platform.OS === 'ios') {
-    return (
-      <NativeTabs
-        labelStyle={{ fontFamily: APP_FONT, fontSize: 11 }}
-        blurEffect="systemChromeMaterial"
-        disableTransparentOnScrollEdge>
-        <NativeTabs.Trigger name="index">
-          <Icon sf="waveform" />
-          <Label>Direct</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="history">
-          <Icon sf="calendar" />
-          <Label>Historique</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="trends">
-          <Icon sf="chart.line.uptrend.xyaxis" />
-          <Label>Tendances</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="settings">
-          <Icon sf="gearshape.fill" />
-          <Label>Réglages</Label>
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    );
-  }
-
-  return <FallbackTabs />;
+  return (
+    <Tabs
+      tabBar={(props) => <PixelTabBar {...props} />}
+      screenOptions={{ headerShown: false }}>
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="history" />
+      <Tabs.Screen name="trends" />
+      <Tabs.Screen name="settings" />
+    </Tabs>
+  );
 }
 
-/** Android / web : tabs JS classiques (pas de tab bar native liquid glass). */
-function FallbackTabs() {
+/**
+ * Sous-ensemble des props de tab bar réellement utilisées (typage structurel :
+ * importer BottomTabBarProps créerait une 2e copie de @react-navigation/bottom-tabs
+ * en conflit avec celle d'expo-router).
+ */
+interface TabBarProps {
+  state: { index: number; routes: { key: string; name: string }[] };
+  navigation: {
+    emit: (event: { type: 'tabPress'; target: string; canPreventDefault: true }) => {
+      defaultPrevented: boolean;
+    };
+    navigate: (name: string) => void;
+  };
+}
+
+/** Tab bar façon menu Pokémon : cadre pixel, curseur ▶ sur l'onglet actif. */
+function PixelTabBar({ state, navigation }: TabBarProps) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarLabelStyle: { fontFamily: APP_FONT, fontSize: 11 },
-        tabBarStyle: {
-          paddingBottom: Math.max(insets.bottom, 6),
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
+    <View
+      style={[
+        styles.bar,
+        {
           backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          paddingBottom: Math.max(insets.bottom - 6, 6),
         },
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Direct',
-          tabBarIcon: ({ color, size }) => <House color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'Historique',
-          tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="trends"
-        options={{
-          title: 'Tendances',
-          tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Réglages',
-          tabBarIcon: ({ color, size }) => <Settings color={color} size={size} />,
-        }}
-      />
-    </Tabs>
+      ]}>
+      {state.routes.map((route, index) => {
+        const isFocused = state.index === index;
+
+        const onPress = () => {
+          Haptics.selectionAsync();
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <Pressable key={route.key} onPress={onPress} style={styles.tab}>
+            <Text style={styles.icon}>{TAB_ICONS[route.name] ?? '❓'}</Text>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.label,
+                { color: isFocused ? colors.accent : colors.textSecondary },
+              ]}>
+              {isFocused ? '▶' : ' '}
+              {TAB_TITLES[route.name] ?? route.name.toUpperCase()}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    borderTopWidth: 3,
+    paddingTop: 8,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  icon: {
+    fontSize: 16,
+  },
+  label: {
+    fontSize: 7,
+  },
+});

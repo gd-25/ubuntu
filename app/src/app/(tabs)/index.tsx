@@ -1,79 +1,132 @@
-import { Link, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInUp,
+  SlideOutUp,
+  ZoomIn,
+  ZoomOut,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AvatarSprite } from '@/components/avatar-sprite';
 import { EpisodeTimeline } from '@/components/episode-timeline';
-import { ScreenTitle } from '@/components/screen-title';
-import { Text } from '@/components/text';
-import { StatCard } from '@/components/stat-card';
+import { HouseMap } from '@/components/house-map';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
-import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
+import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  ACTIVITY_LABELS,
-  episodeDurationSeconds,
   formatChrono,
-  formatDateTime,
   formatDuration,
   formatTime,
-  KIND_LABELS,
   OBSERVED_LABELS,
   secondsSince,
 } from '@/lib/format';
+import {
+  computeTransition,
+  DEFAULT_POSITIONS,
+  MAP_H,
+  MAP_W,
+  SLOTS,
+  SPACE_LABELS,
+  ZONES,
+  type Positions,
+} from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type {
   Activity,
   AgentHeartbeat,
+  AvatarPosition,
   ObservedKind,
+  Person,
   Session,
   SessionSummary,
+  Space,
   VocalEpisode,
 } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
-/** Agent considered online if last heartbeat is fresher than 2 minutes. */
 const HEARTBEAT_FRESH_SECONDS = 120;
-/** An episode whose ended_at is within this window counts as "ongoing". */
-const ONGOING_EPISODE_SECONDS = 5;
 
-export default function HomeScreen() {
+const AVATARS: Record<Person, { source: number; w: number; h: number; z: number }> = {
+  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 34, h: 46, z: 10 },
+  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 36, h: 48, z: 11 },
+  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 50, h: 53, z: 20 },
+};
+
+const MEAL_FRACTIONS = [
+  { value: 0.25, label: '¼' },
+  { value: 0.5, label: '½' },
+  { value: 0.75, label: '¾' },
+  { value: 1, label: 'TOUT' },
+] as const;
+
+export default function HouseScreen() {
   const colors = useTheme();
+  const scheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { dog, isLoading: isDogLoading } = useDog();
+  const { dog } = useDog();
 
+  // --- État du plan ---
+  const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
+  const [hoverZone, setHoverZone] = useState<Space | null>(null);
+  const [mapLayout, setMapLayout] = useState({ w: 0, h: 0 });
+
+  // --- État live (agent, session, balade) ---
   const [lastHeartbeat, setLastHeartbeat] = useState<AgentHeartbeat | null>(null);
-  const [lastEpisode, setLastEpisode] = useState<VocalEpisode | null>(null);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessionEpisodes, setSessionEpisodes] = useState<VocalEpisode[]>([]);
-  const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
-  const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
-  const [recap, setRecap] = useState<SessionSummary | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeWalk, setActiveWalk] = useState<Activity | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
-  // 1-second ticker for "depuis X" texts and the chrono.
+  // --- UI ---
+  const [toast, setToast] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const [feedFraction, setFeedFraction] = useState<number>(0.5);
+  const [feedTime, setFeedTime] = useState<Date>(new Date());
+  const [recap, setRecap] = useState<SessionSummary | null>(null);
+  const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
+
+  // Refs pour les callbacks async (évite les fermetures obsolètes).
+  const positionsRef = useRef(positions);
+  const activeSessionRef = useRef(activeSession);
+  const activeWalkRef = useRef(activeWalk);
+  useEffect(() => {
+    positionsRef.current = positions;
+    activeSessionRef.current = activeSession;
+    activeWalkRef.current = activeWalk;
+  }, [positions, activeSession, activeWalk]);
+
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchData = useCallback(async () => {
-    if (!dog) return null;
+  // Toast auto-masqué.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
-    const [heartbeatRes, episodeRes, sessionRes, activitiesRes] = await Promise.all([
+  // ------------------------------------------------------------- Chargement
+
+  const fetchAll = useCallback(async () => {
+    if (!dog) return null;
+    const [posRes, heartbeatRes, sessionRes, walkRes] = await Promise.all([
+      supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase
         .from('agent_heartbeats')
         .select('*')
         .eq('dog_id', dog.id)
         .order('at', { ascending: false })
-        .limit(1),
-      supabase
-        .from('vocal_episodes')
-        .select('*')
-        .eq('dog_id', dog.id)
-        .order('ended_at', { ascending: false })
         .limit(1),
       supabase
         .from('sessions')
@@ -86,78 +139,79 @@ export default function HomeScreen() {
         .from('activities')
         .select('*')
         .eq('dog_id', dog.id)
+        .eq('kind', 'walk')
+        .is('ended_at', null)
         .order('at', { ascending: false })
-        .limit(3),
+        .limit(1),
     ]);
 
-    const firstError = heartbeatRes.error ?? episodeRes.error ?? sessionRes.error;
-    if (firstError) console.warn('Chargement du direct incomplet :', firstError.message);
-
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
-    let sessionEpisodeRows: VocalEpisode[] = [];
+    let episodes: VocalEpisode[] = [];
     if (session) {
-      const { data: episodes } = await supabase
+      const { data } = await supabase
         .from('vocal_episodes')
         .select('*')
         .eq('session_id', session.id)
         .order('started_at', { ascending: true });
-      sessionEpisodeRows = (episodes as VocalEpisode[] | null) ?? [];
+      episodes = (data as VocalEpisode[] | null) ?? [];
     }
 
+    const positionRows = (posRes.data as AvatarPosition[] | null) ?? [];
+    const nextPositions = { ...DEFAULT_POSITIONS };
+    for (const row of positionRows) nextPositions[row.person] = row.space;
+
     return {
+      positions: nextPositions,
       heartbeat: (heartbeatRes.data?.[0] as AgentHeartbeat | undefined) ?? null,
-      episode: (episodeRes.data?.[0] as VocalEpisode | undefined) ?? null,
       session,
-      sessionEpisodes: sessionEpisodeRows,
-      activities: (activitiesRes.data as Activity[] | null) ?? [],
+      episodes,
+      walk: (walkRes.data?.[0] as Activity | undefined) ?? null,
     };
   }, [dog]);
 
-  const loadData = useCallback(async () => {
-    const snapshot = await fetchData();
-    if (!snapshot) return;
-    setLastHeartbeat(snapshot.heartbeat);
-    setLastEpisode(snapshot.episode);
-    setActiveSession(snapshot.session);
-    setSessionEpisodes(snapshot.sessionEpisodes);
-    setRecentActivities(snapshot.activities);
-  }, [fetchData]);
-
-  // Recharge au focus (retour de la feuille « Enregistrer une activité », etc.).
   useFocusEffect(
     useCallback(() => {
       let ignore = false;
-      fetchData().then((snapshot) => {
+      fetchAll().then((snapshot) => {
         if (ignore || !snapshot) return;
+        setPositions(snapshot.positions);
         setLastHeartbeat(snapshot.heartbeat);
-        setLastEpisode(snapshot.episode);
         setActiveSession(snapshot.session);
-        setSessionEpisodes(snapshot.sessionEpisodes);
-        setRecentActivities(snapshot.activities);
+        setSessionEpisodes(snapshot.episodes);
+        setActiveWalk(snapshot.walk);
       });
       return () => {
         ignore = true;
       };
-    }, [fetchData])
+    }, [fetchAll])
   );
 
-  // Realtime: new episodes and heartbeats for this dog.
+  // ------------------------------------------------------------- Realtime
+
   useEffect(() => {
     if (!dog) return;
-
     const channel = supabase
-      .channel(`live-${dog.id}`)
+      .channel(`house-${dog.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'avatar_positions', filter: `dog_id=eq.${dog.id}` },
+        (payload) => {
+          const row = payload.new as AvatarPosition;
+          if (!row?.person) return;
+          setPositions((prev) =>
+            prev[row.person] === row.space ? prev : { ...prev, [row.person]: row.space }
+          );
+        }
+      )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'vocal_episodes', filter: `dog_id=eq.${dog.id}` },
         (payload) => {
           const episode = payload.new as VocalEpisode;
-          setLastEpisode((prev) => {
-            if (!prev) return episode;
-            return new Date(episode.ended_at) >= new Date(prev.ended_at) ? episode : prev;
-          });
           setSessionEpisodes((prev) => {
             if (prev.some((e) => e.id === episode.id)) return prev;
+            const session = activeSessionRef.current;
+            if (!session || episode.session_id !== session.id) return prev;
             return [...prev, episode];
           });
         }
@@ -167,15 +221,26 @@ export default function HomeScreen() {
         { event: 'UPDATE', schema: 'public', table: 'vocal_episodes', filter: `dog_id=eq.${dog.id}` },
         (payload) => {
           const episode = payload.new as VocalEpisode;
-          setLastEpisode((prev) => (prev && prev.id === episode.id ? episode : prev));
           setSessionEpisodes((prev) => prev.map((e) => (e.id === episode.id ? episode : e)));
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'agent_heartbeats', filter: `dog_id=eq.${dog.id}` },
+        (payload) => setLastHeartbeat(payload.new as AgentHeartbeat)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions', filter: `dog_id=eq.${dog.id}` },
         (payload) => {
-          setLastHeartbeat(payload.new as AgentHeartbeat);
+          // Session ouverte/fermée depuis l'autre téléphone → resynchronise.
+          const session = payload.new as Session;
+          if (!session?.id) return;
+          if (session.ended_at === null) {
+            setActiveSession(session);
+          } else {
+            setActiveSession((prev) => (prev && prev.id === session.id ? null : prev));
+          }
         }
       )
       .subscribe();
@@ -185,89 +250,178 @@ export default function HomeScreen() {
     };
   }, [dog]);
 
-  const onRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await loadData();
-    setIsRefreshing(false);
-  }, [loadData]);
+  // ------------------------------------------------------------- Actions
 
-  // --- Derived state ---
+  const showToast = useCallback((message: string) => setToast(message), []);
 
-  const agentStatus: AgentDisplayStatus = useMemo(() => {
-    if (!lastHeartbeat) return 'unknown';
-    if (secondsSince(lastHeartbeat.at, now) > HEARTBEAT_FRESH_SECONDS) return 'stale';
-    return lastHeartbeat.status;
-  }, [lastHeartbeat, now]);
-
-  const isVocalizing =
-    !!lastEpisode && secondsSince(lastEpisode.ended_at, now) <= ONGOING_EPISODE_SECONDS;
-
-  const currentSessionEpisodes = useMemo(
-    () => sessionEpisodes.filter((e) => !activeSession || e.session_id === activeSession.id),
-    [sessionEpisodes, activeSession]
+  const persistPosition = useCallback(
+    async (person: Person, space: Space) => {
+      if (!dog) return;
+      const { error } = await supabase.from('avatar_positions').upsert(
+        { dog_id: dog.id, person, space, updated_at: new Date().toISOString() },
+        { onConflict: 'dog_id,person' }
+      );
+      if (error) console.warn('Sync de la position impossible :', error.message);
+    },
+    [dog]
   );
 
-  const totalVocalSeconds = useMemo(
-    () =>
-      currentSessionEpisodes.reduce(
-        (sum, e) => sum + episodeDurationSeconds(e.started_at, e.ended_at),
-        0
-      ),
-    [currentSessionEpisodes]
-  );
-
-  // --- Actions ---
-
-  const startSession = async () => {
+  const startWalk = useCallback(async () => {
     if (!dog) return;
-    setIsBusy(true);
-    setRecap(null);
     const { data, error } = await supabase
-      .from('sessions')
-      .insert({ dog_id: dog.id, trigger: 'manual', started_at: new Date().toISOString() })
+      .from('activities')
+      .insert({ dog_id: dog.id, kind: 'walk', at: new Date().toISOString() })
       .select()
       .single();
-    setIsBusy(false);
     if (error) {
-      Alert.alert('Erreur', `Impossible de démarrer la session : ${error.message}`);
+      Alert.alert('Erreur', `Balade non enregistrée : ${error.message}`);
       return;
     }
-    setActiveSession(data as Session);
-    setSessionEpisodes([]);
-  };
+    setActiveWalk(data as Activity);
+    showToast('🚶 BALADE DÉMARRÉE !');
+  }, [dog, showToast]);
 
-  const stopSession = async () => {
-    if (!activeSession) return;
-    setIsBusy(true);
+  const endWalk = useCallback(async () => {
+    if (!dog) return;
+    let walk = activeWalkRef.current;
+    if (!walk) {
+      const { data } = await supabase
+        .from('activities')
+        .select('*')
+        .eq('dog_id', dog.id)
+        .eq('kind', 'walk')
+        .is('ended_at', null)
+        .order('at', { ascending: false })
+        .limit(1);
+      walk = (data?.[0] as Activity | undefined) ?? null;
+    }
+    if (!walk) return;
+    const endedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('activities')
+      .update({ ended_at: endedAt })
+      .eq('id', walk.id);
+    if (error) {
+      Alert.alert('Erreur', `Fin de balade non enregistrée : ${error.message}`);
+      return;
+    }
+    setActiveWalk(null);
+    showToast(`🏠 RETOUR DE BALADE (${formatDuration(secondsSince(walk.at))})`);
+  }, [dog, showToast]);
+
+  const startSession = useCallback(
+    async (solitudeType: 'away' | 'in_home') => {
+      if (!dog || activeSessionRef.current) return;
+      const { data, error } = await supabase
+        .from('sessions')
+        .insert({
+          dog_id: dog.id,
+          trigger: 'manual',
+          started_at: new Date().toISOString(),
+          solitude_type: solitudeType,
+        })
+        .select()
+        .single();
+      if (error) {
+        Alert.alert('Erreur', `Session non démarrée : ${error.message}`);
+        return;
+      }
+      setActiveSession(data as Session);
+      setSessionEpisodes([]);
+      setRecap(null);
+      showToast(
+        solitudeType === 'away' ? '🔴 SESSION : UBUNTU SEUL À LA MAISON' : '🔴 SESSION : UBUNTU ISOLÉ'
+      );
+    },
+    [dog, showToast]
+  );
+
+  const stopSession = useCallback(async () => {
+    const session = activeSessionRef.current;
+    if (!session) return;
     const { error } = await supabase.functions.invoke('close-session', {
-      body: { session_id: activeSession.id },
+      body: { session_id: session.id },
     });
     if (error) {
-      setIsBusy(false);
       Alert.alert('Erreur', `Impossible de clôturer la session : ${error.message}`);
       return;
     }
+    setActiveSession(null);
+    setSessionEpisodes([]);
+    setLastQuickLog(null);
     const { data: summary } = await supabase
       .from('session_summaries')
       .select('*')
-      .eq('session_id', activeSession.id)
+      .eq('session_id', session.id)
       .maybeSingle();
     setRecap((summary as SessionSummary | null) ?? null);
-    setActiveSession(null);
-    setSessionEpisodes([]);
-    setIsBusy(false);
-  };
+    showToast('🟢 SESSION TERMINÉE');
+  }, [showToast]);
 
-  // Signalement rapide pendant la session : couinement entendu (→ épisode
-  // manuel de 5 s qui compte dans les stats) ou observation comportementale.
-  const logManualWhine = async () => {
-    if (!dog || !activeSession) return;
-    const now = new Date();
+  /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
+  const handleDrop = useCallback(
+    (person: Person, space: Space) => {
+      const prev = positionsRef.current;
+      if (prev[person] === space) return;
+      const next = { ...prev, [person]: space };
+      setPositions(next);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      persistPosition(person, space);
+
+      const transition = computeTransition(prev, next);
+      if (transition.walkStarted) startWalk();
+      if (transition.walkEnded) endWalk();
+      if (transition.aloneStarted && !activeSessionRef.current) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        startSession(transition.solitudeType);
+      }
+      if (transition.aloneEnded && activeSessionRef.current) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        stopSession();
+      }
+    },
+    [persistPosition, startWalk, endWalk, startSession, stopSession]
+  );
+
+  const handleHover = useCallback((space: Space | null) => {
+    if (space) Haptics.selectionAsync();
+    setHoverZone(space);
+  }, []);
+
+  const openFeedForm = useCallback(() => {
+    setMenuOpen(false);
+    setFeedFraction(0.5);
+    setFeedTime(new Date());
+    setFeedOpen(true);
+  }, []);
+
+  const saveMeal = useCallback(async () => {
+    if (!dog) return;
+    const at = new Date(Math.min(feedTime.getTime(), Date.now()));
+    const { error } = await supabase.from('activities').insert({
+      dog_id: dog.id,
+      kind: 'meal',
+      at: at.toISOString(),
+      meal_fraction: feedFraction,
+    });
+    if (error) {
+      Alert.alert('Erreur', `Repas non enregistré : ${error.message}`);
+      return;
+    }
+    setFeedOpen(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToast(`🍖 REPAS NOTÉ À ${formatTime(at.toISOString())}`);
+  }, [dog, feedFraction, feedTime, showToast]);
+
+  const logManualWhine = useCallback(async () => {
+    const session = activeSessionRef.current;
+    if (!dog || !session) return;
+    const nowDate = new Date();
     const { error } = await supabase.from('vocal_episodes').insert({
       dog_id: dog.id,
-      session_id: activeSession.id,
-      started_at: new Date(now.getTime() - 5000).toISOString(),
-      ended_at: now.toISOString(),
+      session_id: session.id,
+      started_at: new Date(nowDate.getTime() - 5000).toISOString(),
+      ended_at: nowDate.toISOString(),
       kind: 'whine',
       source: 'manual',
     });
@@ -275,296 +429,614 @@ export default function HomeScreen() {
       Alert.alert('Erreur', `Impossible d'enregistrer : ${error.message}`);
       return;
     }
-    setLastQuickLog(`😢 Couinement noté à ${formatTime(now.toISOString())}`);
-  };
+    setLastQuickLog(`😢 Couinement noté à ${formatTime(nowDate.toISOString())}`);
+  }, [dog]);
 
-  const logObservation = async (kind: ObservedKind) => {
-    if (!dog || !activeSession) return;
-    const at = new Date().toISOString();
-    const { error } = await supabase
-      .from('observed_events')
-      .insert({ dog_id: dog.id, session_id: activeSession.id, kind, at });
-    if (error) {
-      Alert.alert('Erreur', `Impossible d'enregistrer : ${error.message}`);
-      return;
-    }
-    setLastQuickLog(`${OBSERVED_LABELS[kind]} noté à ${formatTime(at)}`);
-  };
+  const logObservation = useCallback(
+    async (kind: ObservedKind) => {
+      const session = activeSessionRef.current;
+      if (!dog || !session) return;
+      const at = new Date().toISOString();
+      const { error } = await supabase
+        .from('observed_events')
+        .insert({ dog_id: dog.id, session_id: session.id, kind, at });
+      if (error) {
+        Alert.alert('Erreur', `Impossible d'enregistrer : ${error.message}`);
+        return;
+      }
+      setLastQuickLog(`${OBSERVED_LABELS[kind]} noté à ${formatTime(at)}`);
+    },
+    [dog]
+  );
 
-  // --- Render ---
+  // ------------------------------------------------------------- Dérivés
 
-  const renderDogState = () => {
-    if (isVocalizing && lastEpisode) {
-      const sinceSeconds = secondsSince(lastEpisode.started_at, now);
-      return (
-        <View>
-          <Text style={[styles.dogState, { color: colors.text }]}>
-            🔊 Vocalise depuis {formatDuration(sinceSeconds)}
-          </Text>
-          <Text style={[styles.dogStateDetail, { color: colors.textSecondary }]}>
-            {KIND_LABELS[lastEpisode.kind]}
-            {lastEpisode.peak_confidence !== null
-              ? ` — confiance ${Math.round(lastEpisode.peak_confidence * 100)} %`
-              : ' — signalé manuellement'}
-          </Text>
-        </View>
-      );
-    }
+  const agentStatus: AgentDisplayStatus = useMemo(() => {
+    if (!lastHeartbeat) return 'unknown';
+    if (secondsSince(lastHeartbeat.at, now) > HEARTBEAT_FRESH_SECONDS) return 'stale';
+    return lastHeartbeat.status;
+  }, [lastHeartbeat, now]);
 
-    // « Calme depuis X » n'a de sens que pendant une session.
-    if (!activeSession) {
-      return (
-        <View>
-          <Text style={[styles.dogState, { color: colors.text }]}>Aucune session en cours</Text>
-          <Text style={[styles.dogStateDetail, { color: colors.textSecondary }]}>
-            Démarrez une session quand vous laissez {dog?.name ?? 'votre chien'} seul.
-          </Text>
-        </View>
-      );
-    }
+  const totalVocalSeconds = useMemo(
+    () =>
+      sessionEpisodes.reduce(
+        (sum, e) =>
+          sum + (new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()) / 1000,
+        0
+      ),
+    [sessionEpisodes]
+  );
 
-    const sessionEnd = sessionEpisodes.filter((e) => e.session_id === activeSession.id).at(-1);
-    const calmSince = sessionEnd?.ended_at ?? activeSession.started_at;
-    return (
-      <Text style={[styles.dogState, { color: colors.text }]}>
-        😌 Calme depuis {formatDuration(secondsSince(calmSince, now))}
-      </Text>
-    );
-  };
+  // Échelle carte → écran : la carte remplit l'espace disponible sans déformation.
+  const scale =
+    mapLayout.w > 0 && mapLayout.h > 0
+      ? Math.min(mapLayout.w / MAP_W, mapLayout.h / MAP_H)
+      : 0;
+  const mapHeight = MAP_H * scale;
+
+  const ubuntuSlot = SLOTS[positions.ubuntu].ubuntu;
+
+  // ------------------------------------------------------------- Rendu
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}>
-      <ScreenTitle
-        title="Direct"
-        subtitle={dog?.name}
-        right={<StatusBadge status={agentStatus} />}
-      />
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View
+        style={styles.mapWrapper}
+        onLayout={(e) =>
+          setMapLayout({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+        }>
+        {scale > 0 ? (
+          <View style={{ width: MAP_W * scale, height: mapHeight, alignSelf: 'center' }}>
+            <HouseMap night={scheme === 'dark'} />
 
-      {!isDogLoading && !dog ? (
-        <Card>
-          <EmptyState
-            title="Bienvenue sur UBUNTU"
-            subtitle="Commencez par créer le profil de votre chien dans l’onglet Réglages."
-          />
-        </Card>
-      ) : (
-        <>
-          <Card>{renderDogState()}</Card>
+            {/* Étiquettes de zones */}
+            {(Object.keys(ZONES) as Space[]).map((zone) => (
+              <Text
+                key={zone}
+                style={[
+                  styles.zoneLabel,
+                  {
+                    left: (ZONES[zone].x + 6) * scale,
+                    // DEHORS : étiquette en bas de zone (le haut est sous l'horloge iOS).
+                    top:
+                      zone === 'dehors'
+                        ? (ZONES[zone].h - 26) * scale
+                        : (ZONES[zone].y + 6) * scale,
+                    color: zone === 'dehors' || zone === 'balcon' ? '#FFFFFF' : colors.border,
+                    backgroundColor:
+                      zone === 'dehors' || zone === 'balcon' ? '#00000055' : '#FFFFFF44',
+                  },
+                ]}>
+                {SPACE_LABELS[zone]}
+              </Text>
+            ))}
 
-          {activeSession ? (
-            <Card>
-              <SectionTitle>Session en cours</SectionTitle>
-              <Text style={[styles.chrono, { color: colors.text }]}>
-                {formatChrono(secondsSince(activeSession.started_at, now))}
-              </Text>
-              <Text style={[styles.chronoCaption, { color: colors.textSecondary }]}>
-                Départ à {formatTime(activeSession.started_at)} · Temps vocalisé :{' '}
-                {formatDuration(totalVocalSeconds)} · {currentSessionEpisodes.length} épisode
-                {currentSessionEpisodes.length > 1 ? 's' : ''}
-              </Text>
-              <EpisodeTimeline
-                episodes={currentSessionEpisodes}
-                sessionStart={activeSession.started_at}
-                sessionEnd={null}
-                nowMs={now}
+            {/* Surbrillance de la zone survolée (l'aimant « s'allume ») */}
+            {hoverZone ? (
+              <Animated.View
+                entering={FadeIn.duration(120)}
+                exiting={FadeOut.duration(120)}
+                pointerEvents="none"
+                style={[
+                  styles.zoneHighlight,
+                  {
+                    left: ZONES[hoverZone].x * scale,
+                    top: ZONES[hoverZone].y * scale,
+                    width: ZONES[hoverZone].w * scale,
+                    height: ZONES[hoverZone].h * scale,
+                    borderColor: colors.accent,
+                  },
+                ]}
               />
-              {currentSessionEpisodes.length === 0 ? (
-                <Text style={[styles.chronoCaption, { color: colors.textSecondary }]}>
-                  Aucune vocalise pour l’instant. Tout va bien.
+            ) : null}
+
+            {/* Avatars */}
+            {(Object.keys(AVATARS) as Person[]).map((person) => (
+              <AvatarSprite
+                key={person}
+                person={person}
+                source={AVATARS[person].source}
+                space={positions[person]}
+                scale={scale}
+                width={AVATARS[person].w}
+                height={AVATARS[person].h}
+                zIndex={AVATARS[person].z}
+                onDropped={handleDrop}
+                onHoverSpace={handleHover}
+                onTap={person === 'ubuntu' ? () => setMenuOpen(true) : undefined}
+              />
+            ))}
+
+            {/* Badge balade en cours */}
+            {activeWalk ? (
+              <View
+                style={[
+                  styles.walkBadge,
+                  { backgroundColor: colors.card, borderColor: colors.border, top: 96 * scale },
+                ]}>
+                <Text style={[styles.walkBadgeText, { color: colors.text }]}>
+                  🚶 EN BALADE · {formatChrono(secondsSince(activeWalk.at, now))}
                 </Text>
-              ) : (
-                <View style={styles.episodeList}>
-                  {[...currentSessionEpisodes]
-                    .slice(-5)
-                    .reverse()
-                    .map((episode) => (
-                      <View key={episode.id} style={styles.episodeRow}>
-                        <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
-                        <Text style={[styles.episodeText, { color: colors.text }]}>
-                          {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind]} ·{' '}
-                          {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
-                        </Text>
-                      </View>
-                    ))}
-                </View>
-              )}
-              <View style={styles.quickLogRow}>
-                <QuickLogChip label="😢 Couinement" onPress={logManualWhine} />
-                <QuickLogChip label="😌 Soulagement" onPress={() => logObservation('relief')} />
-                <QuickLogChip label="😰 Panique" onPress={() => logObservation('panic')} />
               </View>
-              {lastQuickLog ? (
-                <Text style={[styles.chronoCaption, { color: colors.textSecondary }]}>
-                  {lastQuickLog}
-                </Text>
-              ) : null}
-              <Button
-                label="Arrêter la session"
-                variant="danger"
-                onPress={stopSession}
-                loading={isBusy}
-              />
-            </Card>
-          ) : (
-            <Button
-              label="Démarrer une session"
-              onPress={startSession}
-              disabled={!dog}
-              loading={isBusy}
-            />
-          )}
+            ) : null}
+          </View>
+        ) : null}
+      </View>
 
-          <Button
-            label="Enregistrer une activité"
-            variant="secondary"
+      {/* Barre du haut : nom + statut agent + journal */}
+      <View style={[styles.topBar, { top: insets.top + 6 }]} pointerEvents="box-none">
+        <View style={[styles.titleChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.titleChipText, { color: colors.text }]}>
+            {(dog?.name ?? 'UBUNTU').toUpperCase()} 🐾
+          </Text>
+        </View>
+        <View style={styles.topBarRight}>
+          <StatusBadge status={agentStatus} />
+          <Pressable
             onPress={() => router.push('/activity-log')}
-            disabled={!dog}
+            style={[styles.journalChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.titleChipText, { color: colors.text }]}>+ JOURNAL</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Toast rétro */}
+      {toast ? (
+        <Animated.View
+          entering={SlideInUp.springify().damping(16)}
+          exiting={SlideOutUp.duration(200)}
+          style={[
+            styles.toast,
+            { top: insets.top + 44, backgroundColor: colors.card, borderColor: colors.border },
+          ]}>
+          <Text style={[styles.toastText, { color: colors.text }]}>{toast}</Text>
+        </Animated.View>
+      ) : null}
+
+      {/* Panneau session en cours (boîte de dialogue Pokémon) */}
+      {activeSession ? (
+        <Animated.View
+          entering={SlideInUp.springify().damping(15)}
+          style={[
+            styles.sessionPanel,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              boxShadow: `4px 4px 0px 0px ${colors.border}`,
+            },
+          ]}>
+          <View style={styles.sessionHeader}>
+            <Text style={[styles.sessionTitle, { color: colors.accent }]}>
+              {activeSession.solitude_type === 'in_home' ? '● SEUL (PIÈCE FERMÉE)' : '● SEUL'}
+            </Text>
+            <Text style={[styles.sessionChrono, { color: colors.text }]}>
+              {formatChrono(secondsSince(activeSession.started_at, now))}
+            </Text>
+          </View>
+          <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
+            Départ {formatTime(activeSession.started_at)} · vocal{' '}
+            {formatDuration(totalVocalSeconds)} · {sessionEpisodes.length} épisode
+            {sessionEpisodes.length > 1 ? 's' : ''}
+          </Text>
+          <EpisodeTimeline
+            episodes={sessionEpisodes}
+            sessionStart={activeSession.started_at}
+            sessionEnd={null}
+            nowMs={now}
+            showLegend={false}
           />
-
-          {recap ? (
-            <Card>
-              <SectionTitle>Récap de la session</SectionTitle>
-              <View style={styles.statGrid}>
-                <StatCard
-                  label="Durée totale"
-                  value={
-                    recap.ended_at
-                      ? formatDuration(
-                          (new Date(recap.ended_at).getTime() -
-                            new Date(recap.started_at).getTime()) /
-                            1000
-                        )
-                      : '—'
-                  }
-                />
-                <StatCard label="Temps vocalisé" value={formatDuration(recap.total_vocal_seconds)} />
-                <StatCard label="Épisodes" value={String(recap.episode_count)} />
-                <StatCard label="% calme" value={`${Math.round(recap.calm_percent)} %`} />
-              </View>
-              <Link href={{ pathname: '/session/[id]', params: { id: recap.session_id } }} asChild>
-                {/* Link asChild (Slot) rejects style arrays — pass a flattened object. */}
-                <Text style={StyleSheet.flatten([styles.link, { color: colors.accent }])}>
-                  Voir le détail →
-                </Text>
-              </Link>
-              <Button label="Fermer le récap" variant="secondary" onPress={() => setRecap(null)} />
-            </Card>
+          <View style={styles.quickRow}>
+            <QuickChip label="😢" onPress={logManualWhine} />
+            <QuickChip label="😌" onPress={() => logObservation('relief')} />
+            <QuickChip label="😰" onPress={() => logObservation('panic')} />
+            <Pressable
+              onPress={stopSession}
+              style={[styles.stopChip, { backgroundColor: colors.danger, borderColor: colors.border }]}>
+              <Text style={[styles.stopChipText, { color: colors.accentText }]}>TERMINER</Text>
+            </Pressable>
+          </View>
+          {lastQuickLog ? (
+            <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
+              {lastQuickLog}
+            </Text>
           ) : null}
+        </Animated.View>
+      ) : null}
 
-          <Card>
-            <SectionTitle>Dernière vocalise</SectionTitle>
-            {lastEpisode ? (
-              <Text style={[styles.episodeText, { color: colors.text }]}>
-                {KIND_LABELS[lastEpisode.kind]} à {formatTime(lastEpisode.started_at)} (
-                {formatDuration(
-                  episodeDurationSeconds(lastEpisode.started_at, lastEpisode.ended_at)
-                )}
-                )
-              </Text>
-            ) : (
-              <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-                Aucune vocalise enregistrée pour le moment.
-              </Text>
-            )}
-          </Card>
-
-          {recentActivities.length > 0 ? (
-            <Card>
-              <SectionTitle>Activités récentes</SectionTitle>
-              {recentActivities.map((activity) => (
-                <View key={activity.id} style={styles.episodeRow}>
-                  <Text style={[styles.episodeText, { color: colors.text }]}>
-                    {ACTIVITY_LABELS[activity.kind]} · {formatDateTime(activity.at)}
-                    {activity.notes ? ` · ${activity.notes}` : ''}
-                  </Text>
-                </View>
-              ))}
-            </Card>
-          ) : null}
+      {/* Menu Ubuntu (tap sur l'avatar) */}
+      {menuOpen && scale > 0 ? (
+        <>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+          <Animated.View
+            entering={ZoomIn.springify().damping(13)}
+            exiting={ZoomOut.duration(150)}
+            style={[
+              styles.ubuntuMenu,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                boxShadow: `4px 4px 0px 0px ${colors.border}`,
+                left: Math.min(Math.max(ubuntuSlot.x * scale - 80, 12), mapLayout.w - 172),
+                top: Math.max(ubuntuSlot.y * scale - 118, insets.top + 46),
+              },
+            ]}>
+            <Text style={[styles.menuTitle, { color: colors.textSecondary }]}>UBUNTU</Text>
+            <Pressable onPress={openFeedForm} style={styles.menuItem}>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>▶ 🍖 NOURRITURE</Text>
+            </Pressable>
+            <Pressable onPress={() => setMenuOpen(false)} style={styles.menuItem}>
+              <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>✕ FERMER</Text>
+            </Pressable>
+          </Animated.View>
         </>
-      )}
-    </ScrollView>
+      ) : null}
+
+      {/* Formulaire nourriture */}
+      <Modal visible={feedOpen} transparent animationType="fade" onRequestClose={() => setFeedOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <Animated.View
+            entering={ZoomIn.springify().damping(14)}
+            style={[
+              styles.dialog,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                boxShadow: `5px 5px 0px 0px ${colors.border}`,
+              },
+            ]}>
+            <Text style={[styles.dialogTitle, { color: colors.text }]}>🍖 NOURRITURE</Text>
+            <Text style={[styles.dialogLabel, { color: colors.textSecondary }]}>
+              QUELLE PART DE SA RATION ?
+            </Text>
+            <View style={styles.fractionRow}>
+              {MEAL_FRACTIONS.map(({ value, label }) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setFeedFraction(value)}
+                  style={[
+                    styles.fractionChip,
+                    {
+                      backgroundColor: feedFraction === value ? colors.accent : colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.fractionText,
+                      { color: feedFraction === value ? colors.accentText : colors.text },
+                    ]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={[styles.dialogLabel, { color: colors.textSecondary }]}>À QUELLE HEURE ?</Text>
+            <DateTimePicker
+              value={feedTime}
+              mode="time"
+              display="spinner"
+              maximumDate={new Date()}
+              themeVariant={scheme === 'dark' ? 'dark' : 'light'}
+              onChange={(_, date) => {
+                if (date) setFeedTime(date);
+              }}
+              style={styles.timePicker}
+            />
+            <View style={styles.dialogButtons}>
+              <Pressable
+                onPress={() => setFeedOpen(false)}
+                style={[styles.dialogButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={[styles.dialogButtonText, { color: colors.text }]}>ANNULER</Text>
+              </Pressable>
+              <Pressable
+                onPress={saveMeal}
+                style={[styles.dialogButton, { backgroundColor: colors.accent, borderColor: colors.border }]}>
+                <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>OK !</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Récap de fin de session */}
+      <Modal visible={!!recap} transparent animationType="fade" onRequestClose={() => setRecap(null)}>
+        <View style={styles.modalBackdrop}>
+          {recap ? (
+            <Animated.View
+              entering={ZoomIn.springify().damping(14)}
+              style={[
+                styles.dialog,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  boxShadow: `5px 5px 0px 0px ${colors.border}`,
+                },
+              ]}>
+              <Text style={[styles.dialogTitle, { color: colors.text }]}>RÉCAP SESSION</Text>
+              <RecapRow
+                label="DURÉE"
+                value={
+                  recap.ended_at
+                    ? formatDuration(
+                        (new Date(recap.ended_at).getTime() - new Date(recap.started_at).getTime()) /
+                          1000
+                      )
+                    : '—'
+                }
+              />
+              <RecapRow label="TEMPS VOCALISÉ" value={formatDuration(recap.total_vocal_seconds)} />
+              <RecapRow label="ÉPISODES" value={String(recap.episode_count)} />
+              <RecapRow label="CALME" value={`${Math.round(recap.calm_percent)} %`} />
+              <View style={styles.dialogButtons}>
+                <Pressable
+                  onPress={() => {
+                    const id = recap.session_id;
+                    setRecap(null);
+                    router.push({ pathname: '/session/[id]', params: { id } });
+                  }}
+                  style={[styles.dialogButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.dialogButtonText, { color: colors.text }]}>DÉTAIL</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setRecap(null)}
+                  style={[styles.dialogButton, { backgroundColor: colors.accent, borderColor: colors.border }]}>
+                  <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>OK !</Text>
+                </Pressable>
+              </View>
+            </Animated.View>
+          ) : null}
+        </View>
+      </Modal>
+    </View>
   );
 }
 
-/** Petit bouton de signalement rapide pendant la session. */
-function QuickLogChip({ label, onPress }: { label: string; onPress: () => void }) {
+function QuickChip({ label, onPress }: { label: string; onPress: () => void }) {
   const colors = useTheme();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.quickLogChip,
-        { backgroundColor: colors.background, borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+        styles.quickChip,
+        {
+          backgroundColor: colors.background,
+          borderColor: colors.border,
+          opacity: pressed ? 0.6 : 1,
+        },
       ]}>
-      <Text style={[styles.quickLogChipText, { color: colors.text }]}>{label}</Text>
+      <Text style={styles.quickChipText}>{label}</Text>
     </Pressable>
   );
 }
 
+function RecapRow({ label, value }: { label: string; value: string }) {
+  const colors = useTheme();
+  return (
+    <View style={styles.recapRow}>
+      <Text style={[styles.recapLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <Text style={[styles.recapValue, { color: colors.text }]}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  content: {
-    padding: Spacing.md,
-    gap: Spacing.md,
-    paddingBottom: 112,
+  screen: {
+    flex: 1,
   },
-  quickLogRow: {
+  mapWrapper: {
+    flex: 1,
+  },
+  zoneLabel: {
+    position: 'absolute',
+    fontSize: 7,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  zoneHighlight: {
+    position: 'absolute',
+    borderWidth: 3,
+    borderRadius: 2,
+    backgroundColor: '#FFFFFF22',
+  },
+  walkBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  walkBadgeText: {
+    fontSize: 8,
+  },
+  topBar: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: Spacing.sm,
   },
-  quickLogChip: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  quickLogChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dogState: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  dogStateDetail: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  chrono: {
-    fontSize: 40,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  chronoCaption: {
-    fontSize: 13,
-  },
-  episodeList: {
+  topBarRight: {
+    alignItems: 'flex-end',
     gap: 6,
   },
-  episodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  titleChip: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  episodeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  journalChip: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  episodeText: {
-    fontSize: 14,
+  titleChipText: {
+    fontSize: 8,
   },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  toast: {
+    position: 'absolute',
+    alignSelf: 'center',
+    borderWidth: 3,
+    borderRadius: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    maxWidth: '86%',
+    zIndex: 200,
+  },
+  toastText: {
+    fontSize: 9,
+    lineHeight: 15,
+    textAlign: 'center',
+  },
+  sessionPanel: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    bottom: Spacing.md,
+    borderWidth: 3,
+    borderRadius: 2,
+    padding: Spacing.md,
     gap: Spacing.sm,
   },
-  link: {
-    fontSize: 15,
-    fontWeight: '600',
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  sessionTitle: {
+    fontSize: 9,
+    flexShrink: 1,
+  },
+  sessionChrono: {
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
+  },
+  sessionDetail: {
+    fontSize: 7,
+    lineHeight: 12,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  quickChip: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  quickChipText: {
+    fontSize: 13,
+  },
+  stopChip: {
+    marginLeft: 'auto',
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  stopChipText: {
+    fontSize: 8,
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#00000033',
+    zIndex: 150,
+  },
+  ubuntuMenu: {
+    position: 'absolute',
+    width: 160,
+    borderWidth: 3,
+    borderRadius: 2,
+    padding: Spacing.sm,
+    gap: 2,
+    zIndex: 160,
+  },
+  menuTitle: {
+    fontSize: 7,
+    marginBottom: 2,
+  },
+  menuItem: {
+    paddingVertical: 8,
+  },
+  menuItemText: {
+    fontSize: 9,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: '#00000066',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  dialog: {
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 3,
+    borderRadius: 2,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  dialogTitle: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  dialogLabel: {
+    fontSize: 8,
+  },
+  fractionRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  fractionChip: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  fractionText: {
+    fontSize: 10,
+  },
+  timePicker: {
+    alignSelf: 'center',
+  },
+  dialogButtons: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  dialogButton: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  dialogButtonText: {
+    fontSize: 9,
+  },
+  recapRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  recapLabel: {
+    fontSize: 8,
+  },
+  recapValue: {
+    fontSize: 9,
   },
 });
