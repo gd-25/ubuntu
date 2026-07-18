@@ -99,7 +99,8 @@ export type Space =
   | 'dehors'
   | 'sdb'
   | 'couloir_int'
-  | 'couloir_ext';
+  | 'couloir_ext'
+  | 'wc';
 
 export interface AvatarPosition {
   dog_id: string;

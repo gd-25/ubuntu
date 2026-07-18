@@ -31,13 +31,13 @@ import {
   computeTransition,
   DEFAULT_POSITIONS,
   isUbuntuAlone,
-  LABELED_SPACES,
+  LABEL_POSITIONS,
   MAP_H,
   MAP_W,
   SLOTS,
   solitudeTypeOf,
   SPACE_LABELS,
-  ZONES,
+  ZONE_RECTS,
   type Positions,
 } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
@@ -516,18 +516,14 @@ export default function HouseScreen() {
             <HouseMap night={scheme === 'dark'} />
 
             {/* Étiquettes de zones (pièces principales uniquement) */}
-            {LABELED_SPACES.map((zone) => (
+            {(Object.keys(LABEL_POSITIONS) as Space[]).map((zone) => (
               <Text
                 key={zone}
                 style={[
                   styles.zoneLabel,
                   {
-                    left: (ZONES[zone].x + 6) * scale,
-                    // DEHORS : étiquette en bas de zone (le haut est sous l'horloge iOS).
-                    top:
-                      zone === 'dehors'
-                        ? (ZONES[zone].h - 26) * scale
-                        : (ZONES[zone].y + 6) * scale,
+                    left: (LABEL_POSITIONS[zone]?.x ?? 0) * scale,
+                    top: (LABEL_POSITIONS[zone]?.y ?? 0) * scale,
                     color: zone === 'dehors' || zone === 'balcon' ? '#FFFFFF' : colors.border,
                     backgroundColor:
                       zone === 'dehors' || zone === 'balcon' ? '#00000055' : '#FFFFFF44',
@@ -537,24 +533,28 @@ export default function HouseScreen() {
               </Text>
             ))}
 
-            {/* Surbrillance de la zone survolée (l'aimant « s'allume ») */}
-            {hoverZone ? (
-              <Animated.View
-                entering={FadeIn.duration(120)}
-                exiting={FadeOut.duration(120)}
-                pointerEvents="none"
-                style={[
-                  styles.zoneHighlight,
-                  {
-                    left: ZONES[hoverZone].x * scale,
-                    top: ZONES[hoverZone].y * scale,
-                    width: ZONES[hoverZone].w * scale,
-                    height: ZONES[hoverZone].h * scale,
-                    borderColor: colors.accent,
-                  },
-                ]}
-              />
-            ) : null}
+            {/* Surbrillance de la zone survolée (l'aimant « s'allume ») —
+                une zone peut couvrir plusieurs rectangles (salon + avancée). */}
+            {hoverZone
+              ? ZONE_RECTS.filter((z) => z.space === hoverZone).map(({ rect }, i) => (
+                  <Animated.View
+                    key={`${hoverZone}-${i}`}
+                    entering={FadeIn.duration(120)}
+                    exiting={FadeOut.duration(120)}
+                    pointerEvents="none"
+                    style={[
+                      styles.zoneHighlight,
+                      {
+                        left: rect.x * scale,
+                        top: rect.y * scale,
+                        width: rect.w * scale,
+                        height: rect.h * scale,
+                        borderColor: colors.accent,
+                      },
+                    ]}
+                  />
+                ))
+              : null}
 
             {/* Avatars */}
             {(Object.keys(AVATARS) as Person[]).map((person) => (
@@ -586,10 +586,10 @@ export default function HouseScreen() {
               </View>
             ) : null}
 
-            {/* Statut de la caméra, posée face à la porte d'entrée */}
+            {/* Statut de la caméra, posée face à la porte des WC (emplacement réel) */}
             <View
               pointerEvents="none"
-              style={[styles.cameraBadge, { left: 236 * scale, top: 600 * scale }]}>
+              style={[styles.cameraBadge, { left: 200 * scale, top: 526 * scale }]}>
               <StatusBadge status={agentStatus} />
             </View>
           </View>

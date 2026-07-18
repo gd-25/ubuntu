@@ -2,12 +2,12 @@ import type { Person, SolitudeType, Space } from '@/lib/types';
 
 /**
  * Géométrie du plan (repère « carte » en unités fixes, mis à l'échelle à
- * l'écran) et règles de la vie de famille.
+ * l'écran) et règles de la vie de famille. Fidèle au vrai appartement :
  *
  *   DEHORS   (forêt, sentier en L le long du balcon)
- *   BALCON   (béton)
- *   BUREAU  | CHAMBRE | SALON
- *   SDB     | COULOIR INT
+ *   BALCON   (béton) — le salon déborde dessus à droite
+ *   BUREAU | CHAMBRE |      SALON
+ *   SDB    |      COULOIR / WC / SALON (espace ouvert)
  *   COULOIR EXT (palier, moquette noire)
  */
 
@@ -15,8 +15,10 @@ export const MAP_W = 360;
 export const MAP_H = 700;
 
 /** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 250;
-export const BALCONY_BOTTOM = 310;
+export const OUTSIDE_BOTTOM = 140;
+export const BALCONY_BOTTOM = 250;
+/** Bas de l'appartement (mur avec le palier). */
+export const FLAT_BOTTOM = 640;
 
 export interface Rect {
   x: number;
@@ -26,20 +28,24 @@ export interface Rect {
 }
 
 /**
- * Zones de hit-test (l'aimant s'active dès qu'on lâche l'avatar dedans).
- * Elles pavent exactement toute la carte — la détection de zone dans les
- * worklets de geste itère sur cet objet.
+ * Rectangles de hit-test, ORDONNÉS : le premier qui contient le point gagne
+ * (les petites pièces avant les grandes, l'avancée du salon avant le balcon).
+ * Le salon apparaît deux fois : sa partie principale + son avancée sur le
+ * balcon. L'union pave toute la carte.
  */
-export const ZONES: Record<Space, Rect> = {
-  dehors: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM },
-  balcon: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM },
-  bureau: { x: 0, y: 310, w: 100, h: 210 },
-  sdb: { x: 0, y: 520, w: 100, h: 112 },
-  chambre: { x: 100, y: 310, w: 130, h: 242 },
-  salon: { x: 230, y: 310, w: 130, h: 242 },
-  couloir_int: { x: 100, y: 552, w: 260, h: 80 },
-  couloir_ext: { x: 0, y: 632, w: MAP_W, h: 68 },
-};
+export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
+  { space: 'wc', rect: { x: 196, y: 446, w: 78, h: 73 } },
+  { space: 'sdb', rect: { x: 0, y: 446, w: 72, h: 194 } },
+  { space: 'chambre', rect: { x: 105, y: 250, w: 91, h: 269 } },
+  { space: 'bureau', rect: { x: 0, y: 250, w: 105, h: 263 } },
+  { space: 'couloir_int', rect: { x: 72, y: 513, w: 124, h: 127 } },
+  // Avancée du salon sur le balcon (avant le balcon dans l'ordre).
+  { space: 'salon', rect: { x: 262, y: 164, w: 98, h: 86 } },
+  { space: 'salon', rect: { x: 196, y: 250, w: 164, h: 390 } },
+  { space: 'balcon', rect: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM } },
+  { space: 'dehors', rect: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM } },
+  { space: 'couloir_ext', rect: { x: 0, y: FLAT_BOTTOM, w: MAP_W, h: MAP_H - FLAT_BOTTOM } },
+];
 
 export const SPACE_LABELS: Record<Space, string> = {
   dehors: 'DEHORS',
@@ -50,10 +56,17 @@ export const SPACE_LABELS: Record<Space, string> = {
   sdb: 'SDB',
   couloir_int: 'COULOIR',
   couloir_ext: 'PALIER',
+  wc: 'WC',
 };
 
-/** Zones affichant leur étiquette sur la carte (les autres restent nues). */
-export const LABELED_SPACES: Space[] = ['dehors', 'balcon', 'bureau', 'chambre', 'salon'];
+/** Étiquettes affichées sur la carte : espace → position (coordonnées carte). */
+export const LABEL_POSITIONS: Partial<Record<Space, { x: number; y: number }>> = {
+  dehors: { x: 6, y: 28 },
+  balcon: { x: 6, y: 160 },
+  bureau: { x: 6, y: 258 },
+  chambre: { x: 110, y: 258 },
+  salon: { x: 202, y: 258 },
+};
 
 /**
  * Point d'ancrage (centre de l'avatar) par personne et par zone : chacun a
@@ -61,52 +74,56 @@ export const LABELED_SPACES: Space[] = ['dehors', 'balcon', 'bureau', 'chambre',
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   dehors: {
-    greg: { x: 84, y: 162 },
-    fiona: { x: 170, y: 158 },
-    ubuntu: { x: 252, y: 166 },
+    greg: { x: 84, y: 96 },
+    fiona: { x: 170, y: 92 },
+    ubuntu: { x: 250, y: 100 },
   },
   balcon: {
-    greg: { x: 70, y: 280 },
-    fiona: { x: 176, y: 280 },
-    ubuntu: { x: 268, y: 282 },
+    greg: { x: 60, y: 202 },
+    fiona: { x: 148, y: 202 },
+    ubuntu: { x: 218, y: 206 },
   },
   bureau: {
-    greg: { x: 36, y: 386 },
-    fiona: { x: 66, y: 446 },
-    ubuntu: { x: 48, y: 494 },
+    greg: { x: 36, y: 322 },
+    fiona: { x: 70, y: 382 },
+    ubuntu: { x: 48, y: 428 },
   },
   sdb: {
-    greg: { x: 70, y: 556 },
-    fiona: { x: 36, y: 592 },
-    ubuntu: { x: 68, y: 608 },
+    greg: { x: 36, y: 542 },
+    fiona: { x: 38, y: 586 },
+    ubuntu: { x: 40, y: 618 },
   },
   chambre: {
-    greg: { x: 136, y: 424 },
-    fiona: { x: 196, y: 384 },
-    ubuntu: { x: 166, y: 508 },
+    greg: { x: 124, y: 340 },
+    fiona: { x: 168, y: 306 },
+    ubuntu: { x: 124, y: 468 },
   },
   salon: {
-    greg: { x: 266, y: 424 },
-    fiona: { x: 326, y: 384 },
-    ubuntu: { x: 294, y: 498 },
+    greg: { x: 240, y: 330 },
+    fiona: { x: 300, y: 306 },
+    ubuntu: { x: 274, y: 584 },
+  },
+  wc: {
+    greg: { x: 216, y: 472 },
+    fiona: { x: 250, y: 496 },
+    ubuntu: { x: 220, y: 500 },
   },
   couloir_int: {
-    greg: { x: 150, y: 592 },
-    fiona: { x: 232, y: 588 },
-    ubuntu: { x: 312, y: 594 },
+    greg: { x: 92, y: 556 },
+    fiona: { x: 134, y: 598 },
+    ubuntu: { x: 172, y: 558 },
   },
   couloir_ext: {
-    greg: { x: 80, y: 666 },
-    fiona: { x: 180, y: 662 },
-    ubuntu: { x: 276, y: 668 },
+    greg: { x: 80, y: 668 },
+    fiona: { x: 180, y: 664 },
+    ubuntu: { x: 276, y: 670 },
   },
 };
 
 /** Zone contenant le point (x, y) — coordonnées carte. */
 export function spaceAt(x: number, y: number): Space {
-  for (const space of Object.keys(ZONES) as Space[]) {
-    const r = ZONES[space];
-    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return space;
+  for (const { space, rect } of ZONE_RECTS) {
+    if (x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h) return space;
   }
   return 'salon';
 }

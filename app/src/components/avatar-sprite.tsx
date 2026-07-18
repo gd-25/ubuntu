@@ -15,20 +15,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { MAP_H, MAP_W, SLOTS, ZONES } from '@/lib/house';
+import { MAP_H, MAP_W, SLOTS, ZONE_RECTS } from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
 
 /** Ressort sec : l'aimant claque en ~250 ms avec un seul petit rebond. */
 const SPRING = { damping: 20, stiffness: 320 };
 
-const SPACES = Object.keys(ZONES) as Space[];
-
 /** Zone contenant le point (x, y) — version worklet de spaceAt. */
 function zoneAt(x: number, y: number): Space {
   'worklet';
-  for (const space of SPACES) {
-    const r = ZONES[space];
-    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return space;
+  for (const { space, rect } of ZONE_RECTS) {
+    if (x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h) return space;
   }
   return 'salon';
 }
