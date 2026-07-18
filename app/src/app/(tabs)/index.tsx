@@ -505,7 +505,7 @@ export default function HouseScreen() {
   // ------------------------------------------------------------- Rendu
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <View style={[styles.screen, { backgroundColor: scheme === 'dark' ? '#38583A' : '#78C050' }]}>
       <View
         style={styles.mapWrapper}
         onLayout={(e) =>
@@ -578,32 +578,22 @@ export default function HouseScreen() {
               <View
                 style={[
                   styles.walkBadge,
-                  { backgroundColor: colors.card, borderColor: colors.border, top: 96 * scale },
+                  { backgroundColor: colors.card, borderColor: colors.border, top: 40 * scale },
                 ]}>
                 <Text style={[styles.walkBadgeText, { color: colors.text }]}>
                   🚶 EN BALADE · {formatChrono(secondsSince(activeWalk.at, now))}
                 </Text>
               </View>
             ) : null}
+
+            {/* Statut de la caméra, posée face à la porte d'entrée */}
+            <View
+              pointerEvents="none"
+              style={[styles.cameraBadge, { left: 236 * scale, top: 600 * scale }]}>
+              <StatusBadge status={agentStatus} />
+            </View>
           </View>
         ) : null}
-      </View>
-
-      {/* Barre du haut : nom + statut agent + journal */}
-      <View style={[styles.topBar, { top: insets.top + 6 }]} pointerEvents="box-none">
-        <View style={[styles.titleChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.titleChipText, { color: colors.text }]}>
-            {(dog?.name ?? 'UBUNTU').toUpperCase()} 🐾
-          </Text>
-        </View>
-        <View style={styles.topBarRight}>
-          <StatusBadge status={agentStatus} />
-          <Pressable
-            onPress={() => router.push('/activity-log')}
-            style={[styles.journalChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.titleChipText, { color: colors.text }]}>+ JOURNAL</Text>
-          </Pressable>
-        </View>
       </View>
 
       {/* Toast rétro */}
@@ -849,8 +839,14 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+  // Carte ancrée en bas : le couloir extérieur touche la tab bar, l'éventuel
+  // surplus part dans l'herbe du haut (fond vert assorti).
   mapWrapper: {
     flex: 1,
+    justifyContent: 'flex-end',
+  },
+  cameraBadge: {
+    position: 'absolute',
   },
   zoneLabel: {
     position: 'absolute',
@@ -875,34 +871,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   walkBadgeText: {
-    fontSize: 8,
-  },
-  topBar: {
-    position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-  },
-  topBarRight: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  titleChip: {
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  journalChip: {
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  titleChipText: {
     fontSize: 8,
   },
   toast: {

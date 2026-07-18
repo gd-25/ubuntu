@@ -12,11 +12,11 @@ import type { Person, SolitudeType, Space } from '@/lib/types';
  */
 
 export const MAP_W = 360;
-export const MAP_H = 640;
+export const MAP_H = 700;
 
 /** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 170;
-export const BALCONY_BOTTOM = 230;
+export const OUTSIDE_BOTTOM = 250;
+export const BALCONY_BOTTOM = 310;
 
 export interface Rect {
   x: number;
@@ -33,12 +33,12 @@ export interface Rect {
 export const ZONES: Record<Space, Rect> = {
   dehors: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM },
   balcon: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM },
-  bureau: { x: 0, y: 230, w: 100, h: 220 },
-  sdb: { x: 0, y: 450, w: 100, h: 122 },
-  chambre: { x: 100, y: 230, w: 130, h: 262 },
-  salon: { x: 230, y: 230, w: 130, h: 262 },
-  couloir_int: { x: 100, y: 492, w: 260, h: 80 },
-  couloir_ext: { x: 0, y: 572, w: MAP_W, h: 68 },
+  bureau: { x: 0, y: 310, w: 100, h: 210 },
+  sdb: { x: 0, y: 520, w: 100, h: 112 },
+  chambre: { x: 100, y: 310, w: 130, h: 242 },
+  salon: { x: 230, y: 310, w: 130, h: 242 },
+  couloir_int: { x: 100, y: 552, w: 260, h: 80 },
+  couloir_ext: { x: 0, y: 632, w: MAP_W, h: 68 },
 };
 
 export const SPACE_LABELS: Record<Space, string> = {
@@ -61,44 +61,44 @@ export const LABELED_SPACES: Space[] = ['dehors', 'balcon', 'bureau', 'chambre',
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   dehors: {
-    greg: { x: 84, y: 104 },
-    fiona: { x: 170, y: 100 },
-    ubuntu: { x: 252, y: 108 },
+    greg: { x: 84, y: 162 },
+    fiona: { x: 170, y: 158 },
+    ubuntu: { x: 252, y: 166 },
   },
   balcon: {
-    greg: { x: 70, y: 200 },
-    fiona: { x: 176, y: 200 },
-    ubuntu: { x: 268, y: 202 },
+    greg: { x: 70, y: 280 },
+    fiona: { x: 176, y: 280 },
+    ubuntu: { x: 268, y: 282 },
   },
   bureau: {
-    greg: { x: 36, y: 306 },
-    fiona: { x: 66, y: 366 },
-    ubuntu: { x: 48, y: 418 },
+    greg: { x: 36, y: 386 },
+    fiona: { x: 66, y: 446 },
+    ubuntu: { x: 48, y: 494 },
   },
   sdb: {
-    greg: { x: 70, y: 486 },
-    fiona: { x: 36, y: 522 },
-    ubuntu: { x: 68, y: 540 },
+    greg: { x: 70, y: 556 },
+    fiona: { x: 36, y: 592 },
+    ubuntu: { x: 68, y: 608 },
   },
   chambre: {
-    greg: { x: 136, y: 344 },
-    fiona: { x: 196, y: 304 },
-    ubuntu: { x: 166, y: 432 },
+    greg: { x: 136, y: 424 },
+    fiona: { x: 196, y: 384 },
+    ubuntu: { x: 166, y: 508 },
   },
   salon: {
-    greg: { x: 266, y: 344 },
-    fiona: { x: 326, y: 304 },
-    ubuntu: { x: 294, y: 424 },
+    greg: { x: 266, y: 424 },
+    fiona: { x: 326, y: 384 },
+    ubuntu: { x: 294, y: 498 },
   },
   couloir_int: {
-    greg: { x: 150, y: 532 },
-    fiona: { x: 232, y: 528 },
-    ubuntu: { x: 312, y: 534 },
+    greg: { x: 150, y: 592 },
+    fiona: { x: 232, y: 588 },
+    ubuntu: { x: 312, y: 594 },
   },
   couloir_ext: {
-    greg: { x: 80, y: 606 },
-    fiona: { x: 180, y: 602 },
-    ubuntu: { x: 276, y: 608 },
+    greg: { x: 80, y: 666 },
+    fiona: { x: 180, y: 662 },
+    ubuntu: { x: 276, y: 668 },
   },
 };
 
