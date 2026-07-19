@@ -523,11 +523,13 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(1) + 31} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
       <Rect x={CX(1) + 4} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
       <Rect x={CX(1) + 36} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
-      {/* Mur haut de l'avancée du salon : trois portes-fenêtres de 1,4 */}
+      {/* Mur haut de l'avancée : trois portes-fenêtres de 1,4 collées */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
-      <GlassDoor x={263} base={EXT_TOP} p={p} />
+      <GlassDoor x={271} base={EXT_TOP} p={p} />
       <GlassDoor x={293} base={EXT_TOP} p={p} />
-      <GlassDoor x={323} base={EXT_TOP} p={p} />
+      <GlassDoor x={315} base={EXT_TOP} p={p} />
+      {/* Trait blanc vertical qui relie le mur de l'avancée à la façade */}
+      <WallV x={SALON_L - 3} y={EXT_TOP} h={HOUSE_TOP - EXT_TOP} p={p} />
       {/* Bouts des cloisons verticales */}
       <WallFace x={CHAMBRE_L - 3} base={CHAMBRE_BOT} w={6} p={p} />
       <WallFace x={WC_R - 6} base={CHAMBRE_BOT} w={6} p={p} />
