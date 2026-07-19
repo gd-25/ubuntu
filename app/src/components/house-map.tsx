@@ -339,16 +339,17 @@ const BED_GRID = [
 const SHOWER_GRID = [
   'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
   'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
-  'KTcMMMMcccccccccccccccccccccccTK',
-  'KTcMMMMcLLccccccccccccLLccccccTK',
-  'KTccMMccccccccccccccccccccccccTK',
-  'KTccMMccccccccKKccccccccccLLccTK',
-  'KTccMMccLLccccKKccccccccccccccTK',
-  'KTccMMccccccccccccccLLccccccccTK',
   'KTccccccccccccccccccccccccccccTK',
-  'KTccLLccccccccccccccccccccccccTK',
-  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
-  'KSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSK',
+  'KTccccccLLccccccccccccLLccccccTK',
+  'KTccccccccccccccccccccccccccccTK',
+  'KTccccccccccccKKccccccccccLLccTK',
+  'KTccccccLLccccKKccccccccccccccTK',
+  'KTccccccccccccccccccLLccccccccTK',
+  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
+  'KVVPPPVVVVVVVVVVVVVVVVVVVVPPPVVK',
+  'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
+  'KVPPVVVVVVVVVVVVPPPPVVVVVVVVVVVK',
+  'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
   'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
 ];
 
@@ -394,6 +395,40 @@ const TOILET_GRID = [
   'KTTTTK.KSSSSSK..',
   '.KKKK..KSSSSK...',
   '........KKKK....',
+];
+
+/**
+ * Canapé 2 places (16×26, échelle 2) : dossier contre le mur droit,
+ * accoudoirs avec dessus clair et face avant ombrée, deux coussins,
+ * pieds visibles.
+ */
+const COUCH_GRID = [
+  '.KKKKKKKKKKKKKK.',
+  'KGGGGGGGGGGGGGGK',
+  'KGGGGGGGGGGGGGGK',
+  'KDDDDDDDDDDDGGGK',
+  'KKKKKKKKKKKKGGGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KDDDDDDDDDDKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KSSSSSSSSSSKGSGK',
+  'KKKKKKKKKKKKGGGK',
+  'KGGGGGGGGGGGGGGK',
+  'KGGGGGGGGGGGGGGK',
+  'KDDDDDDDDDDDDDDK',
+  'KDDDDDDDDDDDDDDK',
+  '.KKKKKKKKKKKKKK.',
+  '..KKK......KKK..',
+  '..KKK......KKK..',
 ];
 
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
@@ -670,13 +705,21 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
       <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
 
-      {/* Douche 4×1,5 : sprite détaillé (receveur, carrelage, pomme, bonde) */}
+      {/* Douche 4×1,5 : sprite détaillé, grande vitre pleine largeur devant */}
       <PixelSprite
         x={0}
         y={WET_TOP + 1}
         scale={2}
         grid={SHOWER_GRID}
-        colors={{ K: p.outline, T: p.tub, c: p.tileAlt, M: p.railing, L: p.window, S: p.sofaLight }}
+        colors={{
+          K: p.outline,
+          T: p.tub,
+          c: p.tileAlt,
+          M: p.railing,
+          L: p.window,
+          V: p.window,
+          P: p.porcelain,
+        }}
       />
 
       {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
@@ -724,20 +767,29 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         }}
       />
 
-      {/* Canapé 2×3 : dossier et accoudoirs en barres rondes, 2 coussins */}
-      <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={3 * COL} rx={5} fill={p.outline} />
-      <Rect x={CX(20) + 1} y={RY(5) + 1} width={30} height={3 * COL - 2} rx={4} fill={p.sofaLight} />
-      <Rect x={CX(20) + 23} y={RY(5) + 2} width={8} height={3 * COL - 4} rx={4} fill={p.greyRug} />
-      <Rect x={CX(20) + 2} y={RY(5) + 1} width={26} height={8} rx={4} fill={p.greyRug} />
-      <Rect x={CX(20) + 2} y={RY(5) + 39} width={26} height={8} rx={4} fill={p.greyRug} />
-      <Rect x={CX(20) + 4} y={RY(5) + 11} width={20} height={12} rx={3} fill={p.sofaLight} />
-      <Rect x={CX(20) + 4} y={RY(5) + 25} width={20} height={12} rx={3} fill={p.sofaLight} />
-      <Rect x={CX(20) + 4} y={RY(5) + 23} width={20} height={2} fill={p.greyRugEdge} />
+      {/* Canapé 2×3 : sprite 3D (dossier, accoudoirs, coussins, pieds) */}
+      <PixelSprite
+        x={CX(20)}
+        y={RY(5) - 2}
+        scale={2}
+        grid={COUCH_GRID}
+        colors={{
+          K: p.outline,
+          G: p.greyRug,
+          S: p.sofaLight,
+          D: p.greyRugEdge,
+          L: p.porcelain,
+        }}
+      />
 
-      {/* Table basse 2×2 : plateau bois clair, chant sombre */}
-      <Rect x={CX(17)} y={RY(7)} width={2 * COL} height={2 * COL} fill={p.outline} />
-      <Rect x={CX(17) + 1} y={RY(7) + 1} width={30} height={24} fill={p.woodLight} />
-      <Rect x={CX(17) + 1} y={RY(7) + 25} width={30} height={6} fill={p.wood} />
+      {/* Table basse 2×2 : plateau bois sur pieds (3D) */}
+      <Rect x={CX(17) + 2} y={RY(7) + 24} width={5} height={7} rx={1} fill={p.outline} />
+      <Rect x={CX(17) + 25} y={RY(7) + 24} width={5} height={7} rx={1} fill={p.outline} />
+      <Rect x={CX(17) + 3} y={RY(7) + 25} width={3} height={5} fill={p.wood} />
+      <Rect x={CX(17) + 26} y={RY(7) + 25} width={3} height={5} fill={p.wood} />
+      <Rect x={CX(17)} y={RY(7)} width={2 * COL} height={26} rx={3} fill={p.outline} />
+      <Rect x={CX(17) + 1} y={RY(7) + 1} width={30} height={19} rx={2} fill={p.woodLight} />
+      <Rect x={CX(17) + 1} y={RY(7) + 20} width={30} height={5} rx={1} fill={p.wood} />
       <Rect x={CX(17) + 3} y={RY(7) + 3} width={26} height={2} fill={p.merisierLight} />
 
       {/* Colonne cuisine : dessus clair, flanc ombré, portes + poignées */}
@@ -804,6 +856,12 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
+      {/* Barre de douche fixée sur le mur blanc de la sdb : colonne + pomme */}
+      <Rect x={10} y={WET_TOP - 22} width={3} height={21} fill={p.railing} />
+      <Rect x={8} y={WET_TOP - 23} width={7} height={3} rx={1} fill={p.greyRug} />
+      <Rect x={13} y={WET_TOP - 20} width={7} height={3} fill={p.railing} />
+      <Rect x={18} y={WET_TOP - 18} width={6} height={7} rx={2} fill={p.greyRug} />
+      <Rect x={19} y={WET_TOP - 11} width={4} height={2} fill={p.window} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
