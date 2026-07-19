@@ -641,9 +641,9 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           le mur du bas le masque de 0,5 case */}
       <SvgImage
         x={LIT_L}
-        y={RY(6) - 53}
+        y={RY(6) - 61}
         width={48}
-        height={53}
+        height={61}
         preserveAspectRatio="xMidYMid meet"
         href={require('../../assets/images/bed.png')}
       />
