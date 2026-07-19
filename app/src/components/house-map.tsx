@@ -293,6 +293,103 @@ function PixelSprite({
  * Gen 3 : gros moniteur crème à écran sombre, unité à fente disquette.
  * (Il se pose sur la table du bureau, dessinée à part.)
  */
+/**
+ * Lit double détaillé (24×32, échelle 2 → 3×4 cases) : pied et tête de
+ * lit en bois, couette bleue à motifs, drap replié, oreiller détouré.
+ */
+const BED_GRID = [
+  '..KKKKKKKKKKKKKKKKKKKK..',
+  '.KwwwwwwwwwwwwwwwwwwwwK.',
+  'KWwWWWWWWWWWWWWWWWWWWwWK',
+  'KWMMMMMMMMMMMMMMMMMMMMWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBLLBBBBBBBBBBBBBLLBBWK',
+  'KWBBBbBBBBbBBBBbBBBBbBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBbBBBBbBBBBbBBBBbBBBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBBBbBBBBbBBBBbBBBBbBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBbBBBBbBBBBbBBBBbBBBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBBBbBBBBbBBBBbBBBBbBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWBbBBBBbBBBBbBBBBbBBBWK',
+  'KWBBBBBBBBBBBBBBBBBBBBWK',
+  'KWbbbbbbbbbbbbbbbbbbbbWK',
+  'KWPPPPPPPPPPPPPPPPPPPPWK',
+  'KWMMMMMMMMMMMMMMMMMMMMWK',
+  'KWMMMMMMMMMMMMMMMMMMMMWK',
+  'KWMMKKKKKKKKKKKKKKKKMMWK',
+  'KWMKPPPPPPPPPPPPPPPPKMWK',
+  'KWMKPPSSPPPPPPPPPPPPKMWK',
+  'KWMKPPPPPPPPPPPPPPPPKMWK',
+  'KWMMKKKKKKKKKKKKKKKKMMWK',
+  'KWMMMMMMMMMMMMMMMMMMMMWK',
+  'KWWWWWWWWWWWWWWWWWWWWWWK',
+  'KwwwwwwwwwwwwwwwwwwwwwwK',
+  'KwwwwwwwwwwwwwwwwwwwwwwK',
+  '.KKKKKKKKKKKKKKKKKKKKKK.',
+];
+
+/**
+ * Douche détaillée (32×12, échelle 2 → 4×1,5 cases) : receveur à rebord
+ * blanc, fond carrelé, colonne et pomme chromées, bonde, gouttes d'eau.
+ */
+const SHOWER_GRID = [
+  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
+  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
+  'KTcMMMMcccccccccccccccccccccccTK',
+  'KTcMMMMcLLccccccccccccLLccccccTK',
+  'KTccMMccccccccccccccccccccccccTK',
+  'KTccMMccccccccKKccccccccccLLccTK',
+  'KTccMMccLLccccKKccccccccccccccTK',
+  'KTccMMccccccccccccccLLccccccccTK',
+  'KTccccccccccccccccccccccccccccTK',
+  'KTccLLccccccccccccccccccccccccTK',
+  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
+  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
+];
+
+/**
+ * Baignoire détaillée (32×11, échelle 2 → 4×1,5 cases) : pilule à rebord
+ * blanc, eau avec reflets, robinet chromé à droite.
+ */
+const TUB_GRID = [
+  '...KKKKKKKKKKKKKKKKKKKKKKKKKK...',
+  '..KTTTTTTTTTTTTTTTTTTTTTTTTTTK..',
+  '.KTTwwwwwwwwwwwwwwwwwwwwwwwwTTK.',
+  'KTTwwLLLwwwwwwwwwwwwwwwwwwMMwwTK',
+  'KTwwwwwwwwwwwwwwwwwwwwwwwwMMwwTK',
+  'KTwwwwwwwwwwwwwwwwwwwwwwMMMMwwTK',
+  'KTwwLLwwwwwwwwwwwwwwwwwwwwwwwwTK',
+  'KTTwwwwwwwwwwwwLLwwwwwwwwwwwwTTK',
+  '.KTTwwwwwwwwwwwwwwwwwwwwwwwwTTK.',
+  '..KTTTTTTTTTTTTTTTTTTTTTTTTTTK..',
+  '...KKKKKKKKKKKKKKKKKKKKKKKKKK...',
+];
+
+/**
+ * Cuvette WC détaillée (16×14, échelle 1,5) : réservoir à bouton chromé
+ * contre la cloison, cuvette à lunette et eau.
+ */
+const TOILET_GRID = [
+  '.KKKK...........',
+  'KTTTTK..........',
+  'KTMMTK.KKKKK....',
+  'KTTTTKKTTTTTKK..',
+  'KTTTTKTTTTTTTTK.',
+  'KTSSTKTTKKKKTTK.',
+  'KTTTTKTKWWwwKTK.',
+  'KTTTTKTKWwwwKTK.',
+  'KTTTTKTKwwwwKTK.',
+  'KTTTTKTTKKKKTTK.',
+  'KTSSTKTTTTTTTTK.',
+  'KTTTTK.KTTTTTK..',
+  'KTTTTK..KKKKK...',
+  '.KKKK...........',
+];
+
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
 const PLANT_GRID = [
   '...KK.KK...',
@@ -544,9 +641,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <GlassDoor x={315} base={EXT_TOP} p={p} />
       {/* Trait blanc vertical qui relie le mur de l'avancée à la façade */}
       <WallV x={SALON_L - 0.75} y={EXT_TOP} h={HOUSE_TOP - EXT_TOP} p={p} />
-      {/* Mur du palier : face côté palier (mur extérieur de l'appartement) */}
-      <WallFace x={0} base={FLAT_BOTTOM + WALL_H} w={208} p={p} />
-      <WallFace x={240} base={FLAT_BOTTOM + WALL_H} w={MAP_W - 240} p={p} />
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
       {/* Bureau : table blanche 3 cases de large, pieds métal
@@ -570,59 +664,59 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
       <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
 
-      {/* Douche 4×1,5 : grand receveur arrondi, fond bleuté, bonde, pomme */}
-      <Rect x={2} y={WET_TOP + 2} width={4 * COL - 4} height={22} rx={5} fill={p.outline} />
-      <Rect x={3} y={WET_TOP + 3} width={4 * COL - 6} height={20} rx={4} fill={p.tub} />
-      <Rect x={7} y={WET_TOP + 7} width={4 * COL - 14} height={12} rx={4} fill={p.tileAlt} />
-      <Rect x={30} y={WET_TOP + 11} width={5} height={4} rx={2} fill={p.greyRugEdge} />
-      <Rect x={5} y={WET_TOP + 4} width={3} height={8} rx={1} fill={p.railing} />
-      <Rect x={4} y={WET_TOP + 12} width={6} height={5} rx={2} fill={p.greyRug} />
-      <Rect x={12} y={WET_TOP + 10} width={2} height={2} fill={p.window} />
-      <Rect x={15} y={WET_TOP + 14} width={2} height={2} fill={p.window} />
-      <Rect x={12} y={WET_TOP + 17} width={2} height={2} fill={p.window} />
+      {/* Douche 4×1,5 : sprite détaillé (receveur, carrelage, pomme, bonde) */}
+      <PixelSprite
+        x={0}
+        y={WET_TOP + 1}
+        scale={2}
+        grid={SHOWER_GRID}
+        colors={{ K: p.outline, T: p.tub, c: p.tileAlt, M: p.railing, L: p.window }}
+      />
 
-      {/* Baignoire 4×1,5 : grande pilule, eau, robinet à droite */}
-      <Rect x={1} y={FLAT_BOTTOM - 25} width={4 * COL - 2} height={22} rx={10} fill={p.outline} />
-      <Rect x={2} y={FLAT_BOTTOM - 24} width={4 * COL - 4} height={20} rx={9} fill={p.tub} />
-      <Rect x={7} y={FLAT_BOTTOM - 20} width={4 * COL - 22} height={12} rx={6} fill={p.water} />
-      <Rect x={10} y={FLAT_BOTTOM - 17} width={12} height={3} rx={1} fill={p.tileAlt} />
-      <Rect x={52} y={FLAT_BOTTOM - 22} width={8} height={5} rx={1} fill={p.railing} />
-      <Rect x={55} y={FLAT_BOTTOM - 17} width={2} height={4} fill={p.railing} />
+      {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, robinet) */}
+      <PixelSprite
+        x={0}
+        y={FLAT_BOTTOM - 24}
+        scale={2}
+        grid={TUB_GRID}
+        colors={{ K: p.outline, T: p.tub, w: p.water, L: p.tileAlt, M: p.railing }}
+      />
 
-      {/* Lit 3×4 remonté d'une case (rangées 2-5) : cadre bois arrondi,
-          couette à motifs, drap, oreiller — le mur du bas le masquera */}
-      <Rect x={LIT_L} y={RY(2)} width={48} height={4 * COL} rx={5} fill={p.outline} />
-      <Rect x={LIT_L + 1} y={RY(2) + 1} width={46} height={4 * COL - 2} rx={4} fill={p.wood} />
-      <Rect x={LIT_L + 3} y={RY(2) + 3} width={42} height={4 * COL - 8} rx={3} fill={p.mattress} />
-      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={36} rx={3} fill={p.blanket} />
-      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={4} rx={2} fill={p.sofaDark} />
-      {Array.from({ length: 5 }).map((_, i) =>
-        Array.from({ length: 4 }).map((_, j) =>
-          (i + j) % 2 === 0 ? (
-            <Rect
-              key={`bl${i}-${j}`}
-              x={LIT_L + 6 + i * 8}
-              y={RY(2) + 10 + j * 8}
-              width={4}
-              height={4}
-              fill={p.sofaDark}
-            />
-          ) : null
-        )
-      )}
-      <Rect x={LIT_L + 3} y={RY(2) + 39} width={42} height={3} fill={p.pillow} />
-      <Rect x={LIT_L + 6} y={RY(2) + 46} width={36} height={13} rx={5} fill={p.greyRugEdge} />
-      <Rect x={LIT_L + 7} y={RY(2) + 47} width={34} height={11} rx={4} fill={p.porcelain} />
+      {/* Lit 3×4 remonté d'une case (rangées 2-5) : sprite détaillé,
+          le mur du bas le masque de 0,5 case */}
+      <PixelSprite
+        x={LIT_L}
+        y={RY(2)}
+        scale={2}
+        grid={BED_GRID}
+        colors={{
+          K: p.outline,
+          W: p.wood,
+          w: p.woodLight,
+          M: p.mattress,
+          B: p.blanket,
+          b: p.sofaDark,
+          L: p.window,
+          P: p.porcelain,
+          S: p.greyRugEdge,
+        }}
+      />
 
-      {/* WC : réservoir à bouton contre la cloison + cuvette ronde à lunette */}
-      <Rect x={CUISINE_L + 1} y={WET_TOP + 6} width={7} height={20} rx={2} fill={p.outline} />
-      <Rect x={CUISINE_L + 2} y={WET_TOP + 7} width={5} height={18} rx={2} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 3} y={WET_TOP + 9} width={3} height={3} rx={1} fill={p.railing} />
-      <Rect x={CUISINE_L + 3} y={WET_TOP + 14} width={3} height={1} fill={p.greyRugEdge} />
-      <Rect x={CUISINE_L + 7} y={WET_TOP + 9} width={14} height={14} rx={7} fill={p.outline} />
-      <Rect x={CUISINE_L + 8} y={WET_TOP + 10} width={12} height={12} rx={6} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 11} y={WET_TOP + 13} width={6} height={6} rx={3} fill={p.tileAlt} />
-      <Rect x={CUISINE_L + 11} y={WET_TOP + 14} width={2} height={2} fill={p.water} />
+      {/* WC : sprite détaillé (réservoir à bouton, cuvette à lunette, eau) */}
+      <PixelSprite
+        x={CUISINE_L + 1}
+        y={WET_TOP + 5}
+        scale={1.5}
+        grid={TOILET_GRID}
+        colors={{
+          K: p.outline,
+          T: p.porcelain,
+          S: p.sofaLight,
+          M: p.railing,
+          W: p.window,
+          w: p.water,
+        }}
+      />
 
       {/* Canapé 2×3 : dossier et accoudoirs en barres rondes, 2 coussins */}
       <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={3 * COL} rx={5} fill={p.outline} />
