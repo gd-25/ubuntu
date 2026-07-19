@@ -1,5 +1,5 @@
 import { memo, type ReactElement } from 'react';
-import Svg, { Defs, G, Line, Pattern, Rect } from 'react-native-svg';
+import Svg, { Defs, G, Line, Pattern, Polygon, Rect } from 'react-native-svg';
 
 import { COL, FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
 
@@ -336,21 +336,27 @@ const BED_GRID = [
  * Douche détaillée (32×12, échelle 2 → 4×1,5 cases) : receveur à rebord
  * blanc, fond carrelé, colonne et pomme chromées, bonde, gouttes d'eau.
  */
-const SHOWER_GRID = [
-  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
-  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
-  'KTWWWWWWWWWWWWWWWWWWWWWWWWWWWWTK',
-  'KTWSWWWSWWWWSWWWWWSWWWSWWWWSWWTK',
-  'KTWWWWSWWWSWWWWSWWWWWWSWWWWWWWTK',
-  'KTWSWWWWWWWWWWKKWWWSWWWWWSWWWWTK',
-  'KTWWWWSWWWSWWWKKWWWWWWSWWWWWSWTK',
-  'KTWSWWWWWWSWWWWWWWSWWWWWWWWWWWTK',
-  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
-  'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
-  'KVWWWVVVVVVVVVVVVVVVVVVVVVWWWVVK',
-  'KVVVVVVVVVVVVVVVVVVVVWWVVVVVVVVK',
-  'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
-  'KDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDK',
+/**
+ * Sol de la douche en opus incertum : pierres polygonales irrégulières
+ * (points relatifs au coin haut-gauche du sol) sur fond de joints clairs.
+ * `c` indexe le ton de pierre dans le composant.
+ */
+const SHOWER_STONES: { pts: number[][]; c: number }[] = [
+  { pts: [[0, 0], [9, 0], [8, 7], [0, 9]], c: 0 },
+  { pts: [[11, 0], [21, 0], [19, 8], [10, 9]], c: 1 },
+  { pts: [[23, 0], [33, 0], [34, 9], [21, 10]], c: 2 },
+  { pts: [[35, 0], [46, 0], [44, 7], [36, 9]], c: 1 },
+  { pts: [[48, 0], [64, 0], [64, 8], [47, 9]], c: 0 },
+  { pts: [[0, 11], [7, 9], [9, 11], [8, 18], [0, 17]], c: 3 },
+  { pts: [[10, 11], [19, 10], [22, 12], [20, 19], [11, 20]], c: 0 },
+  { pts: [[23, 12], [33, 11], [35, 18], [24, 20]], c: 1 },
+  { pts: [[36, 11], [45, 9], [47, 17], [37, 19]], c: 2 },
+  { pts: [[48, 11], [64, 10], [64, 18], [49, 19]], c: 1 },
+  { pts: [[0, 19], [8, 20], [10, 24], [0, 24]], c: 1 },
+  { pts: [[10, 22], [21, 21], [23, 24], [11, 24]], c: 2 },
+  { pts: [[24, 22], [35, 20], [36, 24], [25, 24]], c: 0 },
+  { pts: [[38, 21], [48, 19], [50, 24], [39, 24]], c: 3 },
+  { pts: [[50, 21], [64, 20], [64, 24], [51, 24]], c: 0 },
 ];
 
 /**
@@ -676,21 +682,15 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
       <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
 
-      {/* Douche 4×1,5 : sprite détaillé, grande vitre pleine largeur devant */}
-      <PixelSprite
-        x={0}
-        y={WET_TOP + 1}
-        scale={2}
-        grid={SHOWER_GRID}
-        colors={{
-          K: p.outline,
-          T: p.tub,
-          W: p.porcelain,
-          S: p.sofaLight,
-          V: p.window,
-          D: p.greyRugEdge,
-        }}
-      />
+      {/* Douche : juste le sol 4×1,5 en opus incertum (pierres + joints) */}
+      <Rect x={0} y={WET_TOP} width={4 * COL} height={24} fill={p.mattress} />
+      {SHOWER_STONES.map(({ pts, c }, i) => (
+        <Polygon
+          key={`st${i}`}
+          points={pts.map(([sx, sy]) => `${sx},${WET_TOP + sy}`).join(' ')}
+          fill={[p.parquet, p.beigeRug, p.bureauFloor, p.pathEdge][c]}
+        />
+      ))}
 
       {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
       <PixelSprite
@@ -824,12 +824,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
-      {/* Pomme de douche qui sort du mur blanc, gouttes dans le receveur */}
-      <Rect x={13} y={WET_TOP - 9} width={6} height={4} rx={1} fill={p.railing} />
-      <Rect x={10} y={WET_TOP - 6} width={12} height={5} rx={2} fill={p.greyRug} />
-      <Rect x={11} y={WET_TOP + 2} width={2} height={3} fill={p.window} />
-      <Rect x={15} y={WET_TOP + 4} width={2} height={3} fill={p.window} />
-      <Rect x={19} y={WET_TOP + 2} width={2} height={3} fill={p.window} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
