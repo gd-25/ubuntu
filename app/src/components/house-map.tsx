@@ -348,6 +348,7 @@ const SHOWER_GRID = [
   'KTccccccccccccccccccccccccccccTK',
   'KTccLLccccccccccccccccccccccccTK',
   'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
+  'KSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSK',
   'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
 ];
 
@@ -365,8 +366,11 @@ const TUB_GRID = [
   'KTwwLLwwwwwwwwwwwwwwwwwwwwwwwwTK',
   'KTTwwwwwwwwwwwwLLwwwwwwwwwwwwTTK',
   '.KTTwwwwwwwwwwwwwwwwwwwwwwwwTTK.',
-  '..KTTTTTTTTTTTTTTTTTTTTTTTTTTK..',
-  '...KKKKKKKKKKKKKKKKKKKKKKKKKK...',
+  '.KTTTTTTTTTTTTTTTTTTTTTTTTTTTTK.',
+  '.KTTTTTTTTTTTTTTTTTTTTTTTTTTTTK.',
+  '.KSSTTTTTTTTTTTTTTTTTTTTTTTTSSK.',
+  '..KKKKKKKKKKKKKKKKKKKKKKKKKKKK..',
+  '....KKK..................KKK....',
 ];
 
 /**
@@ -376,18 +380,20 @@ const TUB_GRID = [
 const TOILET_GRID = [
   '.KKKK...........',
   'KTTTTK..........',
-  'KTMMTK.KKKKK....',
+  'KTMMTK..........',
+  'KTTTTK.KKKKK....',
   'KTTTTKKTTTTTKK..',
-  'KTTTTKTTTTTTTTK.',
-  'KTSSTKTTKKKKTTK.',
+  'KTSSTKTTTTTTTTK.',
+  'KTTTTKTTKKKKTTK.',
   'KTTTTKTKWWwwKTK.',
   'KTTTTKTKWwwwKTK.',
   'KTTTTKTKwwwwKTK.',
-  'KTTTTKTTKKKKTTK.',
-  'KTSSTKTTTTTTTTK.',
+  'KTSSTKTTKKKKTTK.',
+  'KTTTTKTTTTTTTTK.',
   'KTTTTK.KTTTTTK..',
-  'KTTTTK..KKKKK...',
-  '.KKKK...........',
+  'KTTTTK.KSSSSSK..',
+  '.KKKK..KSSSSK...',
+  '........KKKK....',
 ];
 
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
@@ -670,16 +676,16 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         y={WET_TOP + 1}
         scale={2}
         grid={SHOWER_GRID}
-        colors={{ K: p.outline, T: p.tub, c: p.tileAlt, M: p.railing, L: p.window }}
+        colors={{ K: p.outline, T: p.tub, c: p.tileAlt, M: p.railing, L: p.window, S: p.sofaLight }}
       />
 
-      {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, robinet) */}
+      {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
       <PixelSprite
         x={0}
-        y={FLAT_BOTTOM - 24}
+        y={FLAT_BOTTOM - 27}
         scale={2}
         grid={TUB_GRID}
-        colors={{ K: p.outline, T: p.tub, w: p.water, L: p.tileAlt, M: p.railing }}
+        colors={{ K: p.outline, T: p.tub, w: p.water, L: p.tileAlt, M: p.railing, S: p.sofaLight }}
       />
 
       {/* Lit 3×4 remonté d'une case (rangées 2-5) : sprite détaillé,
