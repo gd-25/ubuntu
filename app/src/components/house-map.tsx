@@ -41,6 +41,8 @@ interface Palette {
   doormat: string;
   tile: string;
   tileAlt: string;
+  merisier: string;
+  merisierDark: string;
   beigeRug: string;
   beigeRugEdge: string;
   greyRug: string;
@@ -82,6 +84,8 @@ const DAY: Palette = {
   doormat: '#8A6030',
   tile: '#CFE8EC',
   tileAlt: '#BEDDE2',
+  merisier: '#9C5A38',
+  merisierDark: '#7E4628',
   beigeRug: '#B49A6A',
   beigeRugEdge: '#D0BC90',
   greyRug: '#A8A8B0',
@@ -123,6 +127,8 @@ const NIGHT: Palette = {
   doormat: '#5E401E',
   tile: '#5E7880',
   tileAlt: '#526A72',
+  merisier: '#5E3622',
+  merisierDark: '#48291A',
   beigeRug: '#5A4E36',
   beigeRugEdge: '#6A5C40',
   greyRug: '#55555E',
@@ -359,6 +365,10 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={326} y={592} width={18} height={24} fill={p.greyRug} />
       {/* Table basse carrée en bois, face au canapé */}
       <Rect x={282} y={590} width={32} height={32} fill={p.wood} />
+
+      {/* Colonne cuisine merisier, collée à droite de la cloison chambre */}
+      <Rect x={185} y={449} width={24} height={108} fill={p.merisier} />
+      <Rect x={205} y={449} width={4} height={108} fill={p.merisierDark} />
 
       {/* Grande table blanche 2×1 en haut à droite du salon */}
       <Rect x={282} y={452} width={60} height={30} fill={p.tub} />

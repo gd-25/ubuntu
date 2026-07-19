@@ -92,7 +92,7 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   salon: {
     greg: { x: 228, y: 504 },
     fiona: { x: 252, y: 470 },
-    ubuntu: { x: 214, y: 542 },
+    ubuntu: { x: 232, y: 540 },
   },
   wc: {
     greg: { x: 216, y: 568 },
