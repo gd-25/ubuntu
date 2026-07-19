@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarSprite } from '@/components/avatar-sprite';
 import { EpisodeTimeline } from '@/components/episode-timeline';
+import { GridDots } from '@/components/grid-dots';
 import { HouseMap } from '@/components/house-map';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Text } from '@/components/text';
@@ -77,6 +78,7 @@ export default function HouseScreen() {
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
   const [hoverZone, setHoverZone] = useState<Space | null>(null);
+  const [draggingAvatar, setDraggingAvatar] = useState(false);
   const [mapLayout, setMapLayout] = useState({ w: 0, h: 0 });
 
   // --- État live (agent, session, balade) ---
@@ -513,6 +515,9 @@ export default function HouseScreen() {
           <View style={{ width: MAP_W * scale, height: mapHeight, alignSelf: 'center' }}>
             <HouseMap night={scheme === 'dark'} />
 
+            {/* Points aimantés des cases utilisables, pendant le drag */}
+            {draggingAvatar ? <GridDots night={scheme === 'dark'} /> : null}
+
             {/* Surbrillance de la zone survolée (l'aimant « s'allume ») —
                 une zone peut couvrir plusieurs rectangles (salon + avancée). */}
             {hoverZone
@@ -549,6 +554,7 @@ export default function HouseScreen() {
                 zIndex={AVATARS[person].z}
                 onDropped={handleDrop}
                 onHoverSpace={handleHover}
+                onDragChange={setDraggingAvatar}
                 onTap={person === 'ubuntu' ? () => setMenuOpen(true) : undefined}
               />
             ))}

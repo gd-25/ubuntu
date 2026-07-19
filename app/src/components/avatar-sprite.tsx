@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/immutability -- les écritures de shared values
    Reanimated (.value) dans les worklets de geste sont le fonctionnement normal
    de la lib ; le React Compiler saute déjà ce composant. */
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
@@ -15,11 +16,30 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { MAP_H, MAP_W, SLOTS, ZONE_RECTS } from '@/lib/house';
+import {
+  COL,
+  FLAT_BOTTOM,
+  GRID_COLS,
+  GRID_TOP,
+  MAP_H,
+  MAP_W,
+  OUTSIDE_BOTTOM,
+  SLOTS,
+  WALKABLE_CELLS,
+  WALKABLE_SET,
+  ZONE_RECTS,
+} from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
 
 /** Aimant très sec : ~150 ms, quasi aucun dépassement de la cible. */
 const SPRING = { damping: 32, stiffness: 900, overshootClamping: true };
+
+/** Rayon (unités carte) dans lequel un point attire doucement l'avatar. */
+const MAGNET_RADIUS = 12;
+/** Force de l'aimant au centre du point (0 = rien, 1 = collé). */
+const MAGNET_PULL = 0.55;
+/** Rayon dans lequel « passer près d'un point » déclenche le haptic. */
+const HAPTIC_RADIUS = 9;
 
 /** Zone contenant le point (x, y) — version worklet de spaceAt. */
 function zoneAt(x: number, y: number): Space {
@@ -30,10 +50,17 @@ function zoneAt(x: number, y: number): Space {
   return 'salon';
 }
 
+/** Petit tic haptique quand on passe près d'un point de la grille. */
+function hapticTick() {
+  Haptics.selectionAsync().catch(() => {});
+}
+
 /**
  * Un avatar déplaçable sur le plan. Les coordonnées internes sont en unités
- * carte (360×460) ; `scale` convertit vers les pixels écran. L'aimant :
- * au lâcher, l'avatar file vers l'ancrage de sa zone avec un ressort.
+ * carte, `scale` convertit vers les pixels écran. Pendant le drag, chaque
+ * case utilisable a un point légèrement aimanté (tic haptique au passage) ;
+ * au lâcher sur la grille, l'avatar reste sur le point le plus proche. Hors
+ * grille (dehors, palier), il file vers l'ancrage de sa zone.
  */
 export function AvatarSprite({
   person,
@@ -45,11 +72,12 @@ export function AvatarSprite({
   zIndex,
   onDropped,
   onHoverSpace,
+  onDragChange,
   onTap,
 }: {
   person: Person;
   source: number;
-  /** Zone actuelle (état synchronisé) — l'avatar est aimanté sur son ancrage. */
+  /** Zone actuelle (état synchronisé). */
   space: Space;
   scale: number;
   /** Taille affichée, en unités carte. */
@@ -58,6 +86,7 @@ export function AvatarSprite({
   zIndex: number;
   onDropped: (person: Person, space: Space) => void;
   onHoverSpace: (space: Space | null) => void;
+  onDragChange?: (dragging: boolean) => void;
   onTap?: () => void;
 }) {
   const x = useSharedValue(SLOTS[space][person].x);
@@ -66,6 +95,10 @@ export function AvatarSprite({
   const startY = useSharedValue(0);
   const dragging = useSharedValue(false);
   const hover = useSharedValue<Space | ''>('');
+  const nearCell = useSharedValue('');
+  /** Zone du dernier lâcher sur un point : l'effet de zone ne doit pas
+      re-aimanter vers l'ancrage (l'avatar reste sur son point). */
+  const keepCellFor = useSharedValue<Space | ''>('');
   const bob = useSharedValue(0);
 
   // Respiration pixel : petit va-et-vient vertical permanent.
@@ -77,12 +110,18 @@ export function AvatarSprite({
     );
   }, [bob]);
 
-  // Aimant : à chaque changement de zone (local ou realtime), ressort vers l'ancrage.
+  // Changement de zone (local ou realtime) : ressort vers l'ancrage, sauf si
+  // l'avatar vient d'être posé sur un point de cette zone.
   useEffect(() => {
+    if (keepCellFor.value === space) {
+      keepCellFor.value = '';
+      return;
+    }
+    keepCellFor.value = '';
     const slot = SLOTS[space][person];
     x.value = withSpring(slot.x, SPRING);
     y.value = withSpring(slot.y, SPRING);
-  }, [space, person, x, y]);
+  }, [space, person, x, y, keepCellFor]);
 
   const pan = Gesture.Pan()
     .minDistance(6)
@@ -91,12 +130,40 @@ export function AvatarSprite({
       startX.value = x.value;
       startY.value = y.value;
       hover.value = '';
+      nearCell.value = '';
+      if (onDragChange) runOnJS(onDragChange)(true);
     })
     .onUpdate((e) => {
-      const nx = startX.value + e.translationX / scale;
-      const ny = startY.value + e.translationY / scale;
-      x.value = Math.min(Math.max(nx, 14), MAP_W - 14);
-      y.value = Math.min(Math.max(ny, 20), MAP_H - 20);
+      const nx = Math.min(Math.max(startX.value + e.translationX / scale, 14), MAP_W - 14);
+      const ny = Math.min(Math.max(startY.value + e.translationY / scale, 20), MAP_H - 20);
+
+      // Case de la grille la plus proche du doigt.
+      const col = Math.min(GRID_COLS - 1, Math.max(0, Math.round((nx - COL / 2) / COL)));
+      const row = Math.min(9, Math.max(-3, Math.round((ny - GRID_TOP - COL / 2) / COL)));
+      const key = `${col},${row}`;
+
+      if (WALKABLE_SET[key]) {
+        const cx = col * COL + COL / 2;
+        const cy = GRID_TOP + row * COL + COL / 2;
+        const d = Math.hypot(nx - cx, ny - cy);
+        if (d < MAGNET_RADIUS) {
+          // Aimant doux : plus on est près du point, plus il attire.
+          const t = (1 - d / MAGNET_RADIUS) * MAGNET_PULL;
+          x.value = nx + (cx - nx) * t;
+          y.value = ny + (cy - ny) * t;
+          if (d < HAPTIC_RADIUS && nearCell.value !== key) {
+            nearCell.value = key;
+            runOnJS(hapticTick)();
+          }
+        } else {
+          x.value = nx;
+          y.value = ny;
+        }
+      } else {
+        x.value = nx;
+        y.value = ny;
+      }
+
       const zone = zoneAt(x.value, y.value);
       if (zone !== hover.value) {
         hover.value = zone;
@@ -104,8 +171,28 @@ export function AvatarSprite({
       }
     })
     .onEnd(() => {
+      // Lâcher sur la grille : l'avatar reste sur le point le plus proche.
+      if (y.value >= OUTSIDE_BOTTOM && y.value < FLAT_BOTTOM) {
+        let bestX = 0;
+        let bestY = 0;
+        let bestD = Number.MAX_VALUE;
+        for (const c of WALKABLE_CELLS) {
+          const d = (c.x - x.value) * (c.x - x.value) + (c.y - y.value) * (c.y - y.value);
+          if (d < bestD) {
+            bestD = d;
+            bestX = c.x;
+            bestY = c.y;
+          }
+        }
+        x.value = withSpring(bestX, SPRING);
+        y.value = withSpring(bestY, SPRING);
+        const zone = zoneAt(bestX, bestY);
+        keepCellFor.value = zone;
+        runOnJS(onDropped)(person, zone);
+        return;
+      }
+      // Hors grille (dehors, palier) : aimant vers l'ancrage de la zone.
       const zone = zoneAt(x.value, y.value);
-      // Aimant immédiat (même zone → l'effet React ne re-déclenchera pas).
       x.value = withSpring(SLOTS[zone][person].x, SPRING);
       y.value = withSpring(SLOTS[zone][person].y, SPRING);
       runOnJS(onDropped)(person, zone);
@@ -114,6 +201,7 @@ export function AvatarSprite({
       dragging.value = false;
       hover.value = '';
       runOnJS(onHoverSpace)(null);
+      if (onDragChange) runOnJS(onDragChange)(false);
     });
 
   const tap = Gesture.Tap()

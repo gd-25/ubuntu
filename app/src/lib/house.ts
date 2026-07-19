@@ -9,16 +9,37 @@ import type { Person, SolitudeType, Space } from '@/lib/types';
  *   BUREAU | CHAMBRE |      SALON
  *   SDB    |      COULOIR / WC / SALON (espace ouvert)
  *   COULOIR EXT (palier, moquette noire)
+ *
+ * L'appartement est standardisé sur une grille de carrés COL×COL (16 px,
+ * la largeur d'une latte de parquet) : 22 colonnes de large au total,
+ * soit bureau (6) + chambre (5) + cuisine (5) + salon (6), et des rangées
+ * ancrées sur le haut de la maison (y=449). Toutes les frontières de
+ * pièces tombent sur la grille :
+ *
+ *   x=0    x=96    x=176    x=256      x=352
+ *   | bureau | chambre | cuisine | salon |     bureau 5 rangées (0-4)
+ *   |sdb |coul.|       | wc(4×2)|             sdb+wc dès la rangée 5
+ *   x=0  x=64 x=96    x=176   x=240
+ *
+ *   Balcon : 3 rangées (y=401..449), avancée du salon : 2 (y=417..449).
+ *   Chambre : 7 rangées (bas y=561). Sdb : 5 rangées (y=529..609), qui
+ *   touche le mur du palier. Bas de l'appartement = rangée 10 (y=609).
  */
 
-export const MAP_W = 360;
-export const MAP_H = 700;
+/** Côté d'un carré de la grille (largeur d'une latte de parquet). */
+export const COL = 16;
+/** La carte fait exactement 22 colonnes de large. */
+export const GRID_COLS = 22;
 
-/** Frontières horizontales des bandes hautes. */
-export const OUTSIDE_BOTTOM = 384;
+export const MAP_W = GRID_COLS * COL; // 352
+/** Bas de la carte : palier de 3 cases sous l'appartement (rangées 10-12). */
+export const MAP_H = 657;
+
+/** Frontières horizontales des bandes hautes (sur la grille). */
+export const OUTSIDE_BOTTOM = 401; // haut du balcon (3 rangées)
 export const BALCONY_BOTTOM = 449;
-/** Bas de l'appartement (mur avec le palier). */
-export const FLAT_BOTTOM = 660;
+/** Bas de l'appartement (mur avec le palier), rangée 10 de la grille. */
+export const FLAT_BOTTOM = 609;
 
 export interface Rect {
   x: number;
@@ -27,6 +48,52 @@ export interface Rect {
   h: number;
 }
 
+// ------------------------------------------------------------ Grille de jeu
+
+/** Haut de la maison = rangée 0 de la grille (le balcon est en rangées -3..-1). */
+export const GRID_TOP = 449;
+
+/** Centre de la case (col, rangée) en coordonnées carte. */
+export function cellCenter(col: number, row: number): { x: number; y: number } {
+  return { x: col * COL + COL / 2, y: GRID_TOP + row * COL + COL / 2 };
+}
+
+/**
+ * Une case est meublée (donc non utilisable) si un meuble l'occupe.
+ * Les murs sont sur les frontières : ils ne bloquent pas de case.
+ */
+function isFurnished(col: number, row: number): boolean {
+  if (row === 0 && col <= 1) return true; // bureau blanc
+  if (row === 4 && col <= 3) return true; // armoire du bureau
+  if (col <= 1 && (row === 5 || row === 6)) return true; // douche
+  if (row === 9 && col <= 3) return true; // baignoire
+  if (col >= 8 && col <= 10 && row >= 3 && row <= 6) return true; // lit
+  if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
+  if (row === 4 && col >= 11 && col <= 14) return true; // meuble cuisine (mur WC)
+  if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
+  if (col >= 20 && row >= 5 && row <= 7) return true; // canapé 2×3
+  if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
+  if (row === 9 && col >= 4 && col <= 12) return true; // étagères
+  return false;
+}
+
+/**
+ * Cases utilisables par les avatars : le balcon (rangées -3..-1, avancée du
+ * salon comprise) et tout l'intérieur (rangées 0-9) hors meubles. Le dehors
+ * et le palier ne sont pas quadrillés : on y retombe sur l'ancrage de zone.
+ */
+export const WALKABLE_CELLS: { col: number; row: number; x: number; y: number }[] = [];
+for (let row = -3; row <= 9; row++) {
+  for (let col = 0; col < GRID_COLS; col++) {
+    if (isFurnished(col, row)) continue;
+    WALKABLE_CELLS.push({ col, row, ...cellCenter(col, row) });
+  }
+}
+
+/** Index `col,row` → true, pour les worklets (lookup O(1)). */
+export const WALKABLE_SET: Record<string, true> = {};
+for (const c of WALKABLE_CELLS) WALKABLE_SET[`${c.col},${c.row}`] = true;
+
 /**
  * Rectangles de hit-test, ORDONNÉS : le premier qui contient le point gagne
  * (les petites pièces avant les grandes, l'avancée du salon avant le balcon).
@@ -34,14 +101,17 @@ export interface Rect {
  * balcon. L'union pave toute la carte.
  */
 export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
-  { space: 'wc', rect: { x: 184, y: 559, w: 56, h: 30 } },
-  { space: 'sdb', rect: { x: 0, y: 567, w: 72, h: 93 } },
-  { space: 'chambre', rect: { x: 105, y: 449, w: 79, h: 140 } },
-  { space: 'bureau', rect: { x: 0, y: 449, w: 105, h: 140 } },
-  { space: 'couloir_int', rect: { x: 72, y: 589, w: 124, h: 71 } },
+  { space: 'wc', rect: { x: 11 * COL, y: 529, w: 4 * COL, h: 2 * COL } },
+  { space: 'sdb', rect: { x: 0, y: 529, w: 4 * COL, h: 5 * COL } },
+  { space: 'chambre', rect: { x: 6 * COL, y: 449, w: 5 * COL, h: 7 * COL } },
+  // Le bureau (5 rangées) inclut la rangée de l'armoire, cols 4-5 comprises.
+  { space: 'bureau', rect: { x: 0, y: 449, w: 6 * COL, h: 5 * COL } },
+  // Couloir : cols 4-5 le long de la sdb + sous la chambre (rangées 7-9).
+  { space: 'couloir_int', rect: { x: 4 * COL, y: 529, w: 2 * COL, h: 5 * COL } },
+  { space: 'couloir_int', rect: { x: 6 * COL, y: 561, w: 5 * COL, h: 3 * COL } },
   // Avancée du salon sur le balcon (avant le balcon dans l'ordre).
-  { space: 'salon', rect: { x: 262, y: 410, w: 98, h: 39 } },
-  { space: 'salon', rect: { x: 184, y: 449, w: 176, h: 211 } },
+  { space: 'salon', rect: { x: 16 * COL, y: 417, w: 6 * COL, h: 2 * COL } },
+  { space: 'salon', rect: { x: 11 * COL, y: 449, w: 11 * COL, h: 10 * COL } },
   { space: 'balcon', rect: { x: 0, y: OUTSIDE_BOTTOM, w: MAP_W, h: BALCONY_BOTTOM - OUTSIDE_BOTTOM } },
   { space: 'dehors', rect: { x: 0, y: 0, w: MAP_W, h: OUTSIDE_BOTTOM } },
   { space: 'couloir_ext', rect: { x: 0, y: FLAT_BOTTOM, w: MAP_W, h: MAP_H - FLAT_BOTTOM } },
@@ -75,14 +145,14 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 218, y: 420 },
   },
   bureau: {
-    greg: { x: 34, y: 506 },
-    fiona: { x: 72, y: 538 },
-    ubuntu: { x: 46, y: 556 },
+    greg: { x: 34, y: 500 },
+    fiona: { x: 70, y: 480 },
+    ubuntu: { x: 76, y: 514 },
   },
   sdb: {
-    greg: { x: 36, y: 584 },
-    fiona: { x: 38, y: 606 },
-    ubuntu: { x: 40, y: 622 },
+    greg: { x: 36, y: 548 },
+    fiona: { x: 24, y: 570 },
+    ubuntu: { x: 44, y: 578 },
   },
   chambre: {
     greg: { x: 124, y: 500 },
@@ -92,22 +162,22 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   salon: {
     greg: { x: 228, y: 504 },
     fiona: { x: 252, y: 470 },
-    ubuntu: { x: 232, y: 540 },
+    ubuntu: { x: 296, y: 540 },
   },
   wc: {
-    greg: { x: 216, y: 568 },
-    fiona: { x: 198, y: 578 },
-    ubuntu: { x: 224, y: 578 },
+    greg: { x: 216, y: 542 },
+    fiona: { x: 200, y: 548 },
+    ubuntu: { x: 228, y: 548 },
   },
   couloir_int: {
-    greg: { x: 92, y: 610 },
-    fiona: { x: 134, y: 614 },
-    ubuntu: { x: 172, y: 612 },
+    greg: { x: 92, y: 568 },
+    fiona: { x: 134, y: 572 },
+    ubuntu: { x: 166, y: 570 },
   },
   couloir_ext: {
-    greg: { x: 80, y: 679 },
-    fiona: { x: 180, y: 677 },
-    ubuntu: { x: 276, y: 681 },
+    greg: { x: 80, y: 630 },
+    fiona: { x: 180, y: 628 },
+    ubuntu: { x: 276, y: 632 },
   },
 };
 
