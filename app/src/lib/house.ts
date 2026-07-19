@@ -22,7 +22,7 @@ import type { Person, SolitudeType, Space } from '@/lib/types';
  *   x=0  x=64 x=96    x=176   x=240
  *
  *   Balcon : 3 rangées (y=401..449), avancée du salon : 2 (y=417..449).
- *   Chambre : 7 rangées (bas y=561). Sdb : 5 rangées (y=529..609), qui
+ *   Chambre : 7 rangées (bas y=561). Sdb : 4 rangées (y=545..609), qui
  *   touche le mur du palier. Bas de l'appartement = rangée 10 (y=609).
  */
 
@@ -69,12 +69,15 @@ function isFurnished(col: number, row: number): boolean {
   // Rangée du balcon cachée par le mur haut de l'avancée.
   if (row === -3 && col >= 16) return true;
   if (row === 0 && col <= 2) return true; // table du bureau (3 de large)
-  if (row === 4 && col <= 3) return true; // rangée cachée par le mur sdb
-  if (row === 5 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
+  if (row === 5 && col <= 3) return true; // rangée cachée par le mur sdb
+  if (row === 6 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
   if (row === 9 && col <= 3) return true; // baignoire (4×1,5 en bas)
   if (col >= 8 && col <= 10 && row >= 2 && row <= 6) return true; // lit + mur
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
-  if (row === 4 && col >= 11 && col <= 14) return true; // rangée cachée par le mur wc
+  if (row === 4 && col >= 11 && col <= 13) return true; // rangée cachée par le mur wc
+  if (row === 6 && col === 12) return true; // derrière le mur prolongé sous le lit
+  if (col === 14 && row >= 4 && row <= 6) return true; // table aux plantes
+  if (col === 21 && (row === 2 || row === 3)) return true; // meuble à lampe
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
   if (col >= 20 && row >= 6 && row <= 8) return true; // canapé 2×3 (rangées 6-8)
   if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
@@ -106,11 +109,11 @@ for (const c of WALKABLE_CELLS) WALKABLE_SET[`${c.col},${c.row}`] = true;
  * balcon. L'union pave toute la carte.
  */
 export const ZONE_RECTS: { space: Space; rect: Rect }[] = [
-  { space: 'wc', rect: { x: 11 * COL, y: 529, w: 4 * COL, h: 2 * COL } },
-  { space: 'sdb', rect: { x: 0, y: 529, w: 4 * COL, h: 5 * COL } },
+  { space: 'wc', rect: { x: 11 * COL, y: 529, w: 3 * COL, h: 2 * COL } },
+  { space: 'sdb', rect: { x: 0, y: 545, w: 4 * COL, h: 4 * COL } },
   { space: 'chambre', rect: { x: 6 * COL, y: 449, w: 5 * COL, h: 7 * COL } },
-  // Le bureau (5 rangées) inclut la rangée de l'armoire, cols 4-5 comprises.
-  { space: 'bureau', rect: { x: 0, y: 449, w: 6 * COL, h: 5 * COL } },
+  // Le bureau descend jusqu'au mur de la sdb (rangée 5 cachée comprise).
+  { space: 'bureau', rect: { x: 0, y: 449, w: 6 * COL, h: 6 * COL } },
   // Couloir : cols 4-5 le long de la sdb + sous la chambre (rangées 7-9).
   { space: 'couloir_int', rect: { x: 4 * COL, y: 529, w: 2 * COL, h: 5 * COL } },
   { space: 'couloir_int', rect: { x: 6 * COL, y: 561, w: 5 * COL, h: 3 * COL } },
@@ -155,9 +158,9 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 76, y: 514 },
   },
   sdb: {
-    greg: { x: 36, y: 548 },
-    fiona: { x: 24, y: 570 },
-    ubuntu: { x: 44, y: 578 },
+    greg: { x: 40, y: 566 },
+    fiona: { x: 24, y: 572 },
+    ubuntu: { x: 44, y: 582 },
   },
   chambre: {
     greg: { x: 124, y: 500 },
@@ -172,7 +175,7 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   wc: {
     greg: { x: 216, y: 542 },
     fiona: { x: 200, y: 548 },
-    ubuntu: { x: 228, y: 548 },
+    ubuntu: { x: 210, y: 553 },
   },
   couloir_int: {
     greg: { x: 92, y: 568 },

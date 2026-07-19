@@ -15,7 +15,7 @@ import { COL, FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
  *   cols 11-15 cuisine (esp. salon)   bureau 0-4 (5, armoire 4×1 rangée 4)
  *   cols 16-21 salon + avancée        couloir bureau 4-5 (2 cases)
  *   cols 0-3   salle de bain          chambre 0-6 (7 cases)
- *   cols 4-5   couloir du bureau      sdb rangées 5-9 (5), wc rangées 5-6
+ *   cols 4-5   couloir du bureau      sdb rangées 6-9 (4), wc rangées 5-6
  *   cols 11-14 WC (4×2)               bas de l'appartement = rangée 10
  */
 
@@ -25,7 +25,8 @@ const CX = (c: number) => c * COL;
 const RY = (r: number) => HOUSE_TOP + r * COL;
 
 // Repères verticaux (tous sur la grille).
-const WET_TOP = RY(5); // 529 — haut des WC et de la salle de bain
+const WET_TOP = RY(5); // 529 — haut des WC
+const SDB_TOP = RY(6); // 545 — haut de la salle de bain (1 rangée de moins)
 const SDB_BOT = RY(10); // 609 — bas de la sdb = bas de l'appartement
 const CHAMBRE_BOT = RY(7); // 561 — bas de la chambre et des WC
 const EXT_TOP = RY(-2); // 417 — avancée du salon : 2 cases sur le balcon
@@ -35,7 +36,7 @@ const CHAMBRE_L = CX(6); // 96 — bureau | chambre
 const CUISINE_L = CX(11); // 176 — chambre | cuisine/salon
 const SALON_L = CX(16); // 256 — cuisine | salon, et bord gauche de l'avancée
 const SDB_R = CX(4); // 64 — sdb | couloir du bureau
-const WC_R = CX(15); // 240 — bord droit des WC
+const WC_R = CX(14); // 224 — bord droit des WC (3 cases de long)
 const LIT_L = CX(8); // 128 — espace libre (2 cols) | lit (3 cols)
 
 interface Palette {
@@ -64,6 +65,9 @@ interface Palette {
   merisierLight: string;
   outline: string;
   woodLight: string;
+  fence: string;
+  slate: string;
+  stone: string;
   wallFace: string;
   wallFaceLight: string;
   beigeRug: string;
@@ -112,6 +116,9 @@ const DAY: Palette = {
   merisierLight: '#B4744A',
   outline: '#2E2E38',
   woodLight: '#96603A',
+  fence: '#93382F',
+  slate: '#63636D',
+  stone: '#F2F2EE',
   wallFace: '#E8E8E2',
   wallFaceLight: '#F8F8F4',
   beigeRug: '#B49A6A',
@@ -160,6 +167,9 @@ const NIGHT: Palette = {
   merisierLight: '#6E4630',
   outline: '#14141C',
   woodLight: '#553520',
+  fence: '#57221C',
+  slate: '#33333B',
+  stone: '#AAAAA4',
   wallFace: '#8E8E8A',
   wallFaceLight: '#A2A29E',
   beigeRug: '#5A4E36',
@@ -200,14 +210,21 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 /** Hauteur des faces de murs : 1 case et demie. */
 const WALL_H = COL + COL / 2; // 24
 
-/** Cloison vue de dessus : trait blanc de la largeur d'une strie de parquet. */
-function WallV({ x, y, h, p }: { x: number; y: number; h: number; p: Palette }) {
-  return <Rect x={x} y={y} width={1.5} height={h} fill={p.wallFace} />;
-}
-
-/** Mur horizontal fin vu de dessus : même trait blanc. */
-function WallH({ x, y, w, p }: { x: number; y: number; w: number; p: Palette }) {
-  return <Rect x={x} y={y} width={w} height={1.5} fill={p.wallFace} />;
+/** Cloison vue de dessus : trait blanc (par défaut, la largeur d'une strie). */
+function WallV({
+  x,
+  y,
+  h,
+  p,
+  w = 1.5,
+}: {
+  x: number;
+  y: number;
+  h: number;
+  p: Palette;
+  w?: number;
+}) {
+  return <Rect x={x} y={y} width={w} height={h} fill={p.wallFace} />;
 }
 
 /**
@@ -324,25 +341,39 @@ const SHOWER_STONES: { pts: number[][]; c: number }[] = [
   { pts: [[48, 15], [64, 16], [64, 24], [47, 24]], c: 3 },
 ];
 
-/**
- * Baignoire détaillée (32×11, échelle 2 → 4×1,5 cases) : pilule à rebord
- * blanc, eau avec reflets, robinet chromé à droite.
- */
-const TUB_GRID = [
-  '...KKKKKKKKKKKKKKKKKKKKKKKKKK...',
-  '..KTTTTTTTTTTTTTTTTTTTTTTTTTTK..',
-  '.KTTwwwwwwwwwwwwwwwwwwwwwwwwTTK.',
-  'KTTwwLLLwwwwwwwwwwwwwwwwwwMMwwTK',
-  'KTwwwwwwwwwwwwwwwwwwwwwwwwMMwwTK',
-  'KTwwwwwwwwwwwwwwwwwwwwwwMMMMwwTK',
-  'KTwwLLwwwwwwwwwwwwwwwwwwwwwwwwTK',
-  'KTTwwwwwwwwwwwwLLwwwwwwwwwwwwTTK',
-  '.KTTwwwwwwwwwwwwwwwwwwwwwwwwTTK.',
-  '.KTTTTTTTTTTTTTTTTTTTTTTTTTTTTK.',
-  '.KTTTTTTTTTTTTTTTTTTTTTTTTTTTTK.',
-  '.KSSTTTTTTTTTTTTTTTTTTTTTTTTSSK.',
-  '..KKKKKKKKKKKKKKKKKKKKKKKKKKKK..',
-  '....KKK..................KKK....',
+/** Bouquet de tulipes roses : deux fleurs à reflet, tiges et feuilles,
+ * pot en terre cuite à rebord. */
+const FLOWERS_PINK_GRID = [
+  '.KKK....KKK.',
+  'KPPPK..KPPPK',
+  'KPWPK..KPWPK',
+  'KPPPK..KPPPK',
+  '.KKKG..GKKK.',
+  '..KGKggKGK..',
+  '..gKGKKGKg..',
+  '...KGGGGK...',
+  '..KKKKKKKK..',
+  '..KRRRRRRK..',
+  '..KrrrrrrK..',
+  '...KrrrrK...',
+  '....KKKK....',
+];
+
+/** Marguerites blanches à cœur jaune, tiges feuillues, pot céramique. */
+const FLOWERS_WHITE_GRID = [
+  '..KKK...KKK.',
+  '.KWWWK.KWWWK',
+  '.KWYWK.KWYWK',
+  '.KWWWK.KWWWK',
+  '..KKK...KKK.',
+  '...KG...GK..',
+  '..ggKG.KGgg.',
+  '...KGGGGGK..',
+  '..KKKKKKKK..',
+  '..KRRRRRRK..',
+  '..KrrrrrrK..',
+  '...KrrrrK...',
+  '....KKKK....',
 ];
 
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
@@ -420,8 +451,6 @@ const TRAIL_STUB_W = 30;
 
 export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
   const p = night ? NIGHT : DAY;
-  /** Tranches de livres colorées de la bibliothèque de l'entrée. */
-  const books = [p.flower2, p.screen, p.flower1, p.treeLight, p.sofa];
 
   return (
     <Svg width="100%" height="100%" viewBox={`0 0 ${MAP_W} ${MAP_H}`}>
@@ -497,16 +526,29 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           strokeWidth={2}
         />
       ))}
-      {/* Rambarde côté forêt, posée à l'EXTÉRIEUR du balcon */}
-      <Rect x={0} y={OUTSIDE_BOTTOM - 6} width={MAP_W} height={6} fill={p.railing} />
+      {/* Rambarde rouge foncé d'une case de haut : main courante + barreaux
+          serrés */}
+      <Rect x={0} y={OUTSIDE_BOTTOM - COL} width={MAP_W} height={1.5} fill={p.fence} />
+      {Array.from({ length: 88 }).map((_, i) => (
+        <Rect
+          key={`fb${i}`}
+          x={i * 4}
+          y={OUTSIDE_BOTTOM - COL + 1.5}
+          width={1}
+          height={COL - 3}
+          fill={p.fence}
+        />
+      ))}
+      <Rect x={MAP_W - 1} y={OUTSIDE_BOTTOM - COL + 1.5} width={1} height={COL - 3} fill={p.fence} />
+      <Rect x={0} y={OUTSIDE_BOTTOM - 1.5} width={MAP_W} height={1.5} fill={p.fence} />
 
       {/* ---------------- Sols ---------------- */}
       {/* Parquet commun : tout l'appartement (bureau compris) + avancée */}
       <Rect x={0} y={HOUSE_TOP} width={MAP_W} height={FLAT_BOTTOM - HOUSE_TOP} fill={p.parquet} />
       <Rect x={SALON_L} y={EXT_TOP} width={MAP_W - SALON_L} height={HOUSE_TOP - EXT_TOP} fill={p.parquet} />
       {/* Salle de bain + WC : carrelage en damier 16×16 aligné sur la grille */}
-      <Rect x={0} y={WET_TOP} width={SDB_R} height={SDB_BOT - WET_TOP} fill={p.tile} />
-      <CheckerTiles x0={0} x1={SDB_R} y0={WET_TOP} y1={SDB_BOT} fill={p.tileAlt} />
+      <Rect x={0} y={SDB_TOP} width={SDB_R} height={SDB_BOT - SDB_TOP} fill={p.tile} />
+      <CheckerTiles x0={0} x1={SDB_R} y0={SDB_TOP} y1={SDB_BOT} fill={p.tileAlt} />
       <Rect x={CUISINE_L} y={WET_TOP} width={WC_R - CUISINE_L} height={CHAMBRE_BOT - WET_TOP} fill={p.tile} />
       <CheckerTiles x0={CUISINE_L} x1={WC_R} y0={WET_TOP} y1={CHAMBRE_BOT} fill={p.tileAlt} />
       {/* Palier (moquette noire) */}
@@ -521,7 +563,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         const segments: [number, number][] =
           x <= SDB_R
             ? [[top, WET_TOP]]
-            : x > CUISINE_L && x < WC_R
+            : x >= CUISINE_L && x < WC_R
               ? [
                   [top, WET_TOP],
                   [CHAMBRE_BOT, FLAT_BOTTOM],
@@ -563,30 +605,19 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         height={6 * COL - 3}
         fill="url(#rugCheck)"
       />
-      {/* Bureau : tapis gris 3×3, bordure + points tissés */}
+      {/* Petit tapis gris clair 2×1 juste au-dessus du canapé */}
+      <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={COL} rx={2} fill={p.greyRug} />
+      <Rect x={CX(20) + 2} y={RY(5) + 2} width={2 * COL - 4} height={COL - 4} rx={1} fill={p.sofaLight} />
+
+      {/* Bureau : tapis gris foncé uni 3×3, sans bordure ni motif */}
       <Rect x={0} y={RY(0)} width={3 * COL} height={3 * COL} fill={p.greyRugEdge} />
-      <Rect x={2} y={RY(0) + 2} width={3 * COL - 4} height={3 * COL - 4} fill={p.greyRug} />
-      {Array.from({ length: 8 }).map((_, cx) =>
-        Array.from({ length: 8 }).map((_, cy) =>
-          (cx + cy) % 2 === 0 ? (
-            <Rect
-              key={`rt${cx}-${cy}`}
-              x={5 + cx * 5}
-              y={RY(0) + 5 + cy * 5}
-              width={2}
-              height={2}
-              fill={p.greyRugEdge}
-            />
-          ) : null
-        )
-      )}
 
       {/* ------------- Faces des murs (2 cases, au-dessus de la base) ------- */}
       {/* Façade côté balcon : mur blanc continu, percé d'une porte-fenêtre
           pour la chambre et une pour la cuisine (même composant) */}
       <WallFace x={0} base={HOUSE_TOP} w={SALON_L} p={p} />
       <GlassDoor x={101} base={HOUSE_TOP} p={p} />
-      <GlassDoor x={229} base={HOUSE_TOP} p={p} />
+      <GlassDoor x={213} base={HOUSE_TOP} p={p} />
       {/* Bureau : deux grandes fenêtres collées (une seule paire de
           bordures, jonction centrale), centrées sur la moitié haute */}
       <Rect x={CX(1)} y={HOUSE_TOP - 21} width={4 * COL} height={12} fill={p.outline} />
@@ -594,13 +625,21 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(1) + 31} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
       <Rect x={CX(1) + 4} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
       <Rect x={CX(1) + 36} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
-      {/* Mur haut de l'avancée : trois portes-fenêtres de 1,4 collées */}
+      {/* Mur blanc du fond de l'avancée : trois portes-fenêtres collées,
+          alignées à gauche */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
+      {/* Retour de mur sur le flanc gauche de l'avancée : trait blanc de 3,
+          centré sur la frontière, du haut du mur jusqu'à la façade */}
+      <WallV
+        x={SALON_L - 1.5}
+        y={EXT_TOP - WALL_H}
+        h={HOUSE_TOP - EXT_TOP + WALL_H}
+        w={3}
+        p={p}
+      />
       <GlassDoor x={271} base={EXT_TOP} p={p} />
       <GlassDoor x={293} base={EXT_TOP} p={p} />
       <GlassDoor x={315} base={EXT_TOP} p={p} />
-      {/* Trait blanc vertical qui relie le mur de l'avancée à la façade */}
-      <WallV x={SALON_L - 0.75} y={EXT_TOP} h={HOUSE_TOP - EXT_TOP} p={p} />
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
       {/* Bureau : table blanche 3 cases de large, pieds métal
@@ -610,8 +649,8 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={1} y={RY(0) + 9} width={3 * COL - 2} height={4} fill={p.sofaLight} />
       {[3, 39].map((lx) => (
         <G key={`dl${lx}`}>
-          <Rect x={lx} y={RY(0) + 13} width={6} height={7} fill={p.outline} />
-          <Rect x={lx + 1} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
+          <Rect x={lx} y={RY(0) + 13} width={5} height={7} rx={1} fill={p.outline} />
+          <Rect x={lx + 1} y={RY(0) + 13} width={3} height={6} fill={p.greyRugEdge} />
         </G>
       ))}
 
@@ -619,22 +658,23 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
 
       {/* Douche : juste le sol 4×1,5 en opus incertum (pierres + joints),
           cerné d'un cadre argenté très fin */}
-      <Rect x={0} y={WET_TOP} width={4 * COL} height={24} fill={p.mattress} />
+      <Rect x={0} y={SDB_TOP} width={4 * COL} height={24} fill={p.sofaLight} />
       {SHOWER_STONES.map(({ pts, c }, i) => (
         <Polygon
           key={`st${i}`}
-          points={pts.map(([sx, sy]) => `${sx},${WET_TOP + sy}`).join(' ')}
-          fill={[p.parquet, p.beigeRug, p.bureauFloor, p.pathEdge][c]}
+          points={pts.map(([sx, sy]) => `${sx},${SDB_TOP + sy}`).join(' ')}
+          fill={p.stone}
         />
       ))}
 
-      {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
-      <PixelSprite
-        x={0}
-        y={FLAT_BOTTOM - 27}
-        scale={2}
-        grid={TUB_GRID}
-        colors={{ K: p.outline, T: p.tub, w: p.water, L: p.tileAlt, M: p.railing, S: p.sofaLight }}
+      {/* Baignoire : le sprite pixel-art fourni, affiché tel quel */}
+      <SvgImage
+        x={1}
+        y={FLAT_BOTTOM - 31}
+        width={62}
+        height={30}
+        preserveAspectRatio="xMidYMid meet"
+        href={require('../../assets/images/bathtub.png')}
       />
 
       {/* Lit 3×4 (rangées 2-5) : le sprite pixel-art fourni, tel quel —
@@ -648,15 +688,14 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         href={require('../../assets/images/bed.png')}
       />
 
-      {/* WC : le sprite pixel-art fourni, affiché tel quel */}
-      <SvgImage
-        x={CUISINE_L + 1}
-        y={WET_TOP + 1}
-        width={25}
-        height={30}
-        preserveAspectRatio="xMidYMid meet"
-        href={require('../../assets/images/toilets.png')}
-      />
+      {/* WC : dessinés après les murs (voir « Meubles hauts ») */}
+
+      {/* Meuble bois 1×2 au-dessus du canapé, juste hors du tapis, avec une
+          grande lampe ronde blanche (même bois que la table basse) */}
+      <Rect x={CX(21)} y={RY(2)} width={COL} height={2 * COL} rx={3} fill={p.outline} />
+      <Rect x={CX(21) + 1} y={RY(2) + 1} width={COL - 2} height={2 * COL - 6} rx={2} fill={p.woodLight} />
+      <Rect x={CX(21) + 1} y={RY(2) + 27} width={COL - 2} height={4} rx={1} fill={p.wood} />
+      <Rect x={CX(21) + 3} y={RY(2) + 3} width={COL - 6} height={2} fill={p.merisierLight} />
 
       {/* Canapé 2×3 (rangées 6-8) : bords fins façon tables, dossier contre
           le mur, accoudoirs, couture, face avant ombrée et pieds */}
@@ -681,16 +720,29 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(17) + 1} y={RY(7) + 20} width={30} height={5} rx={1} fill={p.wood} />
       <Rect x={CX(17) + 3} y={RY(7) + 3} width={26} height={2} fill={p.merisierLight} />
 
-      {/* Cuisine : frigo de profil (porte à droite) sur la case du haut */}
-      <Rect x={CUISINE_L} y={RY(0) - 10} width={COL} height={COL + 10} rx={2} fill={p.outline} />
-      <Rect x={CUISINE_L + 1} y={RY(0) - 9} width={COL - 2} height={COL + 8} rx={2} fill={p.sofaLight} />
-      <Rect x={CUISINE_L + 1} y={RY(0) - 9} width={COL - 2} height={3} rx={1} fill={p.porcelain} />
-      <Rect x={CUISINE_L + COL - 5} y={RY(0) - 6} width={3} height={COL + 4} fill={p.greyRug} />
-      <Rect x={CUISINE_L + COL - 8} y={RY(0) - 4} width={2} height={6} rx={1} fill={p.greyRugEdge} />
-      {/* Plan de travail blanc sur les cases du bas, contre la cloison */}
-      <Rect x={CUISINE_L} y={RY(1)} width={COL} height={3 * COL} rx={2} fill={p.outline} />
-      <Rect x={CUISINE_L + 1} y={RY(1) + 1} width={COL - 5} height={3 * COL - 2} fill={p.porcelain} />
-      <Rect x={CUISINE_L + COL - 4} y={RY(1) + 1} width={3} height={3 * COL - 2} fill={p.sofaLight} />
+      {/* Cuisine : plan de travail blanc uni à bordure grise, avec la
+          plaque à induction — carré gris clair à 4 anneaux */}
+      <Rect x={CUISINE_L} y={RY(0)} width={COL} height={4 * COL} rx={2} fill={p.greyRugEdge} />
+      <Rect x={CUISINE_L + 1} y={RY(0) + 1} width={COL - 2} height={4 * COL - 2} rx={2} fill={p.porcelain} />
+      <Rect x={CUISINE_L + 3.5} y={RY(1) + 6} width={9} height={9} rx={1} fill={p.sofaLight} />
+      {[
+        [1.5, 1.5],
+        [5, 1.5],
+        [1.5, 5],
+        [5, 5],
+      ].map(([dx, dy]) => (
+        <Rect
+          key={`feu${dx}-${dy}`}
+          x={CUISINE_L + 3.5 + dx}
+          y={RY(1) + 6 + dy}
+          width={2.5}
+          height={2.5}
+          rx={1.25}
+          fill="none"
+          stroke={p.greyRugEdge}
+          strokeWidth={0.8}
+        />
+      ))}
 
       {/* Grande table blanche 4×2 : plateau arrondi, pieds, plante en pot */}
       <Rect x={CX(17) + 2} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
@@ -713,52 +765,103 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         }}
       />
 
-      {/* Étagères 9×1 : bibliothèque à livres colorés */}
-      <Rect x={SDB_R} y={RY(9)} width={9 * COL} height={14} fill={p.outline} />
-      <Rect x={SDB_R + 1} y={RY(9) + 1} width={9 * COL - 2} height={3} fill={p.sofaLight} />
-      <Rect x={SDB_R + 1} y={RY(9) + 4} width={9 * COL - 2} height={9} fill={p.greyRug} />
-      {Array.from({ length: 27 }).map((_, i) => (
-        <Rect
-          key={`bk${i}`}
-          x={SDB_R + 3 + i * 5}
-          y={RY(9) + 5}
-          width={4}
-          height={7}
-          fill={books[i % books.length]}
-        />
-      ))}
+      {/* Bande 8×1 gris foncé le long du mur d'entrée (ton du palier),
+          seul le coin haut-droit est arrondi */}
+      <Rect x={SDB_R} y={RY(9)} width={8 * COL} height={COL} rx={3} fill={p.carpet} />
+      <Rect x={SDB_R} y={RY(9)} width={4} height={4} fill={p.carpet} />
+      <Rect x={SDB_R} y={RY(9) + COL - 4} width={4} height={4} fill={p.carpet} />
+      <Rect x={SDB_R + 8 * COL - 4} y={RY(9) + COL - 4} width={4} height={4} fill={p.carpet} />
 
       {/* Faces dessinées APRÈS les meubles qu'elles masquent de 0,5 case :
           murs blancs de la sdb et des wc (sur l'armoire, le meuble cuisine
           et le bas de la colonne), mur bas de la chambre (sur le lit) */}
-      <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
+      {/* Mur de la douche : ardoise pleine, épais liseré blanc en haut */}
+      <Rect x={0} y={SDB_TOP - WALL_H} width={SDB_R} height={WALL_H} fill={p.slate} />
+      <Rect x={0} y={SDB_TOP - WALL_H} width={SDB_R} height={3} fill={p.wallFace} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
-      <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
+      {/* Bord droit des WC : trait de 3 le long de la pièce et du mur blanc */}
+      <WallV x={WC_R - 1.5} y={WET_TOP - WALL_H} h={WALL_H + CHAMBRE_BOT - WET_TOP} w={3} p={p} />
+      {/* Table blanche 1×3 contre le mur des WC, trois plantes différentes */}
+      <Rect x={WC_R} y={RY(4)} width={COL} height={3 * COL - 2} rx={3} fill={p.outline} />
+      <Rect x={WC_R + 1} y={RY(4) + 1} width={COL - 2} height={3 * COL - 8} rx={2} fill={p.tub} />
+      <Rect x={WC_R + 1} y={RY(4) + 41} width={COL - 2} height={4} rx={1} fill={p.sofaLight} />
+      <Rect x={WC_R + 3} y={RY(7) - 3} width={2} height={5} rx={1} fill={p.greyRugEdge} />
+      <Rect x={WC_R + 11} y={RY(7) - 3} width={2} height={5} rx={1} fill={p.greyRugEdge} />
+      {/* 1. plante en pot touffue */}
+      <PixelSprite
+        x={WC_R + 2}
+        y={RY(4) + 3}
+        grid={PLANT_GRID}
+        colors={{
+          K: p.outline,
+          G: p.treeLight,
+          g: p.tree,
+          R: p.merisierLight,
+          r: p.merisier,
+        }}
+      />
+      {/* 2. bouquet de tulipes roses (chevauche le pot de la plante du haut) */}
+      <PixelSprite
+        x={WC_R + 2}
+        y={RY(5) - 6}
+        grid={FLOWERS_PINK_GRID}
+        colors={{
+          K: p.outline,
+          P: p.flower2,
+          W: p.porcelain,
+          G: p.tree,
+          g: p.treeLight,
+          R: p.merisierLight,
+          r: p.merisier,
+        }}
+      />
+      {/* 3. marguerites blanches à cœur jaune */}
+      <PixelSprite
+        x={WC_R + 2}
+        y={RY(6) - 8}
+        grid={FLOWERS_WHITE_GRID}
+        colors={{
+          K: p.outline,
+          W: p.porcelain,
+          Y: p.flower1,
+          G: p.tree,
+          g: p.treeLight,
+          R: p.sofaLight,
+          r: p.greyRug,
+        }}
+      />
+      {/* WC : adossés au mur du haut, réhaussés d'une case — le mur prolongé
+          dessiné ensuite masque leur partie basse */}
+      <SvgImage
+        x={CUISINE_L + 2}
+        y={WET_TOP - 15}
+        width={23}
+        height={28}
+        preserveAspectRatio="xMidYMid meet"
+        href={require('../../assets/images/toilets.png')}
+      />
+      {/* Mur blanc sous le lit, prolongé à 5 cases (jusque sous les WC) */}
+      <WallFace x={LIT_L} base={CHAMBRE_BOT} w={5 * COL} p={p} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
 
-      {/* Cloison bureau / chambre (aucune porte), pile sur la strie */}
-      <WallV x={CHAMBRE_L - 0.75} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP} p={p} />
+      {/* Cloison bureau / chambre (aucune porte) : trait de 3, centré sur
+          la strie du parquet */}
+      <WallV x={CHAMBRE_L - 1.5} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP} w={3} p={p} />
 
-      {/* Cloison chambre / salon+WC (aucune porte) */}
-      <WallV x={CUISINE_L - 0.75} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP + 1} p={p} />
+      {/* Cloison chambre / cuisine+WC : trait de 3, centré sur la strie */}
+      <WallV x={CUISINE_L - 1.5} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP - 24} w={3} p={p} />
 
       {/* Bureau → couloir : la porte occupe toute l'ouverture (aucun mur) */}
 
-      {/* Salle de bain : bord droit mur 2 / porte 2 / mur 1 (murs haut et
-          bas dessinés en faces 3D) */}
-      <WallV x={SDB_R - 0.75} y={WET_TOP} h={2 * COL} p={p} />
-      <WallV x={SDB_R - 0.75} y={RY(9)} h={SDB_BOT - RY(9)} p={p} />
+      {/* Salle de bain, bord droit : trait de 3 centré sur la strie —
+          depuis le bas : 1 case de mur, 2 cases de porte, puis mur jusqu'au
+          haut du mur blanc de la douche */}
+      <WallV x={SDB_R - 1.5} y={SDB_TOP - WALL_H} h={WALL_H + COL} w={3} p={p} />
+      <WallV x={SDB_R - 1.5} y={RY(9)} h={SDB_BOT - RY(9)} w={3} p={p} />
 
-      {/* WC : mur droit + mur bas avec porte de 2 (cols 13-14) */}
-      <WallV x={WC_R - 0.75} y={WET_TOP} h={CHAMBRE_BOT - WET_TOP + 3} p={p} />
-      <WallH x={CUISINE_L} y={CHAMBRE_BOT - 0.75} w={2 * COL} p={p} />
-
-      {/* Murs extérieurs */}
-      <WallV x={0} y={HOUSE_TOP} h={MAP_H - HOUSE_TOP} p={p} />
-      <WallV x={MAP_W - 1.5} y={EXT_TOP} h={MAP_H - EXT_TOP} p={p} />
-      <WallH x={0} y={MAP_H - 1.5} w={MAP_W} p={p} />
+      {/* WC et murs extérieurs : aucune ligne, les sols suffisent */}
 
       {/* ---------------- Meubles hauts (par-dessus les murs) ---------------- */}
       {/* PC vintage Gen 3 (×1,5), centré sur la table du bureau */}
