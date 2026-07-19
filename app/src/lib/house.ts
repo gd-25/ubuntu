@@ -72,7 +72,7 @@ function isFurnished(col: number, row: number): boolean {
   if (row === 5 && col <= 3) return true; // rangée cachée par le mur sdb
   if (row === 6 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
   if ((row === 8 || row === 9) && col <= 3) return true; // baignoire (rangées 8-9)
-  if (col >= 8 && col <= 10 && row >= 2 && row <= 6) return true; // lit + mur
+  if (col >= 8 && col <= 10 && row === 6) return true; // mur sous le lit (le lit est praticable)
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
   if (col === 12 && row === 5) return true; // débord de la cuvette des WC
   if (row === 4 && col >= 11 && col <= 13) return true; // rangée cachée par le mur wc
@@ -80,7 +80,6 @@ function isFurnished(col: number, row: number): boolean {
   if (col === 14 && row >= 4 && row <= 6) return true; // table aux plantes
   if (col === 21 && (row === 2 || row === 3)) return true; // meuble à lampe
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
-  if (col >= 20 && row >= 6 && row <= 8) return true; // canapé 2×3 (rangées 6-8)
   if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
   if (row === 9 && col >= 4 && col <= 11) return true; // bande d'entrée (8 cases dès col 4)
   return false;
@@ -189,6 +188,16 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 276, y: 650 },
   },
 };
+
+/**
+ * Le point (x, y) est-il sur le petit tapis gris d'Ubuntu (2×1, juste
+ * au-dessus du canapé) ? Chaque arrivée dessus est trackée en activité.
+ */
+export function isOnUbuntuMat(x: number, y: number): boolean {
+  const col = Math.floor(x / COL);
+  const row = Math.floor((y - GRID_TOP) / COL);
+  return row === 5 && (col === 20 || col === 21);
+}
 
 /** Zone contenant le point (x, y) — coordonnées carte. */
 export function spaceAt(x: number, y: number): Space {

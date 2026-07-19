@@ -3,7 +3,7 @@ import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { FadeOut } from 'react-native-reanimated';
+import Animated, { FadeOut, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
 import { ScreenTitle } from '@/components/screen-title';
 import { Text } from '@/components/text';
@@ -93,13 +93,17 @@ export default function HistoryScreen() {
   };
 
   return (
-    <SectionList
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* Titre hors de la liste : il reste fixe pendant le scroll */}
+      <View style={styles.titleWrap}>
+        <ScreenTitle title="JOURNAL" />
+      </View>
+      <SectionList
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
       sections={sections}
       keyExtractor={(item) => item.session_id}
       stickySectionHeadersEnabled
-      ListHeaderComponent={<ScreenTitle title="JOURNAL" />}
       onRefresh={onRefresh}
       refreshing={isRefreshing}
       ListEmptyComponent={
@@ -129,7 +133,7 @@ export default function HistoryScreen() {
                 StyleSheet.flatten([
                   styles.row,
                   {
-                    backgroundColor: colors.card,
+                    backgroundColor: colors.cardAlt,
                     borderColor: colors.border,
                     opacity: pressed ? 0.7 : 1,
                   },
@@ -141,7 +145,7 @@ export default function HistoryScreen() {
                   {item.ended_at ? ` → ${formatTime(item.ended_at)}` : ''}
                 </Text>
                 <Text style={[styles.calm, { color: colors.success }]}>
-                  {Math.round(item.calm_percent)} % CALME
+                  {Math.round(item.calm_percent)}%
                 </Text>
               </View>
               <Text style={[styles.rowDetail, { color: colors.textSecondary }]}>
@@ -155,7 +159,40 @@ export default function HistoryScreen() {
           </Link>
         </SwipeableRow>
       )}
-    />
+      />
+    </View>
+  );
+}
+
+/** Largeur du bouton SUPPRIMER + sa marge (pour le slide-in). */
+const DELETE_WIDTH = 104 + Spacing.sm;
+
+/**
+ * Bouton SUPPRIMER qui GLISSE depuis le bord droit en suivant le doigt
+ * (au lieu d'être simplement révélé sous la ligne).
+ */
+function DeleteAction({
+  drag,
+  onDelete,
+}: {
+  drag: SharedValue<number>;
+  onDelete: () => void;
+}) {
+  const colors = useTheme();
+  const slideIn = useAnimatedStyle(() => ({
+    transform: [{ translateX: drag.value + DELETE_WIDTH }],
+  }));
+  return (
+    <Animated.View style={slideIn}>
+      <Pressable
+        onPress={onDelete}
+        style={[
+          styles.deleteAction,
+          { backgroundColor: colors.danger, borderColor: colors.border },
+        ]}>
+        <Text style={[styles.deleteText, { color: colors.accentText }]}>SUPPRIMER</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -167,22 +204,14 @@ function SwipeableRow({
   onDelete: () => void;
   children: React.ReactNode;
 }) {
-  const colors = useTheme();
   return (
     <Animated.View exiting={FadeOut.duration(160)} style={styles.rowWrapper}>
       <ReanimatedSwipeable
         friction={2}
         rightThreshold={40}
         overshootRight={false}
-        renderRightActions={() => (
-          <Pressable
-            onPress={onDelete}
-            style={[
-              styles.deleteAction,
-              { backgroundColor: colors.danger, borderColor: colors.border },
-            ]}>
-            <Text style={[styles.deleteText, { color: colors.accentText }]}>SUPPRIMER</Text>
-          </Pressable>
+        renderRightActions={(_progress, drag) => (
+          <DeleteAction drag={drag} onDelete={onDelete} />
         )}>
         {children}
       </ReanimatedSwipeable>
@@ -191,8 +220,15 @@ function SwipeableRow({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  titleWrap: {
+    paddingHorizontal: Spacing.md,
+  },
   content: {
     padding: Spacing.md,
+    paddingTop: Spacing.xs,
     flexGrow: 1,
     paddingBottom: 24,
   },
@@ -231,14 +267,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     flexShrink: 1,
   },
+  // Le pourcentage de calme, en gros (le « % CALME » d'avant est implicite).
   calm: {
-    fontSize: 8,
+    fontSize: 16,
   },
   rowDetail: {
     fontSize: 8,
     lineHeight: 13,
   },
   deleteAction: {
+    flex: 1,
     width: 104,
     marginLeft: Spacing.sm,
     borderWidth: 3,

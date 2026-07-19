@@ -14,6 +14,7 @@ const KINDS: { kind: ActivityKind; label: string }[] = [
   { kind: 'walk', label: '🚶 Sortie' },
   { kind: 'meal', label: '🍽️ Repas' },
   { kind: 'play', label: '🎾 Jeu' },
+  { kind: 'mat', label: '🐾 Tapis' },
   { kind: 'other', label: '📝 Autre' },
 ];
 

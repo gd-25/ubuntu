@@ -72,7 +72,8 @@ export interface SessionTag {
   created_at: string;
 }
 
-export type ActivityKind = 'walk' | 'meal' | 'play' | 'other';
+/** 'mat' = Ubuntu est allé sur son tapis (comportement qu'on encourage). */
+export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'other';
 
 export interface Activity {
   id: string;

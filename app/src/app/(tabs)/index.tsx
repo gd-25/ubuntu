@@ -6,12 +6,13 @@ import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react
 import Animated, {
   SlideInUp,
   SlideOutUp,
+  useSharedValue,
   ZoomIn,
   ZoomOut,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AvatarSprite } from '@/components/avatar-sprite';
+import { AvatarSprite, type AvatarSpots } from '@/components/avatar-sprite';
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import { GridDots } from '@/components/grid-dots';
 import { HouseMap } from '@/components/house-map';
@@ -29,6 +30,7 @@ import {
 import {
   computeTransition,
   DEFAULT_POSITIONS,
+  isOnUbuntuMat,
   isUbuntuAlone,
   MAP_H,
   MAP_W,
@@ -53,11 +55,10 @@ import { useDog } from '@/lib/use-dog';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
 
-// Tailles en unités carte, réduites de 1,2× pour mieux tenir dans les pièces.
 const AVATARS: Record<Person, { source: number; w: number; h: number; z: number }> = {
-  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 18, h: 25, z: 10 },
-  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 20, h: 27, z: 11 },
-  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 27, h: 28, z: 20 },
+  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 22, h: 30, z: 10 },
+  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32, z: 11 },
+  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 32, h: 34, z: 20 },
 };
 
 const MEAL_FRACTIONS = [
@@ -77,6 +78,15 @@ export default function HouseScreen() {
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
   const [draggingAvatar, setDraggingAvatar] = useState(false);
+  // Positions au repos des trois avatars (partagées entre les sprites pour
+  // qu'aucun lâcher ne retombe sur un point déjà occupé).
+  const avatarSpots = useSharedValue<AvatarSpots>({
+    greg: SLOTS[DEFAULT_POSITIONS.greg].greg,
+    fiona: SLOTS[DEFAULT_POSITIONS.fiona].fiona,
+    ubuntu: SLOTS[DEFAULT_POSITIONS.ubuntu].ubuntu,
+  });
+  /** Ubuntu est-il posé sur son tapis ? (pour ne compter que les arrivées) */
+  const ubuntuOnMatRef = useRef(false);
   const [mapLayout, setMapLayout] = useState({ w: 0, h: 0 });
 
   // --- État live (agent, session, balade) ---
@@ -212,9 +222,13 @@ export default function HouseScreen() {
         (payload) => {
           const row = payload.new as AvatarPosition;
           if (!row?.person) return;
-          setPositions((prev) =>
-            prev[row.person] === row.space ? prev : { ...prev, [row.person]: row.space }
-          );
+          setPositions((prev) => {
+            if (prev[row.person] === row.space) return prev;
+            // Déplacé depuis l'autre téléphone : l'avatar repart sur
+            // l'ancrage de zone, donc Ubuntu n'est plus sur son tapis.
+            if (row.person === 'ubuntu') ubuntuOnMatRef.current = false;
+            return { ...prev, [row.person]: row.space };
+          });
         }
       )
       .on(
@@ -280,6 +294,19 @@ export default function HouseScreen() {
     },
     [dog]
   );
+
+  /** Ubuntu vient d'arriver sur son tapis : on trace la visite. */
+  const logMatVisit = useCallback(async () => {
+    if (!dog) return;
+    const { error } = await supabase
+      .from('activities')
+      .insert({ dog_id: dog.id, kind: 'mat', at: new Date().toISOString() });
+    if (error) {
+      console.warn('Visite du tapis non enregistrée :', error.message);
+      return;
+    }
+    showToast('🐾 TAPIS ! VISITE NOTÉE');
+  }, [dog, showToast]);
 
   const startWalk = useCallback(async () => {
     if (!dog) return;
@@ -385,7 +412,14 @@ export default function HouseScreen() {
 
   /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
   const handleDrop = useCallback(
-    (person: Person, space: Space) => {
+    (person: Person, space: Space, x: number, y: number) => {
+      // Tapis d'Ubuntu : chaque ARRIVÉE sur le tapis compte une visite
+      // (pas les re-lâchers dessus, ni les autres avatars).
+      if (person === 'ubuntu') {
+        const onMat = isOnUbuntuMat(x, y);
+        if (onMat && !ubuntuOnMatRef.current) logMatVisit();
+        ubuntuOnMatRef.current = onMat;
+      }
       const prev = positionsRef.current;
       if (prev[person] === space) return;
       const next = { ...prev, [person]: space };
@@ -420,7 +454,7 @@ export default function HouseScreen() {
         }
       }
     },
-    [persistPosition, startWalk, endWalk, stopSession]
+    [persistPosition, startWalk, endWalk, stopSession, logMatVisit]
   );
 
   const confirmSession = useCallback(() => {
@@ -554,6 +588,7 @@ export default function HouseScreen() {
                 width={AVATARS[person].w}
                 height={AVATARS[person].h}
                 zIndex={AVATARS[person].z}
+                spots={avatarSpots}
                 onDropped={handleDrop}
                 onHoverSpace={handleHover}
                 onDragChange={setDraggingAvatar}

@@ -14,6 +14,7 @@ import Animated, {
   withRepeat,
   withSpring,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import {
@@ -55,6 +56,23 @@ function hapticTick() {
   Haptics.selectionAsync().catch(() => {});
 }
 
+/** Positions au repos de tous les avatars (partagées entre les sprites). */
+export type AvatarSpots = Record<Person, { x: number; y: number }>;
+
+/** Rayon (au carré) en-dessous duquel deux avatars sont « au même point ». */
+const OCCUPIED_R2 = 10 * 10;
+
+/** La case (cx, cy) est-elle libre (aucun AUTRE avatar posé dessus) ? */
+function cellFree(spots: AvatarSpots, self: Person, cx: number, cy: number): boolean {
+  'worklet';
+  for (const p in spots) {
+    if (p === self) continue;
+    const o = spots[p as Person];
+    if ((o.x - cx) * (o.x - cx) + (o.y - cy) * (o.y - cy) < OCCUPIED_R2) return false;
+  }
+  return true;
+}
+
 /**
  * Un avatar déplaçable sur le plan. Les coordonnées internes sont en unités
  * carte, `scale` convertit vers les pixels écran. Pendant le drag, chaque
@@ -70,6 +88,7 @@ export function AvatarSprite({
   width,
   height,
   zIndex,
+  spots,
   onDropped,
   onHoverSpace,
   onDragChange,
@@ -84,7 +103,9 @@ export function AvatarSprite({
   width: number;
   height: number;
   zIndex: number;
-  onDropped: (person: Person, space: Space) => void;
+  /** Positions au repos de tous les avatars — évite deux avatars au même point. */
+  spots: SharedValue<AvatarSpots>;
+  onDropped: (person: Person, space: Space, x: number, y: number) => void;
   onHoverSpace: (space: Space | null) => void;
   onDragChange?: (dragging: boolean) => void;
   onTap?: () => void;
@@ -121,7 +142,8 @@ export function AvatarSprite({
     const slot = SLOTS[space][person];
     x.value = withSpring(slot.x, SPRING);
     y.value = withSpring(slot.y, SPRING);
-  }, [space, person, x, y, keepCellFor]);
+    spots.value = { ...spots.value, [person]: { x: slot.x, y: slot.y } };
+  }, [space, person, x, y, keepCellFor, spots]);
 
   const pan = Gesture.Pan()
     .minDistance(6)
@@ -142,9 +164,9 @@ export function AvatarSprite({
       const row = Math.min(9, Math.max(-3, Math.round((ny - GRID_TOP - COL / 2) / COL)));
       const key = `${col},${row}`;
 
-      if (WALKABLE_SET[key]) {
-        const cx = col * COL + COL / 2;
-        const cy = GRID_TOP + row * COL + COL / 2;
+      const cx = col * COL + COL / 2;
+      const cy = GRID_TOP + row * COL + COL / 2;
+      if (WALKABLE_SET[key] && cellFree(spots.value, person, cx, cy)) {
         const d = Math.hypot(nx - cx, ny - cy);
         if (d < MAGNET_RADIUS) {
           // Aimant doux : plus on est près du point, plus il attire.
@@ -171,12 +193,14 @@ export function AvatarSprite({
       }
     })
     .onEnd(() => {
-      // Lâcher sur la grille : l'avatar reste sur le point le plus proche.
+      // Lâcher sur la grille : l'avatar reste sur le point LIBRE le plus
+      // proche (jamais deux avatars sur le même point).
       if (y.value >= OUTSIDE_BOTTOM && y.value < FLAT_BOTTOM) {
         let bestX = 0;
         let bestY = 0;
         let bestD = Number.MAX_VALUE;
         for (const c of WALKABLE_CELLS) {
+          if (!cellFree(spots.value, person, c.x, c.y)) continue;
           const d = (c.x - x.value) * (c.x - x.value) + (c.y - y.value) * (c.y - y.value);
           if (d < bestD) {
             bestD = d;
@@ -186,16 +210,19 @@ export function AvatarSprite({
         }
         x.value = withSpring(bestX, SPRING);
         y.value = withSpring(bestY, SPRING);
+        spots.value = { ...spots.value, [person]: { x: bestX, y: bestY } };
         const zone = zoneAt(bestX, bestY);
         keepCellFor.value = zone;
-        runOnJS(onDropped)(person, zone);
+        runOnJS(onDropped)(person, zone, bestX, bestY);
         return;
       }
       // Hors grille (dehors, palier) : aimant vers l'ancrage de la zone.
       const zone = zoneAt(x.value, y.value);
-      x.value = withSpring(SLOTS[zone][person].x, SPRING);
-      y.value = withSpring(SLOTS[zone][person].y, SPRING);
-      runOnJS(onDropped)(person, zone);
+      const slot = SLOTS[zone][person];
+      x.value = withSpring(slot.x, SPRING);
+      y.value = withSpring(slot.y, SPRING);
+      spots.value = { ...spots.value, [person]: { x: slot.x, y: slot.y } };
+      runOnJS(onDropped)(person, zone, slot.x, slot.y);
     })
     .onFinalize(() => {
       dragging.value = false;

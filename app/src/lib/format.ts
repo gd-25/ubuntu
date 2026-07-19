@@ -114,6 +114,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   walk: '🚶 Sortie',
   meal: '🍽️ Repas',
   play: '🎾 Jeu',
+  mat: '🐾 Tapis',
   other: '📝 Autre',
 };
 
