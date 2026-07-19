@@ -204,17 +204,17 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 const WALL_H = COL + COL / 2; // 24
 
 /**
- * Porte-fenêtre vitrée : UNE porte de 1,8 case de large et 1,2 de haut,
+ * Porte-fenêtre vitrée : UNE porte de 1,4 case de large et 1,2 de haut,
  * posée au sol (il reste un peu de mur blanc au-dessus). Utilisée pour la
  * chambre et la cuisine.
  */
 function GlassDoor({ x, base, p }: { x: number; base: number; p: Palette }) {
   return (
     <G>
-      <Rect x={x} y={base - 19} width={29} height={19} fill={p.outline} />
-      <Rect x={x + 1} y={base - 18} width={27} height={17} fill={p.window} />
-      <Rect x={x + 3} y={base - 15} width={9} height={4} fill={p.porcelain} />
-      <Rect x={x + 24} y={base - 10} width={2} height={4} fill={p.railing} />
+      <Rect x={x} y={base - 19} width={22} height={19} fill={p.outline} />
+      <Rect x={x + 1} y={base - 18} width={20} height={17} fill={p.window} />
+      <Rect x={x + 3} y={base - 15} width={7} height={4} fill={p.porcelain} />
+      <Rect x={x + 17} y={base - 10} width={2} height={4} fill={p.railing} />
     </G>
   );
 }
@@ -506,8 +506,8 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       {/* Façade côté balcon : mur blanc continu, percé d'une porte-fenêtre
           pour la chambre et une pour la cuisine (même composant) */}
       <WallFace x={0} base={HOUSE_TOP} w={SALON_L} p={p} />
-      <GlassDoor x={97} base={HOUSE_TOP} p={p} />
-      <GlassDoor x={225} base={HOUSE_TOP} p={p} />
+      <GlassDoor x={101} base={HOUSE_TOP} p={p} />
+      <GlassDoor x={229} base={HOUSE_TOP} p={p} />
       {/* Bureau : deux grandes fenêtres collées (une seule paire de
           bordures, jonction centrale), centrées sur la moitié haute */}
       <Rect x={CX(1)} y={HOUSE_TOP - 21} width={4 * COL} height={12} fill={p.outline} />
