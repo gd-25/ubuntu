@@ -60,21 +60,19 @@ export function cellCenter(col: number, row: number): { x: number; y: number } {
 
 /**
  * Une case est meublée ou cachée derrière un mur 3D (donc non utilisable).
- * Les faces des murs montent de 2 cases au-dessus de leur base : les cases
- * du côté nord qu'elles recouvrent ne sont plus praticables.
+ * Les faces des murs montent de 1,5 case au-dessus de leur base : la
+ * rangée du côté nord entièrement recouverte n'est plus praticable.
  */
 function isFurnished(col: number, row: number): boolean {
   // Balcon derrière la façade (les portes cols 6-7 et 14-15 restent ouvertes).
-  if ((row === -1 || row === -2) && (col <= 5 || (col >= 8 && col <= 13))) return true;
+  if (row === -1 && (col <= 5 || (col >= 8 && col <= 13))) return true;
   // Rangée du balcon cachée par le mur haut de l'avancée.
   if (row === -3 && col >= 16) return true;
-  // Cases du bureau et de la cuisine derrière les murs hauts sdb/wc.
-  if (row === 3 && (col <= 3 || (col >= 11 && col <= 14))) return true;
-  if (row === 0 && col <= 1) return true; // bureau blanc
-  if (row === 4 && col <= 3) return true; // armoire du bureau
+  if (row === 0 && col <= 2) return true; // table du bureau (3 de large)
+  if (row === 4 && col <= 3) return true; // armoire (derrière le mur sdb)
   if (row === 5 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
   if (row === 9 && col <= 3) return true; // baignoire (4×1,5 en bas)
-  if (col >= 8 && col <= 10 && row >= 3 && row <= 6) return true; // lit
+  if (col >= 8 && col <= 10 && row >= 2 && row <= 6) return true; // lit + mur
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
   if (row === 4 && col >= 11 && col <= 14) return true; // meuble cuisine (mur WC)
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche

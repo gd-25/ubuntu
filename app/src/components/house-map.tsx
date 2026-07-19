@@ -113,8 +113,8 @@ const DAY: Palette = {
   merisierLight: '#B4744A',
   outline: '#2E2E38',
   woodLight: '#96603A',
-  wallFace: '#60606A',
-  wallFaceLight: '#7C7C86',
+  wallFace: '#E8E8E2',
+  wallFaceLight: '#F8F8F4',
   beigeRug: '#B49A6A',
   beigeRugEdge: '#D0BC90',
   greyRug: '#A8A8B0',
@@ -161,8 +161,8 @@ const NIGHT: Palette = {
   merisierLight: '#6E4630',
   outline: '#14141C',
   woodLight: '#553520',
-  wallFace: '#2C2C34',
-  wallFaceLight: '#3C3C46',
+  wallFace: '#8E8E8A',
+  wallFaceLight: '#A2A29E',
   beigeRug: '#5A4E36',
   beigeRugEdge: '#6A5C40',
   greyRug: '#55555E',
@@ -198,18 +198,21 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
   return <Rect x={x} y={y} width={5} height={5} fill={color} />;
 }
 
+/** Hauteur des faces de murs : 1 case et demie. */
+const WALL_H = COL + COL / 2; // 24
+
 /**
  * Face visible d'un mur horizontal (relief 3D façon Pokémon) : le mur
- * monte de 2 cases AU-DESSUS de sa ligne de base (`base` = là où il touche
- * le sol de la pièce au sud). Chapeau sombre en haut, liseré éclairé,
- * ligne sombre au ras du sol.
+ * blanc monte de 1,5 case AU-DESSUS de sa ligne de base (`base` = là où il
+ * touche le sol de la pièce au sud) et cache ce qui est derrière. Chapeau
+ * sombre en haut, liseré éclairé, ligne sombre au ras du sol.
  */
 function WallFace({ x, base, w, p }: { x: number; base: number; w: number; p: Palette }) {
   return (
     <G>
-      <Rect x={x} y={base - 2 * COL} width={w} height={2 * COL} fill={p.wallFace} />
-      <Rect x={x} y={base - 2 * COL} width={w} height={3} fill={p.wall} />
-      <Rect x={x} y={base - 2 * COL + 3} width={w} height={2} fill={p.wallFaceLight} />
+      <Rect x={x} y={base - WALL_H} width={w} height={WALL_H} fill={p.wallFace} />
+      <Rect x={x} y={base - WALL_H} width={w} height={3} fill={p.wall} />
+      <Rect x={x} y={base - WALL_H + 3} width={w} height={2} fill={p.wallFaceLight} />
       <Rect x={x} y={base - 2} width={w} height={2} fill={p.outline} />
     </G>
   );
@@ -225,11 +228,13 @@ function PixelSprite({
   y,
   grid,
   colors,
+  scale = 1,
 }: {
   x: number;
   y: number;
   grid: string[];
   colors: Record<string, string>;
+  scale?: number;
 }) {
   const px: ReactElement[] = [];
   grid.forEach((row, j) => {
@@ -242,10 +247,10 @@ function PixelSprite({
         px.push(
           <Rect
             key={`${start}-${j}`}
-            x={x + start}
-            y={y + j}
-            width={i - start}
-            height={1.12}
+            x={x + start * scale}
+            y={y + j * scale}
+            width={(i - start) * scale}
+            height={scale + 0.12}
             fill={colors[row[start]]}
           />
         );
@@ -259,8 +264,8 @@ function PixelSprite({
 
 /**
  * Le PC vintage du bureau, répliqué du sprite de la chambre du joueur en
- * Gen 3 : gros moniteur crème à écran sombre, unité à fente disquette,
- * posé sur une table à sous-main vert et pieds métalliques.
+ * Gen 3 : gros moniteur crème à écran sombre, unité à fente disquette.
+ * (Il se pose sur la table du bureau, dessinée à part.)
  */
 const PC_GRID = [
   '....KKKKKKKKKK....',
@@ -278,17 +283,7 @@ const PC_GRID = [
   '..KWWWWWWWWWWWWK..',
   '..KWSDDDDDDDDSWK..',
   '..KWWWWWWWWWWWWK..',
-  '..KSSSSSSSSSSSSK..',
-  '.KKKKKKKKKKKKKKKK.',
-  'KVVVVVVVVVVVVVVVVK',
-  'KTTTTTTTTTTTTTTTTK',
-  'KSSSSSSSSSSSSSSSSK',
-  'KKKKKKKKKKKKKKKKKK',
-  '.KMMK........KMMK.',
-  '.KMMK........KMMK.',
-  '.KMMK........KMMK.',
-  '.KMMK........KMMK.',
-  '.KKKK........KKKK.',
+  '..KKKKKKKKKKKKKK..',
 ];
 
 /**
@@ -494,24 +489,37 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           derrière elle (portes = trouées, le sol du balcon y passe) */}
       <WallFace x={0} base={HOUSE_TOP} w={CHAMBRE_L} p={p} />
       <WallFace x={LIT_L} base={HOUSE_TOP} w={224 - LIT_L} p={p} />
-      {/* Mur haut de l'avancée du salon */}
+      {/* Mur haut de l'avancée du salon + grande baie vitrée de 4 cases */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
+      <Rect x={CX(17)} y={EXT_TOP - 21} width={4 * COL} height={19} fill={p.outline} />
+      <Rect x={CX(17) + 1} y={EXT_TOP - 20} width={4 * COL - 2} height={17} fill={p.window} />
+      <Rect x={CX(17) + 21} y={EXT_TOP - 20} width={2} height={17} fill={p.outline} />
+      <Rect x={CX(17) + 42} y={EXT_TOP - 20} width={2} height={17} fill={p.outline} />
+      <Rect x={CX(17) + 4} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
+      <Rect x={CX(17) + 26} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
+      <Rect x={CX(17) + 47} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
       {/* Murs hauts de la sdb et des wc (montent dans le bureau/la cuisine,
           l'armoire et le meuble cuisine se dessinent devant) */}
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
-      {/* Bas de la chambre : la face monte sur le pied du lit */}
-      <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
       {/* Bouts des cloisons verticales */}
       <WallFace x={CHAMBRE_L - 2} base={CHAMBRE_BOT} w={3} p={p} />
       <WallFace x={WC_R - 3} base={CHAMBRE_BOT} w={3} p={p} />
       <WallFace x={SDB_R - 2} base={RY(6)} w={3} p={p} />
       {/* Mur du palier : face côté palier (mur extérieur de l'appartement) */}
-      <WallFace x={0} base={FLAT_BOTTOM + 2 * COL} w={208} p={p} />
-      <WallFace x={240} base={FLAT_BOTTOM + 2 * COL} w={MAP_W - 240} p={p} />
+      <WallFace x={0} base={FLAT_BOTTOM + WALL_H} w={208} p={p} />
+      <WallFace x={240} base={FLAT_BOTTOM + WALL_H} w={MAP_W - 240} p={p} />
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
-      {/* Bureau : le PC est dessiné après les murs (il les chevauche) */}
+      {/* Bureau : table 3 cases de large, sous-main vert, pieds métal
+          (le PC est dessiné après les murs, il les chevauche) */}
+      <Rect x={0} y={RY(0)} width={3 * COL} height={14} rx={2} fill={p.outline} />
+      <Rect x={1} y={RY(0) + 1} width={3 * COL - 2} height={8} fill={p.treeLight} />
+      <Rect x={1} y={RY(0) + 9} width={3 * COL - 2} height={4} fill={p.tub} />
+      <Rect x={3} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
+      <Rect x={4} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
+      <Rect x={39} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
+      <Rect x={40} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
 
       {/* Armoire merisier 4×1 : dessus clair, portes, poignées */}
       <Rect x={0} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
@@ -541,19 +549,20 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={52} y={FLAT_BOTTOM - 22} width={8} height={5} rx={1} fill={p.railing} />
       <Rect x={55} y={FLAT_BOTTOM - 17} width={2} height={4} fill={p.railing} />
 
-      {/* Lit 3×4 : cadre bois arrondi, couette à motifs, drap, oreiller */}
-      <Rect x={LIT_L} y={RY(3)} width={48} height={4 * COL} rx={5} fill={p.outline} />
-      <Rect x={LIT_L + 1} y={RY(3) + 1} width={46} height={4 * COL - 2} rx={4} fill={p.wood} />
-      <Rect x={LIT_L + 3} y={RY(3) + 3} width={42} height={4 * COL - 8} rx={3} fill={p.mattress} />
-      <Rect x={LIT_L + 3} y={RY(3) + 5} width={42} height={36} rx={3} fill={p.blanket} />
-      <Rect x={LIT_L + 3} y={RY(3) + 5} width={42} height={4} rx={2} fill={p.sofaDark} />
+      {/* Lit 3×4 remonté d'une case (rangées 2-5) : cadre bois arrondi,
+          couette à motifs, drap, oreiller — le mur du bas le masquera */}
+      <Rect x={LIT_L} y={RY(2)} width={48} height={4 * COL} rx={5} fill={p.outline} />
+      <Rect x={LIT_L + 1} y={RY(2) + 1} width={46} height={4 * COL - 2} rx={4} fill={p.wood} />
+      <Rect x={LIT_L + 3} y={RY(2) + 3} width={42} height={4 * COL - 8} rx={3} fill={p.mattress} />
+      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={36} rx={3} fill={p.blanket} />
+      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={4} rx={2} fill={p.sofaDark} />
       {Array.from({ length: 5 }).map((_, i) =>
         Array.from({ length: 4 }).map((_, j) =>
           (i + j) % 2 === 0 ? (
             <Rect
               key={`bl${i}-${j}`}
               x={LIT_L + 6 + i * 8}
-              y={RY(3) + 10 + j * 8}
+              y={RY(2) + 10 + j * 8}
               width={4}
               height={4}
               fill={p.sofaDark}
@@ -561,9 +570,9 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           ) : null
         )
       )}
-      <Rect x={LIT_L + 3} y={RY(3) + 39} width={42} height={3} fill={p.pillow} />
-      <Rect x={LIT_L + 6} y={RY(3) + 46} width={36} height={13} rx={5} fill={p.greyRugEdge} />
-      <Rect x={LIT_L + 7} y={RY(3) + 47} width={34} height={11} rx={4} fill={p.porcelain} />
+      <Rect x={LIT_L + 3} y={RY(2) + 39} width={42} height={3} fill={p.pillow} />
+      <Rect x={LIT_L + 6} y={RY(2) + 46} width={36} height={13} rx={5} fill={p.greyRugEdge} />
+      <Rect x={LIT_L + 7} y={RY(2) + 47} width={34} height={11} rx={4} fill={p.porcelain} />
 
       {/* WC : réservoir à bouton contre la cloison + cuvette ronde à lunette */}
       <Rect x={CUISINE_L + 1} y={WET_TOP + 6} width={7} height={20} rx={2} fill={p.outline} />
@@ -641,6 +650,9 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         />
       ))}
 
+      {/* Bas de la chambre : dessiné APRÈS le lit pour le masquer de 0,5 case */}
+      <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
+
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
 
@@ -667,10 +679,11 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={0} y={MAP_H - 3} width={MAP_W} height={3} fill={p.wall} />
 
       {/* ---------------- Meubles hauts (par-dessus les murs) ---------------- */}
-      {/* PC vintage Gen 3 du bureau : le moniteur dépasse sur le mur */}
+      {/* PC vintage Gen 3 (×1,5), centré sur la table du bureau */}
       <PixelSprite
-        x={2}
-        y={RY(0) - 12}
+        x={10}
+        y={RY(0) - 18}
+        scale={1.5}
         grid={PC_GRID}
         colors={{
           K: p.outline,
@@ -684,10 +697,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           M: p.railing,
         }}
       />
-      {/* Petite corbeille à côté du bureau */}
-      <Rect x={23} y={RY(0) + 3} width={7} height={10} rx={2} fill={p.outline} />
-      <Rect x={24} y={RY(0) + 4} width={5} height={8} rx={1} fill={p.water} />
-      <Rect x={24} y={RY(0) + 5} width={5} height={1} fill={p.porcelain} />
     </Svg>
   );
 });
