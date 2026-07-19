@@ -293,6 +293,20 @@ function PixelSprite({
  * Gen 3 : gros moniteur crème à écran sombre, unité à fente disquette.
  * (Il se pose sur la table du bureau, dessinée à part.)
  */
+/** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
+const PLANT_GRID = [
+  '...KK.KK...',
+  '..KGGKGGK..',
+  '.KGgGGGgGK.',
+  '.KGGgGgGGK.',
+  '..KGGGGGK..',
+  '...KKKKK...',
+  '..KRRRRRK..',
+  '..KrrrrrK..',
+  '...KrrrK...',
+  '....KKK....',
+];
+
 const PC_GRID = [
   '....KKKKKKKKKK....',
   '..KKWWWWWWWWWWKK..',
@@ -540,10 +554,12 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={0} y={RY(0)} width={3 * COL} height={14} rx={2} fill={p.outline} />
       <Rect x={1} y={RY(0) + 1} width={3 * COL - 2} height={8} fill={p.porcelain} />
       <Rect x={1} y={RY(0) + 9} width={3 * COL - 2} height={4} fill={p.sofaLight} />
-      <Rect x={3} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
-      <Rect x={4} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
-      <Rect x={39} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
-      <Rect x={40} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
+      {[3, 39].map((lx) => (
+        <G key={`dl${lx}`}>
+          <Rect x={lx} y={RY(0) + 13} width={6} height={7} fill={p.outline} />
+          <Rect x={lx + 1} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
+        </G>
+      ))}
 
       {/* Armoire merisier 4×1 : dessus clair, portes, poignées */}
       <Rect x={0} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
@@ -646,7 +662,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CUISINE_L + 16} y={ARMOIRE_TOP + 1} width={6} height={6} rx={3} fill={p.outline} />
       <Rect x={CUISINE_L + 18} y={ARMOIRE_TOP + 3} width={2} height={2} fill={p.greyRug} />
 
-      {/* Grande table blanche 4×2 : plateau arrondi, pieds, petite plante */}
+      {/* Grande table blanche 4×2 : plateau arrondi, pieds, plante en pot */}
       <Rect x={CX(17) + 2} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
       <Rect x={CX(17) + 57} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
       <Rect x={CX(17) + 3} y={RY(-1) + 24} width={3} height={6} fill={p.greyRugEdge} />
@@ -654,8 +670,18 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(17)} y={RY(-1)} width={4 * COL} height={26} rx={4} fill={p.outline} />
       <Rect x={CX(17) + 1} y={RY(-1) + 1} width={62} height={20} rx={3} fill={p.tub} />
       <Rect x={CX(17) + 1} y={RY(-1) + 21} width={62} height={4} rx={2} fill={p.sofaLight} />
-      <Rect x={CX(17) + 27} y={RY(-1) + 4} width={10} height={6} rx={2} fill={p.treeLight} />
-      <Rect x={CX(17) + 29} y={RY(-1) + 9} width={6} height={5} rx={1} fill={p.merisier} />
+      <PixelSprite
+        x={CX(17) + 27}
+        y={RY(-1) + 4}
+        grid={PLANT_GRID}
+        colors={{
+          K: p.outline,
+          G: p.treeLight,
+          g: p.tree,
+          R: p.merisierLight,
+          r: p.merisier,
+        }}
+      />
 
       {/* Étagères 9×1 : bibliothèque à livres colorés */}
       <Rect x={SDB_R} y={RY(9)} width={9 * COL} height={14} fill={p.outline} />
