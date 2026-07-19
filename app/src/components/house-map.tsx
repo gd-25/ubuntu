@@ -203,14 +203,14 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 /** Hauteur des faces de murs : 1 case et demie. */
 const WALL_H = COL + COL / 2; // 24
 
-/** Cloison vue de dessus : trait tout blanc (6 px de large). */
+/** Cloison vue de dessus : trait blanc de la largeur d'une strie de parquet. */
 function WallV({ x, y, h, p }: { x: number; y: number; h: number; p: Palette }) {
-  return <Rect x={x} y={y} width={6} height={h} fill={p.wallFace} />;
+  return <Rect x={x} y={y} width={1.5} height={h} fill={p.wallFace} />;
 }
 
-/** Mur horizontal fin vu de dessus : trait tout blanc. */
+/** Mur horizontal fin vu de dessus : même trait blanc. */
 function WallH({ x, y, w, p }: { x: number; y: number; w: number; p: Palette }) {
-  return <Rect x={x} y={y} width={w} height={6} fill={p.wallFace} />;
+  return <Rect x={x} y={y} width={w} height={1.5} fill={p.wallFace} />;
 }
 
 /**
@@ -529,21 +529,17 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <GlassDoor x={293} base={EXT_TOP} p={p} />
       <GlassDoor x={315} base={EXT_TOP} p={p} />
       {/* Trait blanc vertical qui relie le mur de l'avancée à la façade */}
-      <WallV x={SALON_L - 3} y={EXT_TOP} h={HOUSE_TOP - EXT_TOP} p={p} />
-      {/* Bouts des cloisons verticales */}
-      <WallFace x={CHAMBRE_L - 3} base={CHAMBRE_BOT} w={6} p={p} />
-      <WallFace x={WC_R - 6} base={CHAMBRE_BOT} w={6} p={p} />
-      <WallFace x={SDB_R - 3} base={RY(6)} w={6} p={p} />
+      <WallV x={SALON_L - 0.75} y={EXT_TOP} h={HOUSE_TOP - EXT_TOP} p={p} />
       {/* Mur du palier : face côté palier (mur extérieur de l'appartement) */}
       <WallFace x={0} base={FLAT_BOTTOM + WALL_H} w={208} p={p} />
       <WallFace x={240} base={FLAT_BOTTOM + WALL_H} w={MAP_W - 240} p={p} />
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
-      {/* Bureau : table 3 cases de large, sous-main vert, pieds métal
+      {/* Bureau : table blanche 3 cases de large, pieds métal
           (le PC est dessiné après les murs, il les chevauche) */}
       <Rect x={0} y={RY(0)} width={3 * COL} height={14} rx={2} fill={p.outline} />
-      <Rect x={1} y={RY(0) + 1} width={3 * COL - 2} height={8} fill={p.treeLight} />
-      <Rect x={1} y={RY(0) + 9} width={3 * COL - 2} height={4} fill={p.tub} />
+      <Rect x={1} y={RY(0) + 1} width={3 * COL - 2} height={8} fill={p.porcelain} />
+      <Rect x={1} y={RY(0) + 9} width={3 * COL - 2} height={4} fill={p.sofaLight} />
       <Rect x={3} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
       <Rect x={4} y={RY(0) + 14} width={4} height={5} fill={p.railing} />
       <Rect x={39} y={RY(0) + 14} width={6} height={6} fill={p.outline} />
@@ -686,27 +682,27 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
 
-      {/* Cloison bureau / chambre (aucune porte) */}
-      <WallV x={CHAMBRE_L - 3} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP} p={p} />
+      {/* Cloison bureau / chambre (aucune porte), pile sur la strie */}
+      <WallV x={CHAMBRE_L - 0.75} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP} p={p} />
 
       {/* Cloison chambre / salon+WC (aucune porte) */}
-      <WallV x={CUISINE_L - 3} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP + 1} p={p} />
+      <WallV x={CUISINE_L - 0.75} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP + 1} p={p} />
 
       {/* Bureau → couloir : la porte occupe toute l'ouverture (aucun mur) */}
 
       {/* Salle de bain : bord droit mur 2 / porte 2 / mur 1 (murs haut et
           bas dessinés en faces 3D) */}
-      <WallV x={SDB_R - 3} y={WET_TOP} h={2 * COL} p={p} />
-      <WallV x={SDB_R - 3} y={RY(9)} h={SDB_BOT - RY(9)} p={p} />
+      <WallV x={SDB_R - 0.75} y={WET_TOP} h={2 * COL} p={p} />
+      <WallV x={SDB_R - 0.75} y={RY(9)} h={SDB_BOT - RY(9)} p={p} />
 
       {/* WC : mur droit + mur bas avec porte de 2 (cols 13-14) */}
-      <WallV x={WC_R - 6} y={WET_TOP} h={CHAMBRE_BOT - WET_TOP + 3} p={p} />
-      <WallH x={CUISINE_L} y={CHAMBRE_BOT - 3} w={2 * COL} p={p} />
+      <WallV x={WC_R - 0.75} y={WET_TOP} h={CHAMBRE_BOT - WET_TOP + 3} p={p} />
+      <WallH x={CUISINE_L} y={CHAMBRE_BOT - 0.75} w={2 * COL} p={p} />
 
       {/* Murs extérieurs */}
       <WallV x={0} y={HOUSE_TOP} h={MAP_H - HOUSE_TOP} p={p} />
-      <WallV x={MAP_W - 6} y={EXT_TOP} h={MAP_H - EXT_TOP} p={p} />
-      <WallH x={0} y={MAP_H - 6} w={MAP_W} p={p} />
+      <WallV x={MAP_W - 1.5} y={EXT_TOP} h={MAP_H - EXT_TOP} p={p} />
+      <WallH x={0} y={MAP_H - 1.5} w={MAP_W} p={p} />
 
       {/* ---------------- Meubles hauts (par-dessus les murs) ---------------- */}
       {/* PC vintage Gen 3 (×1,5), centré sur la table du bureau */}
