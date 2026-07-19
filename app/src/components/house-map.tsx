@@ -345,6 +345,31 @@ const TUB_GRID = [
   '....KKK..................KKK....',
 ];
 
+/**
+ * WC recréés d'après le modèle pixel-art : réservoir haut à gauche,
+ * abattant ovale vu à 45°, cuvette sur socle.
+ */
+const TOILET_GRID = [
+  '.KKKK...................',
+  'KWWWWK..................',
+  'KWWWSK..................',
+  'KWWWSK..................',
+  'KWWSSK...KKKKKKKK.......',
+  'KWWSSK..KKWWWWWWKK......',
+  'KWSSSK.KWWWWWWWWWWK.....',
+  'KWOOSKKWWWWWWWWWWWWK....',
+  'KWSSSKKWWWWWWWWWWWWWK...',
+  'KSSSSKKWSSWWWWWWWWSWK...',
+  'KSSSSKKSSSSSSSSSSSSSK...',
+  'KSSSSK.KKSSSSSSSSSKK....',
+  'KSSSSK...KSSSSSSSK......',
+  'KKKKKK..KSSSSSSSSSK.....',
+  '........KSDSSSSSDSK.....',
+  '........KSSSSSSSSSK.....',
+  '.........KDSSSSSDK......',
+  '........KKKKKKKKKKK.....',
+];
+
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
 const PLANT_GRID = [
   '...KK.KK...',
@@ -664,19 +689,21 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={LIT_L + 25} y={RY(2) + 42} width={20} height={14} rx={1} fill={p.outline} />
       <Rect x={LIT_L + 26} y={RY(2) + 43} width={18} height={12} rx={1} fill={p.window} />
 
-      {/* WC vus à 45° façon Pokémon : lunette ovale vue de dessus, socle
-          visible dessous, réservoir avec dessus clair */}
-      <Rect x={CUISINE_L + 6} y={WET_TOP + 27} width={24} height={2} rx={1} fill={p.greyRugEdge} />
-      <Rect x={CUISINE_L + 1} y={WET_TOP + 4} width={8} height={23} rx={2} fill={p.outline} />
-      <Rect x={CUISINE_L + 2} y={WET_TOP + 5} width={6} height={21} rx={2} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 2} y={WET_TOP + 5} width={6} height={4} rx={2} fill={p.tub} />
-      <Rect x={CUISINE_L + 3} y={WET_TOP + 6} width={3} height={2} fill={p.railing} />
-      <Rect x={CUISINE_L + 12} y={WET_TOP + 20} width={14} height={7} rx={2} fill={p.outline} />
-      <Rect x={CUISINE_L + 13} y={WET_TOP + 20} width={12} height={6} rx={2} fill={p.sofaLight} />
-      <Rect x={CUISINE_L + 8} y={WET_TOP + 6} width={24} height={17} rx={8} fill={p.outline} />
-      <Rect x={CUISINE_L + 9} y={WET_TOP + 7} width={22} height={15} rx={7} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 12} y={WET_TOP + 10} width={14} height={9} rx={4} fill={p.tileAlt} />
-      <Rect x={CUISINE_L + 14} y={WET_TOP + 12} width={9} height={5} rx={2} fill={p.water} />
+      {/* WC : réplique du modèle pixel-art (réservoir, abattant à 45°, socle) */}
+      <Rect x={CUISINE_L + 6} y={WET_TOP + 28} width={26} height={2} rx={1} fill={p.greyRugEdge} />
+      <PixelSprite
+        x={CUISINE_L + 1}
+        y={WET_TOP + 2}
+        scale={1.5}
+        grid={TOILET_GRID}
+        colors={{
+          K: p.outline,
+          W: p.porcelain,
+          S: p.sofaLight,
+          D: p.greyRug,
+          O: p.railing,
+        }}
+      />
 
       {/* Canapé 2×3 (rangées 6-8) : bords fins façon tables, dossier contre
           le mur, accoudoirs, couture, face avant ombrée et pieds */}
