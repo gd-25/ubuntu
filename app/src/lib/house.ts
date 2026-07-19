@@ -59,10 +59,17 @@ export function cellCenter(col: number, row: number): { x: number; y: number } {
 }
 
 /**
- * Une case est meublée (donc non utilisable) si un meuble l'occupe.
- * Les murs sont sur les frontières : ils ne bloquent pas de case.
+ * Une case est meublée ou cachée derrière un mur 3D (donc non utilisable).
+ * Les faces des murs montent de 2 cases au-dessus de leur base : les cases
+ * du côté nord qu'elles recouvrent ne sont plus praticables.
  */
 function isFurnished(col: number, row: number): boolean {
+  // Balcon derrière la façade (les portes cols 6-7 et 14-15 restent ouvertes).
+  if ((row === -1 || row === -2) && (col <= 5 || (col >= 8 && col <= 13))) return true;
+  // Rangée du balcon cachée par le mur haut de l'avancée.
+  if (row === -3 && col >= 16) return true;
+  // Cases du bureau et de la cuisine derrière les murs hauts sdb/wc.
+  if (row === 3 && (col <= 3 || (col >= 11 && col <= 14))) return true;
   if (row === 0 && col <= 1) return true; // bureau blanc
   if (row === 4 && col <= 3) return true; // armoire du bureau
   if (row === 5 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
@@ -140,12 +147,12 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 250, y: 323 },
   },
   balcon: {
-    greg: { x: 60, y: 418 },
-    fiona: { x: 148, y: 418 },
-    ubuntu: { x: 218, y: 420 },
+    greg: { x: 60, y: 409 },
+    fiona: { x: 148, y: 409 },
+    ubuntu: { x: 218, y: 411 },
   },
   bureau: {
-    greg: { x: 34, y: 500 },
+    greg: { x: 34, y: 484 },
     fiona: { x: 70, y: 480 },
     ubuntu: { x: 76, y: 514 },
   },
@@ -175,9 +182,9 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
     ubuntu: { x: 166, y: 570 },
   },
   couloir_ext: {
-    greg: { x: 80, y: 630 },
-    fiona: { x: 180, y: 628 },
-    ubuntu: { x: 276, y: 632 },
+    greg: { x: 80, y: 648 },
+    fiona: { x: 180, y: 646 },
+    ubuntu: { x: 276, y: 650 },
   },
 };
 
