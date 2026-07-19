@@ -1,5 +1,5 @@
 import { memo, type ReactElement } from 'react';
-import Svg, { Defs, G, Line, Pattern, Polygon, Rect } from 'react-native-svg';
+import Svg, { Defs, G, Image as SvgImage, Line, Pattern, Polygon, Rect } from 'react-native-svg';
 
 import { COL, FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
 
@@ -345,33 +345,6 @@ const TUB_GRID = [
   '....KKK..................KKK....',
 ];
 
-/**
- * WC recréés d'après le modèle pixel-art : réservoir haut à gauche,
- * abattant ovale vu à 45°, cuvette sur socle.
- */
-const TOILET_GRID = [
-  '.KKKK.................',
-  'KWWWWK................',
-  'KWWWSK................',
-  'KWWWSK................',
-  'KWWSSK................',
-  'KWSSSK................',
-  'KWOOSK....KKKKKKK.....',
-  'KWSSSK..KKWWWWWWWKK...',
-  'KSSSSK.KWWWWWWWWWWWK..',
-  'KSSSSKKWWWWWWWWWWWWWK.',
-  'KSSSSKKWWWWWWWWWWWWWK.',
-  'KSSSSKKWSSWWWWWWWWSWK.',
-  'KKKKKKKSSSSSSSSSSSSSK.',
-  '.......KKSSSSSSSSSKK..',
-  '........KSSSSSSSSK....',
-  '.......KSSSSSSSSSSK...',
-  '.......KSDSSSSSSDSK...',
-  '........KDSSSSSSDK....',
-  '........KDDSSSSDDK....',
-  '........KKKKKKKKKK....',
-];
-
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
 const PLANT_GRID = [
   '...KK.KK...',
@@ -664,47 +637,25 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         colors={{ K: p.outline, T: p.tub, w: p.water, L: p.tileAlt, M: p.railing, S: p.sofaLight }}
       />
 
-      {/* Lit 3×4 (rangées 2-5) : bords fins, couette à motifs, deux
-          oreillers — le mur du bas le masque de 0,5 case */}
-      <Rect x={LIT_L} y={RY(2)} width={48} height={64} rx={4} fill={p.outline} />
-      <Rect x={LIT_L + 1} y={RY(2) + 1} width={46} height={62} rx={3} fill={p.porcelain} />
-      <Rect x={LIT_L + 3} y={RY(2) + 3} width={42} height={58} rx={2} fill={p.mattress} />
-      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={34} rx={2} fill={p.blanket} />
-      <Rect x={LIT_L + 3} y={RY(2) + 5} width={42} height={4} rx={2} fill={p.sofaDark} />
-      {Array.from({ length: 5 }).map((_, i) =>
-        Array.from({ length: 4 }).map((_, j) =>
-          (i + j) % 2 === 0 ? (
-            <Rect
-              key={`bl${i}-${j}`}
-              x={LIT_L + 6 + i * 8}
-              y={RY(2) + 11 + j * 7}
-              width={4}
-              height={4}
-              fill={p.sofaDark}
-            />
-          ) : null
-        )
-      )}
-      <Rect x={LIT_L + 3} y={RY(2) + 37} width={42} height={3} fill={p.pillow} />
-      <Rect x={LIT_L + 3} y={RY(2) + 42} width={20} height={14} rx={1} fill={p.outline} />
-      <Rect x={LIT_L + 4} y={RY(2) + 43} width={18} height={12} rx={1} fill={p.window} />
-      <Rect x={LIT_L + 25} y={RY(2) + 42} width={20} height={14} rx={1} fill={p.outline} />
-      <Rect x={LIT_L + 26} y={RY(2) + 43} width={18} height={12} rx={1} fill={p.window} />
+      {/* Lit 3×4 (rangées 2-5) : le sprite pixel-art fourni, tel quel —
+          le mur du bas le masque de 0,5 case */}
+      <SvgImage
+        x={LIT_L}
+        y={RY(6) - 53}
+        width={48}
+        height={53}
+        preserveAspectRatio="xMidYMid meet"
+        href={require('../../assets/images/bed.png')}
+      />
 
-      {/* WC : réplique du modèle pixel-art (réservoir, abattant à 45°, socle) */}
-      <Rect x={CUISINE_L + 6} y={WET_TOP + 28} width={26} height={2} rx={1} fill={p.greyRugEdge} />
-      <PixelSprite
+      {/* WC : le sprite pixel-art fourni, affiché tel quel */}
+      <SvgImage
         x={CUISINE_L + 1}
-        y={WET_TOP + 2}
-        scale={1.5}
-        grid={TOILET_GRID}
-        colors={{
-          K: p.outline,
-          W: p.porcelain,
-          S: p.sofaLight,
-          D: p.greyRug,
-          O: p.railing,
-        }}
+        y={WET_TOP + 1}
+        width={25}
+        height={30}
+        preserveAspectRatio="xMidYMid meet"
+        href={require('../../assets/images/toilets.png')}
       />
 
       {/* Canapé 2×3 (rangées 6-8) : bords fins façon tables, dossier contre
