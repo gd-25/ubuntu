@@ -339,18 +339,18 @@ const BED_GRID = [
 const SHOWER_GRID = [
   'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
   'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
-  'KTccccccccccccccccccccccccccccTK',
-  'KTccccccLLccccccccccccLLccccccTK',
-  'KTccccccccccccccccccccccccccccTK',
-  'KTccccccccccccKKccccccccccLLccTK',
-  'KTccccccLLccccKKccccccccccccccTK',
-  'KTccccccccccccccccccLLccccccccTK',
-  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
-  'KVVPPPVVVVVVVVVVVVVVVVVVVVPPPVVK',
+  'KTWWWWWWWWWWWWWWWWWWWWWWWWWWWWTK',
+  'KTWSWWWSWWWWSWWWWWSWWWSWWWWSWWTK',
+  'KTWWWWSWWWSWWWWSWWWWWWSWWWWWWWTK',
+  'KTWSWWWWWWWWWWKKWWWSWWWWWSWWWWTK',
+  'KTWWWWSWWWSWWWKKWWWWWWSWWWWWSWTK',
+  'KTWSWWWWWWSWWWWWWWSWWWWWWWWWWWTK',
+  'KTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTK',
   'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
-  'KVPPVVVVVVVVVVVVPPPPVVVVVVVVVVVK',
+  'KVWWWVVVVVVVVVVVVVVVVVVVVVWWWVVK',
+  'KVVVVVVVVVVVVVVVVVVVVWWVVVVVVVVK',
   'KVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVK',
-  'KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK',
+  'KDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDK',
 ];
 
 /**
@@ -714,11 +714,10 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         colors={{
           K: p.outline,
           T: p.tub,
-          c: p.tileAlt,
-          M: p.railing,
-          L: p.window,
+          W: p.porcelain,
+          S: p.sofaLight,
           V: p.window,
-          P: p.porcelain,
+          D: p.greyRugEdge,
         }}
       />
 
@@ -856,12 +855,12 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
-      {/* Barre de douche fixée sur le mur blanc de la sdb : colonne + pomme */}
-      <Rect x={10} y={WET_TOP - 22} width={3} height={21} fill={p.railing} />
-      <Rect x={8} y={WET_TOP - 23} width={7} height={3} rx={1} fill={p.greyRug} />
-      <Rect x={13} y={WET_TOP - 20} width={7} height={3} fill={p.railing} />
-      <Rect x={18} y={WET_TOP - 18} width={6} height={7} rx={2} fill={p.greyRug} />
-      <Rect x={19} y={WET_TOP - 11} width={4} height={2} fill={p.window} />
+      {/* Pomme de douche qui sort du mur blanc, gouttes dans le receveur */}
+      <Rect x={13} y={WET_TOP - 9} width={6} height={4} rx={1} fill={p.railing} />
+      <Rect x={10} y={WET_TOP - 6} width={12} height={5} rx={2} fill={p.greyRug} />
+      <Rect x={11} y={WET_TOP + 2} width={2} height={3} fill={p.window} />
+      <Rect x={15} y={WET_TOP + 4} width={2} height={3} fill={p.window} />
+      <Rect x={19} y={WET_TOP + 2} width={2} height={3} fill={p.window} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
