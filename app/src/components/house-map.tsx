@@ -487,28 +487,25 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       )}
 
       {/* ------------- Faces des murs (2 cases, au-dessus de la base) ------- */}
-      {/* Façade côté balcon : mur blanc continu, percé de deux
-          portes-fenêtres (chambre et cuisine) de 1,8 × 1,4 case */}
+      {/* Façade côté balcon : mur blanc continu, percé de deux fenêtres
+          hautes (chambre et cuisine) de 1,8 case, accrochées en haut */}
       <WallFace x={0} base={HOUSE_TOP} w={SALON_L} p={p} />
       {[97, 225].map((dx) => (
         <G key={`pf${dx}`}>
-          <Rect x={dx} y={HOUSE_TOP - 22} width={29} height={22} fill={p.outline} />
-          <Rect x={dx + 1} y={HOUSE_TOP - 21} width={27} height={20} fill={p.window} />
-          <Rect x={dx + 14} y={HOUSE_TOP - 21} width={2} height={20} fill={p.outline} />
-          <Rect x={dx + 3} y={HOUSE_TOP - 18} width={8} height={4} fill={p.porcelain} />
-          <Rect x={dx + 18} y={HOUSE_TOP - 18} width={8} height={4} fill={p.porcelain} />
+          <Rect x={dx} y={HOUSE_TOP - 21} width={29} height={12} fill={p.outline} />
+          <Rect x={dx + 1} y={HOUSE_TOP - 20} width={27} height={10} fill={p.window} />
+          <Rect x={dx + 14} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
+          <Rect x={dx + 3} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
+          <Rect x={dx + 17} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
         </G>
       ))}
-      {/* Deux fenêtres de 2 cases sur la moitié haute du mur du bureau */}
-      {[8, 56].map((wx) => (
-        <G key={`bw${wx}`}>
-          <Rect x={wx} y={HOUSE_TOP - 21} width={2 * COL} height={12} fill={p.outline} />
-          <Rect x={wx + 1} y={HOUSE_TOP - 20} width={2 * COL - 2} height={10} fill={p.window} />
-          <Rect x={wx + 15} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
-          <Rect x={wx + 3} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
-          <Rect x={wx + 19} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
-        </G>
-      ))}
+      {/* Bureau : deux grandes fenêtres collées (une seule paire de
+          bordures, jonction centrale), centrées sur la moitié haute */}
+      <Rect x={CX(1)} y={HOUSE_TOP - 21} width={4 * COL} height={12} fill={p.outline} />
+      <Rect x={CX(1) + 1} y={HOUSE_TOP - 20} width={4 * COL - 2} height={10} fill={p.window} />
+      <Rect x={CX(1) + 31} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
+      <Rect x={CX(1) + 4} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
+      <Rect x={CX(1) + 36} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
       {/* Mur haut de l'avancée du salon + grande baie vitrée de 4 cases */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
       <Rect x={CX(17)} y={EXT_TOP - 21} width={4 * COL} height={19} fill={p.outline} />
