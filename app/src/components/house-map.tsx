@@ -193,6 +193,82 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 }
 
 /**
+ * Sprite dessiné pixel par pixel : chaque caractère de la grille est un
+ * pixel d'une unité carte ('.' = transparent). Permet de recréer fidèlement
+ * les meubles détaillés façon Game Boy Advance.
+ */
+function PixelSprite({
+  x,
+  y,
+  grid,
+  colors,
+}: {
+  x: number;
+  y: number;
+  grid: string[];
+  colors: Record<string, string>;
+}) {
+  const px: ReactElement[] = [];
+  grid.forEach((row, j) => {
+    // Fusionne les pixels contigus de même couleur en une seule plage
+    // (évite les liserés d'anti-aliasing entre petits rects).
+    let start = -1;
+    for (let i = 0; i <= row.length; i++) {
+      const c = i < row.length ? row[i] : '.';
+      if (start >= 0 && (c === '.' || c !== row[start])) {
+        px.push(
+          <Rect
+            key={`${start}-${j}`}
+            x={x + start}
+            y={y + j}
+            width={i - start}
+            height={1.12}
+            fill={colors[row[start]]}
+          />
+        );
+        start = -1;
+      }
+      if (start < 0 && c !== '.') start = i;
+    }
+  });
+  return <G>{px}</G>;
+}
+
+/**
+ * Le PC vintage du bureau, répliqué du sprite de la chambre du joueur en
+ * Gen 3 : gros moniteur crème à écran sombre, unité à fente disquette,
+ * posé sur une table à sous-main vert et pieds métalliques.
+ */
+const PC_GRID = [
+  '....KKKKKKKKKK....',
+  '..KKWWWWWWWWWWKK..',
+  '..KWWWWWWWWWWWWK..',
+  '..KWKKKKKKKKKKWK..',
+  '..KWKBBBBBBBBKWK..',
+  '..KWKBLLBBBBBKWK..',
+  '..KWKBLBBBBBBKWK..',
+  '..KWKBBBBBBBBKWK..',
+  '..KWKKKKKKKKKKWK..',
+  '..KWWWWWWWWWWWWK..',
+  '..KSWWWWWWWWWWSK..',
+  '...KKKKKKKKKKKK...',
+  '..KWWWWWWWWWWWWK..',
+  '..KWSDDDDDDDDSWK..',
+  '..KWWWWWWWWWWWWK..',
+  '..KSSSSSSSSSSSSK..',
+  '.KKKKKKKKKKKKKKKK.',
+  'KVVVVVVVVVVVVVVVVK',
+  'KTTTTTTTTTTTTTTTTK',
+  'KSSSSSSSSSSSSSSSSK',
+  'KKKKKKKKKKKKKKKKKK',
+  '.KMMK........KMMK.',
+  '.KMMK........KMMK.',
+  '.KMMK........KMMK.',
+  '.KMMK........KMMK.',
+  '.KKKK........KKKK.',
+];
+
+/**
  * Damier de carreaux 16×16 aligné sur la grille globale (colonnes en x,
  * rangées ancrées sur HOUSE_TOP en y), rogné aux bords de la pièce.
  */
@@ -391,15 +467,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       )}
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
-      {/* Bureau 2×1 : plateau arrondi + PC façon Pokémon (moniteur + clavier) */}
-      <Rect x={0} y={RY(0)} width={2 * COL} height={COL + 2} rx={2} fill={p.outline} />
-      <Rect x={1} y={RY(0) + 1} width={2 * COL - 2} height={11} rx={2} fill={p.tub} />
-      <Rect x={1} y={RY(0) + 12} width={2 * COL - 2} height={5} rx={1} fill={p.sofaLight} />
-      <Rect x={8} y={RY(0) - 6} width={16} height={14} rx={2} fill={p.outline} />
-      <Rect x={9} y={RY(0) - 5} width={14} height={12} rx={2} fill={p.porcelain} />
-      <Rect x={11} y={RY(0) - 3} width={10} height={7} fill={p.screen} />
-      <Rect x={12} y={RY(0) - 2} width={4} height={2} fill={p.window} />
-      <Rect x={10} y={RY(0) + 9} width={12} height={3} rx={1} fill={p.greyRug} />
+      {/* Bureau : le PC est dessiné après les murs (il les chevauche) */}
 
       {/* Armoire merisier 4×1 : dessus clair, portes, poignées */}
       <Rect x={0} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
@@ -569,6 +637,29 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={0} y={HOUSE_TOP - 3} width={3} height={MAP_H - HOUSE_TOP + 3} fill={p.wall} />
       <Rect x={MAP_W - 3} y={EXT_TOP - 3} width={3} height={MAP_H - EXT_TOP + 3} fill={p.wall} />
       <Rect x={0} y={MAP_H - 3} width={MAP_W} height={3} fill={p.wall} />
+
+      {/* ---------------- Meubles hauts (par-dessus les murs) ---------------- */}
+      {/* PC vintage Gen 3 du bureau : le moniteur dépasse sur le mur */}
+      <PixelSprite
+        x={2}
+        y={RY(0) - 12}
+        grid={PC_GRID}
+        colors={{
+          K: p.outline,
+          W: p.porcelain,
+          S: p.sofaLight,
+          B: p.sofaDark,
+          L: p.window,
+          D: p.greyRugEdge,
+          T: p.tub,
+          V: p.treeLight,
+          M: p.railing,
+        }}
+      />
+      {/* Petite corbeille à côté du bureau */}
+      <Rect x={23} y={RY(0) + 3} width={7} height={10} rx={2} fill={p.outline} />
+      <Rect x={24} y={RY(0) + 4} width={5} height={8} rx={1} fill={p.water} />
+      <Rect x={24} y={RY(0) + 5} width={5} height={1} fill={p.porcelain} />
     </Svg>
   );
 });
