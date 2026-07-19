@@ -74,7 +74,7 @@ function isFurnished(col: number, row: number): boolean {
   if (row === 9 && col <= 3) return true; // baignoire (4×1,5 en bas)
   if (col >= 8 && col <= 10 && row >= 2 && row <= 6) return true; // lit + mur
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
-  if ((row === 3 || row === 4) && col >= 11 && col <= 14) return true; // meuble cuisine + mur wc
+  if (row === 4 && col >= 11 && col <= 14) return true; // rangée cachée par le mur wc
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
   if (col >= 20 && row >= 6 && row <= 8) return true; // canapé 2×3 (rangées 6-8)
   if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
