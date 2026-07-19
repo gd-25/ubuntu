@@ -397,40 +397,6 @@ const TOILET_GRID = [
   '........KKKK....',
 ];
 
-/**
- * Canapé 2 places (16×26, échelle 2) : dossier contre le mur droit,
- * accoudoirs avec dessus clair et face avant ombrée, deux coussins,
- * pieds visibles.
- */
-const COUCH_GRID = [
-  '.KKKKKKKKKKKKKK.',
-  'KGGGGGGGGGGGGGGK',
-  'KGGGGGGGGGGGGGGK',
-  'KDDDDDDDDDDDGGGK',
-  'KKKKKKKKKKKKGGGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KDDDDDDDDDDKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KSSSSSSSSSSKGSGK',
-  'KKKKKKKKKKKKGGGK',
-  'KGGGGGGGGGGGGGGK',
-  'KGGGGGGGGGGGGGGK',
-  'KDDDDDDDDDDDDDDK',
-  'KDDDDDDDDDDDDDDK',
-  '.KKKKKKKKKKKKKK.',
-  '..KKK......KKK..',
-  '..KKK......KKK..',
-];
-
 /** Plante en pot détaillée : feuillage à deux verts, pot en terre cuite. */
 const PLANT_GRID = [
   '...KK.KK...',
@@ -641,12 +607,12 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           <Rect x={2} y={2} width={2} height={2} fill={p.beigeRugEdge} />
         </Pattern>
       </Defs>
-      <Rect x={CX(17)} y={RY(4)} width={5 * COL} height={6 * COL} fill={p.beigeRugEdge} />
+      <Rect x={CX(17)} y={RY(4)} width={5 * COL} height={6 * COL} fill={p.beigeRug} />
       <Rect
-        x={CX(17) + 3}
-        y={RY(4) + 3}
-        width={5 * COL - 6}
-        height={6 * COL - 6}
+        x={CX(17) + 1.5}
+        y={RY(4) + 1.5}
+        width={5 * COL - 3}
+        height={6 * COL - 3}
         fill="url(#rugCheck)"
       />
       {/* Bureau : tapis gris 3×3, bordure + points tissés */}
@@ -771,20 +737,18 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         }}
       />
 
-      {/* Canapé 2×3 : sprite 3D (dossier, accoudoirs, coussins, pieds) */}
-      <PixelSprite
-        x={CX(20)}
-        y={RY(5) - 2}
-        scale={2}
-        grid={COUCH_GRID}
-        colors={{
-          K: p.outline,
-          G: p.greyRug,
-          S: p.sofaLight,
-          D: p.greyRugEdge,
-          L: p.porcelain,
-        }}
-      />
+      {/* Canapé 2×3 (rangées 6-8) : bords fins façon tables, dossier contre
+          le mur, accoudoirs, couture, face avant ombrée et pieds */}
+      <Rect x={CX(20) + 4} y={RY(6) + 46} width={5} height={6} rx={1} fill={p.outline} />
+      <Rect x={CX(20) + 23} y={RY(6) + 46} width={5} height={6} rx={1} fill={p.outline} />
+      <Rect x={CX(20)} y={RY(6) - 2} width={2 * COL} height={50} rx={4} fill={p.outline} />
+      <Rect x={CX(20) + 1} y={RY(6) - 1} width={30} height={48} rx={3} fill={p.sofaLight} />
+      <Rect x={CX(20) + 22} y={RY(6)} width={9} height={42} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) + 25} y={RY(6) + 2} width={2} height={38} fill={p.sofaLight} />
+      <Rect x={CX(20) + 1} y={RY(6) - 1} width={23} height={8} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) + 1} y={RY(6) + 34} width={23} height={8} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) + 3} y={RY(6) + 20} width={20} height={2} fill={p.greyRugEdge} />
+      <Rect x={CX(20) + 1} y={RY(6) + 42} width={30} height={5} rx={1} fill={p.greyRugEdge} />
 
       {/* Table basse 2×2 : plateau bois sur pieds (3D) */}
       <Rect x={CX(17) + 2} y={RY(7) + 24} width={5} height={7} rx={1} fill={p.outline} />
