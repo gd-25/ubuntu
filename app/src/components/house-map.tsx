@@ -25,7 +25,9 @@ const CX = (c: number) => c * COL;
 const RY = (r: number) => HOUSE_TOP + r * COL;
 
 // Repères verticaux (tous sur la grille).
-const ARMOIRE_TOP = RY(4); // 513 — rangée de l'armoire du bureau
+// L'armoire et le meuble cuisine sont remontés d'une case : le mur blanc
+// dessiné par-dessus les masque de 0,5 case (même règle que le lit).
+const ARMOIRE_TOP = RY(3) - 2; // 495
 const WET_TOP = RY(5); // 529 — haut des WC et de la salle de bain
 const SDB_BOT = RY(10); // 609 — bas de la sdb = bas de l'appartement
 const CHAMBRE_BOT = RY(7); // 561 — bas de la chambre et des WC
@@ -485,10 +487,28 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       )}
 
       {/* ------------- Faces des murs (2 cases, au-dessus de la base) ------- */}
-      {/* Façade côté balcon : la face recouvre les 2 rangées de balcon
-          derrière elle (portes = trouées, le sol du balcon y passe) */}
-      <WallFace x={0} base={HOUSE_TOP} w={CHAMBRE_L} p={p} />
-      <WallFace x={LIT_L} base={HOUSE_TOP} w={224 - LIT_L} p={p} />
+      {/* Façade côté balcon : mur blanc continu, percé de deux
+          portes-fenêtres (chambre et cuisine) de 1,8 × 1,4 case */}
+      <WallFace x={0} base={HOUSE_TOP} w={SALON_L} p={p} />
+      {[97, 225].map((dx) => (
+        <G key={`pf${dx}`}>
+          <Rect x={dx} y={HOUSE_TOP - 22} width={29} height={22} fill={p.outline} />
+          <Rect x={dx + 1} y={HOUSE_TOP - 21} width={27} height={20} fill={p.window} />
+          <Rect x={dx + 14} y={HOUSE_TOP - 21} width={2} height={20} fill={p.outline} />
+          <Rect x={dx + 3} y={HOUSE_TOP - 18} width={8} height={4} fill={p.porcelain} />
+          <Rect x={dx + 18} y={HOUSE_TOP - 18} width={8} height={4} fill={p.porcelain} />
+        </G>
+      ))}
+      {/* Deux fenêtres de 2 cases sur la moitié haute du mur du bureau */}
+      {[8, 56].map((wx) => (
+        <G key={`bw${wx}`}>
+          <Rect x={wx} y={HOUSE_TOP - 21} width={2 * COL} height={12} fill={p.outline} />
+          <Rect x={wx + 1} y={HOUSE_TOP - 20} width={2 * COL - 2} height={10} fill={p.window} />
+          <Rect x={wx + 15} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
+          <Rect x={wx + 3} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
+          <Rect x={wx + 19} y={HOUSE_TOP - 18} width={7} height={3} fill={p.porcelain} />
+        </G>
+      ))}
       {/* Mur haut de l'avancée du salon + grande baie vitrée de 4 cases */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
       <Rect x={CX(17)} y={EXT_TOP - 21} width={4 * COL} height={19} fill={p.outline} />
@@ -498,10 +518,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(17) + 4} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
       <Rect x={CX(17) + 26} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
       <Rect x={CX(17) + 47} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
-      {/* Murs hauts de la sdb et des wc (montent dans le bureau/la cuisine,
-          l'armoire et le meuble cuisine se dessinent devant) */}
-      <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
-      <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       {/* Bouts des cloisons verticales */}
       <WallFace x={CHAMBRE_L - 2} base={CHAMBRE_BOT} w={3} p={p} />
       <WallFace x={WC_R - 3} base={CHAMBRE_BOT} w={3} p={p} />
@@ -608,21 +624,19 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 32} width={COL - 4} height={1} fill={p.merisierDark} />
       <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 27} width={2} height={4} rx={1} fill={p.merisierDark} />
       <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 35} width={2} height={4} rx={1} fill={p.merisierDark} />
-      {/* Meuble cuisine 4×1 : plan de travail, évier inox, façades */}
-      <Rect x={CUISINE_L} y={RY(4)} width={4 * COL} height={14} fill={p.outline} />
-      <Rect x={CUISINE_L + 1} y={RY(4) + 1} width={4 * COL - 2} height={6} fill={p.merisierLight} />
-      <Rect x={CUISINE_L + 1} y={RY(4) + 7} width={4 * COL - 2} height={6} fill={p.merisier} />
-      <Rect x={CUISINE_L + 21} y={RY(4) + 7} width={1} height={6} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 42} y={RY(4) + 7} width={1} height={6} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 10} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 31} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 52} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 40} y={RY(4) + 1} width={16} height={6} rx={2} fill={p.railing} />
-      <Rect x={CUISINE_L + 42} y={RY(4) + 2} width={12} height={4} rx={1} fill={p.greyRug} />
-      <Rect x={CUISINE_L + 6} y={RY(4) + 1} width={6} height={6} rx={3} fill={p.outline} />
-      <Rect x={CUISINE_L + 8} y={RY(4) + 3} width={2} height={2} fill={p.greyRug} />
-      <Rect x={CUISINE_L + 16} y={RY(4) + 1} width={6} height={6} rx={3} fill={p.outline} />
-      <Rect x={CUISINE_L + 18} y={RY(4) + 3} width={2} height={2} fill={p.greyRug} />
+      {/* Meuble cuisine 4×1 remonté d'une case (masqué de 0,5 par le mur) :
+          plan de travail, évier inox, plaques, façades */}
+      <Rect x={CUISINE_L} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
+      <Rect x={CUISINE_L + 1} y={ARMOIRE_TOP + 1} width={4 * COL - 2} height={6} fill={p.merisierLight} />
+      <Rect x={CUISINE_L + 1} y={ARMOIRE_TOP + 7} width={4 * COL - 2} height={6} fill={p.merisier} />
+      <Rect x={CUISINE_L + 21} y={ARMOIRE_TOP + 7} width={1} height={6} fill={p.merisierDark} />
+      <Rect x={CUISINE_L + 42} y={ARMOIRE_TOP + 7} width={1} height={6} fill={p.merisierDark} />
+      <Rect x={CUISINE_L + 40} y={ARMOIRE_TOP + 1} width={16} height={6} rx={2} fill={p.railing} />
+      <Rect x={CUISINE_L + 42} y={ARMOIRE_TOP + 2} width={12} height={4} rx={1} fill={p.greyRug} />
+      <Rect x={CUISINE_L + 6} y={ARMOIRE_TOP + 1} width={6} height={6} rx={3} fill={p.outline} />
+      <Rect x={CUISINE_L + 8} y={ARMOIRE_TOP + 3} width={2} height={2} fill={p.greyRug} />
+      <Rect x={CUISINE_L + 16} y={ARMOIRE_TOP + 1} width={6} height={6} rx={3} fill={p.outline} />
+      <Rect x={CUISINE_L + 18} y={ARMOIRE_TOP + 3} width={2} height={2} fill={p.greyRug} />
 
       {/* Grande table blanche 4×2 : plateau arrondi, pieds, petite plante */}
       <Rect x={CX(17) + 2} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
@@ -650,7 +664,11 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         />
       ))}
 
-      {/* Bas de la chambre : dessiné APRÈS le lit pour le masquer de 0,5 case */}
+      {/* Faces dessinées APRÈS les meubles qu'elles masquent de 0,5 case :
+          murs blancs de la sdb et des wc (sur l'armoire, le meuble cuisine
+          et le bas de la colonne), mur bas de la chambre (sur le lit) */}
+      <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
+      <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
 
       {/* ---------------- Murs ---------------- */}
