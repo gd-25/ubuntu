@@ -391,12 +391,15 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       )}
 
       {/* ---------------- Meubles (pixel-art 3D, contours sombres) --------- */}
-      {/* Bureau blanc 2×1 : plateau clair, face avant, écran d'ordinateur */}
-      <Rect x={0} y={RY(0)} width={2 * COL} height={COL} fill={p.outline} />
-      <Rect x={1} y={RY(0) + 1} width={2 * COL - 2} height={10} fill={p.tub} />
-      <Rect x={1} y={RY(0) + 11} width={2 * COL - 2} height={4} fill={p.sofaLight} />
-      <Rect x={19} y={RY(0) + 2} width={9} height={8} fill={p.outline} />
-      <Rect x={20} y={RY(0) + 3} width={7} height={5} fill={p.screen} />
+      {/* Bureau 2×1 : plateau arrondi + PC façon Pokémon (moniteur + clavier) */}
+      <Rect x={0} y={RY(0)} width={2 * COL} height={COL + 2} rx={2} fill={p.outline} />
+      <Rect x={1} y={RY(0) + 1} width={2 * COL - 2} height={11} rx={2} fill={p.tub} />
+      <Rect x={1} y={RY(0) + 12} width={2 * COL - 2} height={5} rx={1} fill={p.sofaLight} />
+      <Rect x={8} y={RY(0) - 6} width={16} height={14} rx={2} fill={p.outline} />
+      <Rect x={9} y={RY(0) - 5} width={14} height={12} rx={2} fill={p.porcelain} />
+      <Rect x={11} y={RY(0) - 3} width={10} height={7} fill={p.screen} />
+      <Rect x={12} y={RY(0) - 2} width={4} height={2} fill={p.window} />
+      <Rect x={10} y={RY(0) + 9} width={12} height={3} rx={1} fill={p.greyRug} />
 
       {/* Armoire merisier 4×1 : dessus clair, portes, poignées */}
       <Rect x={0} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
@@ -407,28 +410,31 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
       <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
 
-      {/* Douche 2×2 : receveur, bonde, pomme au coin */}
-      <Rect x={2} y={WET_TOP + 2} width={2 * COL - 4} height={2 * COL - 4} fill={p.outline} />
-      <Rect x={3} y={WET_TOP + 3} width={2 * COL - 6} height={2 * COL - 6} fill={p.greyRug} />
-      <Rect x={5} y={WET_TOP + 5} width={2 * COL - 10} height={2 * COL - 10} fill={p.tub} />
-      <Rect x={13} y={WET_TOP + 13} width={5} height={5} fill={p.greyRugEdge} />
-      <Rect x={14} y={WET_TOP + 14} width={3} height={3} fill={p.outline} />
-      <Rect x={3} y={WET_TOP + 3} width={7} height={7} fill={p.railing} />
-      <Rect x={5} y={WET_TOP + 5} width={3} height={3} fill={p.window} />
+      {/* Douche 4×1,5 : grand receveur arrondi, fond bleuté, bonde, pomme */}
+      <Rect x={2} y={WET_TOP + 2} width={4 * COL - 4} height={22} rx={5} fill={p.outline} />
+      <Rect x={3} y={WET_TOP + 3} width={4 * COL - 6} height={20} rx={4} fill={p.tub} />
+      <Rect x={7} y={WET_TOP + 7} width={4 * COL - 14} height={12} rx={4} fill={p.tileAlt} />
+      <Rect x={30} y={WET_TOP + 11} width={5} height={4} rx={2} fill={p.greyRugEdge} />
+      <Rect x={5} y={WET_TOP + 4} width={3} height={8} rx={1} fill={p.railing} />
+      <Rect x={4} y={WET_TOP + 12} width={6} height={5} rx={2} fill={p.greyRug} />
+      <Rect x={12} y={WET_TOP + 10} width={2} height={2} fill={p.window} />
+      <Rect x={15} y={WET_TOP + 14} width={2} height={2} fill={p.window} />
+      <Rect x={12} y={WET_TOP + 17} width={2} height={2} fill={p.window} />
 
-      {/* Baignoire 4×1 : forme pilule, eau, robinet à droite */}
-      <Rect x={1} y={RY(9) + 1} width={4 * COL - 2} height={13} rx={6} fill={p.outline} />
-      <Rect x={2} y={RY(9) + 2} width={4 * COL - 4} height={11} rx={5} fill={p.tub} />
-      <Rect x={5} y={RY(9) + 4} width={4 * COL - 18} height={7} rx={3} fill={p.water} />
-      <Rect x={54} y={RY(9) + 3} width={6} height={4} fill={p.railing} />
-      <Rect x={56} y={RY(9) + 7} width={2} height={3} fill={p.railing} />
+      {/* Baignoire 4×1,5 : grande pilule, eau, robinet à droite */}
+      <Rect x={1} y={FLAT_BOTTOM - 25} width={4 * COL - 2} height={22} rx={10} fill={p.outline} />
+      <Rect x={2} y={FLAT_BOTTOM - 24} width={4 * COL - 4} height={20} rx={9} fill={p.tub} />
+      <Rect x={7} y={FLAT_BOTTOM - 20} width={4 * COL - 22} height={12} rx={6} fill={p.water} />
+      <Rect x={10} y={FLAT_BOTTOM - 17} width={12} height={3} rx={1} fill={p.tileAlt} />
+      <Rect x={52} y={FLAT_BOTTOM - 22} width={8} height={5} rx={1} fill={p.railing} />
+      <Rect x={55} y={FLAT_BOTTOM - 17} width={2} height={4} fill={p.railing} />
 
-      {/* Lit 3×4 : cadre bois, couette à motifs, drap, oreiller en bas */}
-      <Rect x={LIT_L} y={RY(3)} width={48} height={4 * COL} fill={p.outline} />
-      <Rect x={LIT_L + 1} y={RY(3) + 1} width={46} height={4 * COL - 2} fill={p.wood} />
-      <Rect x={LIT_L + 3} y={RY(3) + 3} width={42} height={4 * COL - 8} fill={p.mattress} />
-      <Rect x={LIT_L + 3} y={RY(3) + 3} width={42} height={38} fill={p.blanket} />
-      <Rect x={LIT_L + 3} y={RY(3) + 3} width={42} height={4} fill={p.sofaDark} />
+      {/* Lit 3×4 : cadre bois arrondi, couette à motifs, drap, oreiller */}
+      <Rect x={LIT_L} y={RY(3)} width={48} height={4 * COL} rx={5} fill={p.outline} />
+      <Rect x={LIT_L + 1} y={RY(3) + 1} width={46} height={4 * COL - 2} rx={4} fill={p.wood} />
+      <Rect x={LIT_L + 3} y={RY(3) + 3} width={42} height={4 * COL - 8} rx={3} fill={p.mattress} />
+      <Rect x={LIT_L + 3} y={RY(3) + 5} width={42} height={36} rx={3} fill={p.blanket} />
+      <Rect x={LIT_L + 3} y={RY(3) + 5} width={42} height={4} rx={2} fill={p.sofaDark} />
       {Array.from({ length: 5 }).map((_, i) =>
         Array.from({ length: 4 }).map((_, j) =>
           (i + j) % 2 === 0 ? (
@@ -444,24 +450,28 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         )
       )}
       <Rect x={LIT_L + 3} y={RY(3) + 39} width={42} height={3} fill={p.pillow} />
-      <Rect x={LIT_L + 6} y={RY(3) + 46} width={36} height={13} fill={p.greyRugEdge} />
-      <Rect x={LIT_L + 7} y={RY(3) + 47} width={34} height={11} fill={p.porcelain} />
+      <Rect x={LIT_L + 6} y={RY(3) + 46} width={36} height={13} rx={5} fill={p.greyRugEdge} />
+      <Rect x={LIT_L + 7} y={RY(3) + 47} width={34} height={11} rx={4} fill={p.porcelain} />
 
-      {/* WC : réservoir contre la cloison + cuvette arrondie */}
-      <Rect x={CUISINE_L + 1} y={WET_TOP + 5} width={5} height={21} fill={p.outline} />
-      <Rect x={CUISINE_L + 2} y={WET_TOP + 6} width={3} height={19} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 2} y={WET_TOP + 12} width={3} height={1} fill={p.greyRugEdge} />
-      <Rect x={CUISINE_L + 6} y={WET_TOP + 8} width={10} height={16} rx={4} fill={p.outline} />
-      <Rect x={CUISINE_L + 7} y={WET_TOP + 9} width={8} height={14} rx={3} fill={p.porcelain} />
-      <Rect x={CUISINE_L + 9} y={WET_TOP + 12} width={4} height={8} rx={2} fill={p.tileAlt} />
+      {/* WC : réservoir à bouton contre la cloison + cuvette ronde à lunette */}
+      <Rect x={CUISINE_L + 1} y={WET_TOP + 6} width={7} height={20} rx={2} fill={p.outline} />
+      <Rect x={CUISINE_L + 2} y={WET_TOP + 7} width={5} height={18} rx={2} fill={p.porcelain} />
+      <Rect x={CUISINE_L + 3} y={WET_TOP + 9} width={3} height={3} rx={1} fill={p.railing} />
+      <Rect x={CUISINE_L + 3} y={WET_TOP + 14} width={3} height={1} fill={p.greyRugEdge} />
+      <Rect x={CUISINE_L + 7} y={WET_TOP + 9} width={14} height={14} rx={7} fill={p.outline} />
+      <Rect x={CUISINE_L + 8} y={WET_TOP + 10} width={12} height={12} rx={6} fill={p.porcelain} />
+      <Rect x={CUISINE_L + 11} y={WET_TOP + 13} width={6} height={6} rx={3} fill={p.tileAlt} />
+      <Rect x={CUISINE_L + 11} y={WET_TOP + 14} width={2} height={2} fill={p.water} />
 
-      {/* Canapé 2×3 : dossier contre le mur droit, accoudoirs, 2 coussins */}
-      <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={3 * COL} fill={p.outline} />
-      <Rect x={CX(20) + 1} y={RY(5) + 1} width={30} height={3 * COL - 2} fill={p.sofaLight} />
-      <Rect x={CX(20) + 24} y={RY(5) + 1} width={7} height={3 * COL - 2} fill={p.greyRug} />
-      <Rect x={CX(20) + 1} y={RY(5) + 1} width={23} height={6} fill={p.greyRug} />
-      <Rect x={CX(20) + 1} y={RY(5) + 41} width={23} height={6} fill={p.greyRug} />
-      <Rect x={CX(20) + 3} y={RY(5) + 23} width={21} height={2} fill={p.greyRugEdge} />
+      {/* Canapé 2×3 : dossier et accoudoirs en barres rondes, 2 coussins */}
+      <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={3 * COL} rx={5} fill={p.outline} />
+      <Rect x={CX(20) + 1} y={RY(5) + 1} width={30} height={3 * COL - 2} rx={4} fill={p.sofaLight} />
+      <Rect x={CX(20) + 23} y={RY(5) + 2} width={8} height={3 * COL - 4} rx={4} fill={p.greyRug} />
+      <Rect x={CX(20) + 2} y={RY(5) + 1} width={26} height={8} rx={4} fill={p.greyRug} />
+      <Rect x={CX(20) + 2} y={RY(5) + 39} width={26} height={8} rx={4} fill={p.greyRug} />
+      <Rect x={CX(20) + 4} y={RY(5) + 11} width={20} height={12} rx={3} fill={p.sofaLight} />
+      <Rect x={CX(20) + 4} y={RY(5) + 25} width={20} height={12} rx={3} fill={p.sofaLight} />
+      <Rect x={CX(20) + 4} y={RY(5) + 23} width={20} height={2} fill={p.greyRugEdge} />
 
       {/* Table basse 2×2 : plateau bois clair, chant sombre */}
       <Rect x={CX(17)} y={RY(7)} width={2 * COL} height={2 * COL} fill={p.outline} />
@@ -470,13 +480,13 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(17) + 3} y={RY(7) + 3} width={26} height={2} fill={p.merisierLight} />
 
       {/* Colonne cuisine : dessus clair, flanc ombré, portes + poignées */}
-      <Rect x={CUISINE_L} y={HOUSE_TOP} width={COL} height={RY(4) - HOUSE_TOP} fill={p.outline} />
-      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 1} width={COL - 2} height={62} fill={p.merisier} />
-      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 1} width={COL - 2} height={4} fill={p.merisierLight} />
-      <Rect x={CUISINE_L + COL - 4} y={HOUSE_TOP + 1} width={3} height={62} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 32} width={COL - 5} height={1} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 27} width={2} height={4} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 35} width={2} height={4} fill={p.merisierDark} />
+      <Rect x={CUISINE_L} y={HOUSE_TOP} width={COL} height={RY(4) - HOUSE_TOP} rx={2} fill={p.outline} />
+      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 1} width={COL - 2} height={62} rx={2} fill={p.merisier} />
+      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 1} width={COL - 2} height={4} rx={2} fill={p.merisierLight} />
+      <Rect x={CUISINE_L + COL - 3} y={HOUSE_TOP + 3} width={2} height={58} fill={p.merisierDark} />
+      <Rect x={CUISINE_L + 1} y={HOUSE_TOP + 32} width={COL - 4} height={1} fill={p.merisierDark} />
+      <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 27} width={2} height={4} rx={1} fill={p.merisierDark} />
+      <Rect x={CUISINE_L + 8} y={HOUSE_TOP + 35} width={2} height={4} rx={1} fill={p.merisierDark} />
       {/* Meuble cuisine 4×1 : plan de travail, évier inox, façades */}
       <Rect x={CUISINE_L} y={RY(4)} width={4 * COL} height={14} fill={p.outline} />
       <Rect x={CUISINE_L + 1} y={RY(4) + 1} width={4 * COL - 2} height={6} fill={p.merisierLight} />
@@ -486,17 +496,23 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CUISINE_L + 10} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
       <Rect x={CUISINE_L + 31} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
       <Rect x={CUISINE_L + 52} y={RY(4) + 9} width={2} height={2} fill={p.merisierDark} />
-      <Rect x={CUISINE_L + 40} y={RY(4) + 2} width={14} height={5} fill={p.railing} />
-      <Rect x={CUISINE_L + 41} y={RY(4) + 3} width={12} height={3} fill={p.greyRug} />
-      <Rect x={CUISINE_L + 8} y={RY(4) + 3} width={4} height={3} fill={p.outline} />
-      <Rect x={CUISINE_L + 16} y={RY(4) + 3} width={4} height={3} fill={p.outline} />
+      <Rect x={CUISINE_L + 40} y={RY(4) + 1} width={16} height={6} rx={2} fill={p.railing} />
+      <Rect x={CUISINE_L + 42} y={RY(4) + 2} width={12} height={4} rx={1} fill={p.greyRug} />
+      <Rect x={CUISINE_L + 6} y={RY(4) + 1} width={6} height={6} rx={3} fill={p.outline} />
+      <Rect x={CUISINE_L + 8} y={RY(4) + 3} width={2} height={2} fill={p.greyRug} />
+      <Rect x={CUISINE_L + 16} y={RY(4) + 1} width={6} height={6} rx={3} fill={p.outline} />
+      <Rect x={CUISINE_L + 18} y={RY(4) + 3} width={2} height={2} fill={p.greyRug} />
 
-      {/* Grande table blanche 4×2 : plateau, face avant, petite plante */}
-      <Rect x={CX(17)} y={RY(-1)} width={4 * COL} height={2 * COL} fill={p.outline} />
-      <Rect x={CX(17) + 1} y={RY(-1) + 1} width={62} height={26} fill={p.tub} />
-      <Rect x={CX(17) + 1} y={RY(-1) + 27} width={62} height={4} fill={p.sofaLight} />
-      <Rect x={CX(17) + 27} y={RY(-1) + 6} width={10} height={6} fill={p.treeLight} />
-      <Rect x={CX(17) + 29} y={RY(-1) + 11} width={6} height={5} fill={p.merisier} />
+      {/* Grande table blanche 4×2 : plateau arrondi, pieds, petite plante */}
+      <Rect x={CX(17) + 2} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
+      <Rect x={CX(17) + 57} y={RY(-1) + 24} width={5} height={7} rx={1} fill={p.outline} />
+      <Rect x={CX(17) + 3} y={RY(-1) + 24} width={3} height={6} fill={p.greyRugEdge} />
+      <Rect x={CX(17) + 58} y={RY(-1) + 24} width={3} height={6} fill={p.greyRugEdge} />
+      <Rect x={CX(17)} y={RY(-1)} width={4 * COL} height={26} rx={4} fill={p.outline} />
+      <Rect x={CX(17) + 1} y={RY(-1) + 1} width={62} height={20} rx={3} fill={p.tub} />
+      <Rect x={CX(17) + 1} y={RY(-1) + 21} width={62} height={4} rx={2} fill={p.sofaLight} />
+      <Rect x={CX(17) + 27} y={RY(-1) + 4} width={10} height={6} rx={2} fill={p.treeLight} />
+      <Rect x={CX(17) + 29} y={RY(-1) + 9} width={6} height={5} rx={1} fill={p.merisier} />
 
       {/* Étagères 9×1 : bibliothèque à livres colorés */}
       <Rect x={SDB_R} y={RY(9)} width={9 * COL} height={14} fill={p.outline} />

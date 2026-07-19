@@ -65,8 +65,8 @@ export function cellCenter(col: number, row: number): { x: number; y: number } {
 function isFurnished(col: number, row: number): boolean {
   if (row === 0 && col <= 1) return true; // bureau blanc
   if (row === 4 && col <= 3) return true; // armoire du bureau
-  if (col <= 1 && (row === 5 || row === 6)) return true; // douche
-  if (row === 9 && col <= 3) return true; // baignoire
+  if (row === 5 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
+  if (row === 9 && col <= 3) return true; // baignoire (4×1,5 en bas)
   if (col >= 8 && col <= 10 && row >= 3 && row <= 6) return true; // lit
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
   if (row === 4 && col >= 11 && col <= 14) return true; // meuble cuisine (mur WC)
