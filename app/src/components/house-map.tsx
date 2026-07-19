@@ -682,7 +682,8 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
       <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
 
-      {/* Douche : juste le sol 4×1,5 en opus incertum (pierres + joints) */}
+      {/* Douche : juste le sol 4×1,5 en opus incertum (pierres + joints),
+          cerné d'un cadre argenté très fin */}
       <Rect x={0} y={WET_TOP} width={4 * COL} height={24} fill={p.mattress} />
       {SHOWER_STONES.map(({ pts, c }, i) => (
         <Polygon
@@ -691,6 +692,15 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           fill={[p.parquet, p.beigeRug, p.bureauFloor, p.pathEdge][c]}
         />
       ))}
+      <Rect
+        x={0.5}
+        y={WET_TOP + 0.5}
+        width={4 * COL - 1}
+        height={23}
+        fill="none"
+        stroke={p.railing}
+        strokeWidth={1}
+      />
 
       {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
       <PixelSprite
@@ -824,6 +834,8 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
+      {/* Rail argenté de la douche sur le mur blanc, aux 2/3 de sa hauteur */}
+      <Rect x={0} y={WET_TOP - 16} width={4 * COL} height={1} fill={p.railing} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
