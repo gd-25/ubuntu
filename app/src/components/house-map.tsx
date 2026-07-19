@@ -203,6 +203,16 @@ function Flower({ x, y, color }: { x: number; y: number; color: string }) {
 /** Hauteur des faces de murs : 1 case et demie. */
 const WALL_H = COL + COL / 2; // 24
 
+/** Cloison vue de dessus : trait tout blanc (6 px de large). */
+function WallV({ x, y, h, p }: { x: number; y: number; h: number; p: Palette }) {
+  return <Rect x={x} y={y} width={6} height={h} fill={p.wallFace} />;
+}
+
+/** Mur horizontal fin vu de dessus : trait tout blanc. */
+function WallH({ x, y, w, p }: { x: number; y: number; w: number; p: Palette }) {
+  return <Rect x={x} y={y} width={w} height={6} fill={p.wallFace} />;
+}
+
 /**
  * Porte-fenêtre vitrée : UNE porte de 1,4 case de large et 1,2 de haut,
  * posée au sol (il reste un peu de mur blanc au-dessus). Utilisée pour la
@@ -229,9 +239,7 @@ function WallFace({ x, base, w, p }: { x: number; base: number; w: number; p: Pa
   return (
     <G>
       <Rect x={x} y={base - WALL_H} width={w} height={WALL_H} fill={p.wallFace} />
-      <Rect x={x} y={base - WALL_H} width={w} height={3} fill={p.wall} />
-      <Rect x={x} y={base - WALL_H + 3} width={w} height={2} fill={p.wallFaceLight} />
-      <Rect x={x} y={base - 2} width={w} height={2} fill={p.outline} />
+      <Rect x={x} y={base - WALL_H} width={w} height={3} fill={p.wallFaceLight} />
     </G>
   );
 }
@@ -515,19 +523,15 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(1) + 31} y={HOUSE_TOP - 20} width={2} height={10} fill={p.outline} />
       <Rect x={CX(1) + 4} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
       <Rect x={CX(1) + 36} y={HOUSE_TOP - 18} width={9} height={3} fill={p.porcelain} />
-      {/* Mur haut de l'avancée du salon + grande baie vitrée de 4 cases */}
+      {/* Mur haut de l'avancée du salon : trois portes-fenêtres de 1,4 */}
       <WallFace x={SALON_L} base={EXT_TOP} w={MAP_W - SALON_L} p={p} />
-      <Rect x={CX(17)} y={EXT_TOP - 21} width={4 * COL} height={19} fill={p.outline} />
-      <Rect x={CX(17) + 1} y={EXT_TOP - 20} width={4 * COL - 2} height={17} fill={p.window} />
-      <Rect x={CX(17) + 21} y={EXT_TOP - 20} width={2} height={17} fill={p.outline} />
-      <Rect x={CX(17) + 42} y={EXT_TOP - 20} width={2} height={17} fill={p.outline} />
-      <Rect x={CX(17) + 4} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
-      <Rect x={CX(17) + 26} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
-      <Rect x={CX(17) + 47} y={EXT_TOP - 17} width={9} height={4} fill={p.porcelain} />
+      <GlassDoor x={263} base={EXT_TOP} p={p} />
+      <GlassDoor x={293} base={EXT_TOP} p={p} />
+      <GlassDoor x={323} base={EXT_TOP} p={p} />
       {/* Bouts des cloisons verticales */}
-      <WallFace x={CHAMBRE_L - 2} base={CHAMBRE_BOT} w={3} p={p} />
-      <WallFace x={WC_R - 3} base={CHAMBRE_BOT} w={3} p={p} />
-      <WallFace x={SDB_R - 2} base={RY(6)} w={3} p={p} />
+      <WallFace x={CHAMBRE_L - 3} base={CHAMBRE_BOT} w={6} p={p} />
+      <WallFace x={WC_R - 6} base={CHAMBRE_BOT} w={6} p={p} />
+      <WallFace x={SDB_R - 3} base={RY(6)} w={6} p={p} />
       {/* Mur du palier : face côté palier (mur extérieur de l'appartement) */}
       <WallFace x={0} base={FLAT_BOTTOM + WALL_H} w={208} p={p} />
       <WallFace x={240} base={FLAT_BOTTOM + WALL_H} w={MAP_W - 240} p={p} />
@@ -680,27 +684,27 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
 
-      {/* Cloison bureau / chambre (aucune porte), affleure la façade en haut */}
-      <Rect x={CHAMBRE_L - 2} y={HOUSE_TOP - 3} width={3} height={CHAMBRE_BOT - HOUSE_TOP + 3} fill={p.wall} />
+      {/* Cloison bureau / chambre (aucune porte) */}
+      <WallV x={CHAMBRE_L - 3} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP} p={p} />
 
       {/* Cloison chambre / salon+WC (aucune porte) */}
-      <Rect x={CUISINE_L - 2} y={HOUSE_TOP} width={3} height={CHAMBRE_BOT - HOUSE_TOP + 1} fill={p.wall} />
+      <WallV x={CUISINE_L - 3} y={HOUSE_TOP} h={CHAMBRE_BOT - HOUSE_TOP + 1} p={p} />
 
       {/* Bureau → couloir : la porte occupe toute l'ouverture (aucun mur) */}
 
       {/* Salle de bain : bord droit mur 2 / porte 2 / mur 1 (murs haut et
           bas dessinés en faces 3D) */}
-      <Rect x={SDB_R - 2} y={WET_TOP - 2} width={3} height={2 * COL + 2} fill={p.wall} />
-      <Rect x={SDB_R - 2} y={RY(9)} width={3} height={SDB_BOT - RY(9) + 1} fill={p.wall} />
+      <WallV x={SDB_R - 3} y={WET_TOP} h={2 * COL} p={p} />
+      <WallV x={SDB_R - 3} y={RY(9)} h={SDB_BOT - RY(9)} p={p} />
 
       {/* WC : mur droit + mur bas avec porte de 2 (cols 13-14) */}
-      <Rect x={WC_R - 3} y={WET_TOP - 2} width={3} height={CHAMBRE_BOT - WET_TOP + 3} fill={p.wall} />
-      <Rect x={CUISINE_L} y={CHAMBRE_BOT - 2} width={2 * COL} height={3} fill={p.wall} />
+      <WallV x={WC_R - 6} y={WET_TOP} h={CHAMBRE_BOT - WET_TOP + 3} p={p} />
+      <WallH x={CUISINE_L} y={CHAMBRE_BOT - 3} w={2 * COL} p={p} />
 
       {/* Murs extérieurs */}
-      <Rect x={0} y={HOUSE_TOP - 3} width={3} height={MAP_H - HOUSE_TOP + 3} fill={p.wall} />
-      <Rect x={MAP_W - 3} y={EXT_TOP - 3} width={3} height={MAP_H - EXT_TOP + 3} fill={p.wall} />
-      <Rect x={0} y={MAP_H - 3} width={MAP_W} height={3} fill={p.wall} />
+      <WallV x={0} y={HOUSE_TOP} h={MAP_H - HOUSE_TOP} p={p} />
+      <WallV x={MAP_W - 6} y={EXT_TOP} h={MAP_H - EXT_TOP} p={p} />
+      <WallH x={0} y={MAP_H - 6} w={MAP_W} p={p} />
 
       {/* ---------------- Meubles hauts (par-dessus les murs) ---------------- */}
       {/* PC vintage Gen 3 (×1,5), centré sur la table du bureau */}
