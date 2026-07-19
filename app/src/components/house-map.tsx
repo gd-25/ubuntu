@@ -1,5 +1,5 @@
 import { memo, type ReactElement } from 'react';
-import Svg, { G, Line, Rect } from 'react-native-svg';
+import Svg, { Defs, G, Line, Pattern, Rect } from 'react-native-svg';
 
 import { COL, FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
 
@@ -627,23 +627,28 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       })}
 
       {/* ---------------- Tapis ---------------- */}
-      {/* Salon : tapis beige 5×6, bordure + damier tissé (style Pokémon) */}
+      {/* Salon : tapis beige 5×6, bordure + damier tissé ultra-fin (2 px) */}
+      <Defs>
+        <Pattern
+          id="rugCheck"
+          x={CX(17) + 3}
+          y={RY(4) + 3}
+          width={4}
+          height={4}
+          patternUnits="userSpaceOnUse">
+          <Rect x={0} y={0} width={4} height={4} fill={p.beigeRug} />
+          <Rect x={0} y={0} width={2} height={2} fill={p.beigeRugEdge} />
+          <Rect x={2} y={2} width={2} height={2} fill={p.beigeRugEdge} />
+        </Pattern>
+      </Defs>
       <Rect x={CX(17)} y={RY(4)} width={5 * COL} height={6 * COL} fill={p.beigeRugEdge} />
-      <Rect x={CX(17) + 3} y={RY(4) + 3} width={5 * COL - 6} height={6 * COL - 6} fill={p.beigeRug} />
-      {Array.from({ length: 9 }).map((_, cx) =>
-        Array.from({ length: 11 }).map((_, cy) =>
-          (cx + cy) % 2 === 0 ? (
-            <Rect
-              key={`br${cx}-${cy}`}
-              x={CX(17) + 6 + cx * 8}
-              y={RY(4) + 6 + cy * 8}
-              width={4}
-              height={4}
-              fill={p.beigeRugEdge}
-            />
-          ) : null
-        )
-      )}
+      <Rect
+        x={CX(17) + 3}
+        y={RY(4) + 3}
+        width={5 * COL - 6}
+        height={6 * COL - 6}
+        fill="url(#rugCheck)"
+      />
       {/* Bureau : tapis gris 3×3, bordure + points tissés */}
       <Rect x={0} y={RY(0)} width={3 * COL} height={3 * COL} fill={p.greyRugEdge} />
       <Rect x={2} y={RY(0) + 2} width={3 * COL - 4} height={3 * COL - 4} fill={p.greyRug} />
