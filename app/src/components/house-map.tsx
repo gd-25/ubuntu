@@ -342,21 +342,28 @@ const BED_GRID = [
  * `c` indexe le ton de pierre dans le composant.
  */
 const SHOWER_STONES: { pts: number[][]; c: number }[] = [
-  { pts: [[0, 0], [9, 0], [8, 7], [0, 9]], c: 0 },
-  { pts: [[11, 0], [21, 0], [19, 8], [10, 9]], c: 1 },
-  { pts: [[23, 0], [33, 0], [34, 9], [21, 10]], c: 2 },
-  { pts: [[35, 0], [46, 0], [44, 7], [36, 9]], c: 1 },
-  { pts: [[48, 0], [64, 0], [64, 8], [47, 9]], c: 0 },
-  { pts: [[0, 11], [7, 9], [9, 11], [8, 18], [0, 17]], c: 3 },
-  { pts: [[10, 11], [19, 10], [22, 12], [20, 19], [11, 20]], c: 0 },
-  { pts: [[23, 12], [33, 11], [35, 18], [24, 20]], c: 1 },
-  { pts: [[36, 11], [45, 9], [47, 17], [37, 19]], c: 2 },
-  { pts: [[48, 11], [64, 10], [64, 18], [49, 19]], c: 1 },
-  { pts: [[0, 19], [8, 20], [10, 24], [0, 24]], c: 1 },
-  { pts: [[10, 22], [21, 21], [23, 24], [11, 24]], c: 2 },
-  { pts: [[24, 22], [35, 20], [36, 24], [25, 24]], c: 0 },
-  { pts: [[38, 21], [48, 19], [50, 24], [39, 24]], c: 3 },
-  { pts: [[50, 21], [64, 20], [64, 24], [51, 24]], c: 0 },
+  // Rangée du fond : petites pierres (loin)
+  { pts: [[0, 0], [6, 0], [5, 5], [0, 6]], c: 0 },
+  { pts: [[8, 0], [14, 0], [13, 5], [7, 6]], c: 1 },
+  { pts: [[16, 0], [21, 0], [22, 6], [15, 6]], c: 2 },
+  { pts: [[23, 0], [29, 0], [28, 5], [24, 6]], c: 0 },
+  { pts: [[31, 0], [37, 0], [36, 6], [30, 6]], c: 1 },
+  { pts: [[39, 0], [44, 0], [45, 5], [38, 6]], c: 3 },
+  { pts: [[46, 0], [52, 0], [51, 6], [47, 6]], c: 0 },
+  { pts: [[54, 0], [59, 0], [60, 5], [53, 6]], c: 2 },
+  { pts: [[61, 0], [64, 0], [64, 6], [62, 6]], c: 1 },
+  // Rangée du milieu : pierres moyennes
+  { pts: [[0, 8], [8, 7], [9, 13], [0, 14]], c: 1 },
+  { pts: [[11, 7], [20, 8], [19, 14], [10, 14]], c: 3 },
+  { pts: [[22, 8], [31, 7], [32, 13], [21, 14]], c: 0 },
+  { pts: [[33, 7], [42, 8], [43, 14], [34, 14]], c: 2 },
+  { pts: [[45, 8], [53, 7], [54, 13], [44, 14]], c: 1 },
+  { pts: [[56, 7], [64, 8], [64, 14], [55, 14]], c: 0 },
+  // Rangée de devant : grandes pierres (près)
+  { pts: [[0, 16], [13, 15], [12, 24], [0, 24]], c: 2 },
+  { pts: [[15, 15], [29, 16], [30, 24], [14, 24]], c: 0 },
+  { pts: [[31, 16], [46, 15], [45, 24], [32, 24]], c: 1 },
+  { pts: [[48, 15], [64, 16], [64, 24], [47, 24]], c: 3 },
 ];
 
 /**
@@ -673,14 +680,7 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         </G>
       ))}
 
-      {/* Armoire merisier 4×1 : dessus clair, portes, poignées */}
-      <Rect x={0} y={ARMOIRE_TOP} width={4 * COL} height={14} fill={p.outline} />
-      <Rect x={1} y={ARMOIRE_TOP + 1} width={4 * COL - 2} height={4} fill={p.merisierLight} />
-      <Rect x={1} y={ARMOIRE_TOP + 5} width={4 * COL - 2} height={8} fill={p.merisier} />
-      <Rect x={21} y={ARMOIRE_TOP + 5} width={1} height={8} fill={p.merisierDark} />
-      <Rect x={42} y={ARMOIRE_TOP + 5} width={1} height={8} fill={p.merisierDark} />
-      <Rect x={17} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
-      <Rect x={45} y={ARMOIRE_TOP + 8} width={2} height={3} fill={p.merisierDark} />
+      {/* (Plus d'armoire dans le bureau : parquet nu devant le mur de la sdb) */}
 
       {/* Douche : juste le sol 4×1,5 en opus incertum (pierres + joints),
           cerné d'un cadre argenté très fin */}
@@ -692,15 +692,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
           fill={[p.parquet, p.beigeRug, p.bureauFloor, p.pathEdge][c]}
         />
       ))}
-      <Rect
-        x={0.5}
-        y={WET_TOP + 0.5}
-        width={4 * COL - 1}
-        height={23}
-        fill="none"
-        stroke={p.railing}
-        strokeWidth={1}
-      />
 
       {/* Baignoire 4×1,5 : sprite détaillé (pilule, eau, face avant, pieds) */}
       <PixelSprite
@@ -834,8 +825,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <WallFace x={0} base={WET_TOP} w={SDB_R} p={p} />
       <WallFace x={CUISINE_L} base={WET_TOP} w={WC_R - CUISINE_L} p={p} />
       <WallFace x={LIT_L} base={CHAMBRE_BOT} w={CUISINE_L - LIT_L} p={p} />
-      {/* Rail argenté de la douche sur le mur blanc, aux 2/3 de sa hauteur */}
-      <Rect x={0} y={WET_TOP - 16} width={4 * COL} height={1} fill={p.railing} />
 
       {/* ---------------- Murs ---------------- */}
       {/* Façade et murs hauts : dessinés en faces 3D plus haut (WallFace) */}
