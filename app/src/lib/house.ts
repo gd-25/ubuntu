@@ -71,9 +71,10 @@ function isFurnished(col: number, row: number): boolean {
   if (row === 0 && col <= 2) return true; // table du bureau (3 de large)
   if (row === 5 && col <= 3) return true; // rangée cachée par le mur sdb
   if (row === 6 && col <= 3) return true; // douche (4×1,5 en haut de la sdb)
-  if (row === 9 && col <= 3) return true; // baignoire (4×1,5 en bas)
+  if ((row === 8 || row === 9) && col <= 3) return true; // baignoire (rangées 8-9)
   if (col >= 8 && col <= 10 && row >= 2 && row <= 6) return true; // lit + mur
   if (col === 11 && row >= 0 && row <= 6) return true; // colonne cuisine + cuvette WC
+  if (col === 12 && row === 5) return true; // débord de la cuvette des WC
   if (row === 4 && col >= 11 && col <= 13) return true; // rangée cachée par le mur wc
   if (row === 6 && col === 12) return true; // derrière le mur prolongé sous le lit
   if (col === 14 && row >= 4 && row <= 6) return true; // table aux plantes
@@ -81,7 +82,7 @@ function isFurnished(col: number, row: number): boolean {
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
   if (col >= 20 && row >= 6 && row <= 8) return true; // canapé 2×3 (rangées 6-8)
   if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
-  if (row === 9 && col >= 4 && col <= 12) return true; // étagères
+  if (row === 9 && col >= 4 && col <= 11) return true; // bande d'entrée (8 cases dès col 4)
   return false;
 }
 
@@ -160,7 +161,7 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   sdb: {
     greg: { x: 40, y: 566 },
     fiona: { x: 24, y: 572 },
-    ubuntu: { x: 44, y: 582 },
+    ubuntu: { x: 56, y: 570 },
   },
   chambre: {
     greg: { x: 124, y: 500 },
@@ -174,8 +175,8 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
   },
   wc: {
     greg: { x: 216, y: 542 },
-    fiona: { x: 200, y: 548 },
-    ubuntu: { x: 210, y: 553 },
+    fiona: { x: 212, y: 533 },
+    ubuntu: { x: 214, y: 553 },
   },
   couloir_int: {
     greg: { x: 92, y: 568 },
@@ -214,9 +215,18 @@ export function isUbuntuAlone(positions: Positions): boolean {
   return positions.greg !== positions.ubuntu && positions.fiona !== positions.ubuntu;
 }
 
-/** Type de solitude : partis de la maison, ou isolé dans une pièce. */
+/** Un humain a quitté l'appartement (dehors ou sur le palier). */
+function isOut(space: Space): boolean {
+  return space === 'dehors' || space === 'couloir_ext';
+}
+
+/**
+ * Type de solitude : `away` (vraiment seul) si les deux humains ont quitté
+ * l'appartement (dehors ou palier), `in_home` (semi-seul) s'ils sont dans
+ * d'autres pièces.
+ */
 export function solitudeTypeOf(positions: Positions): SolitudeType {
-  if (positions.greg === 'dehors' && positions.fiona === 'dehors') return 'away';
+  if (isOut(positions.greg) && isOut(positions.fiona)) return 'away';
   return 'in_home';
 }
 

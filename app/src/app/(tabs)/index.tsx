@@ -4,8 +4,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
 import Animated, {
-  FadeIn,
-  FadeOut,
   SlideInUp,
   SlideOutUp,
   ZoomIn,
@@ -36,7 +34,7 @@ import {
   MAP_W,
   SLOTS,
   solitudeTypeOf,
-  ZONE_RECTS,
+  SPACE_LABELS,
   type Positions,
 } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
@@ -55,10 +53,11 @@ import { useDog } from '@/lib/use-dog';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
 
+// Tailles en unités carte, réduites de 1,2× pour mieux tenir dans les pièces.
 const AVATARS: Record<Person, { source: number; w: number; h: number; z: number }> = {
-  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 22, h: 30, z: 10 },
-  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32, z: 11 },
-  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 32, h: 34, z: 20 },
+  greg: { source: require('../../../assets/images/avatars/greg.png'), w: 18, h: 25, z: 10 },
+  fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 20, h: 27, z: 11 },
+  ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 27, h: 28, z: 20 },
 };
 
 const MEAL_FRACTIONS = [
@@ -77,7 +76,6 @@ export default function HouseScreen() {
 
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
-  const [hoverZone, setHoverZone] = useState<Space | null>(null);
   const [draggingAvatar, setDraggingAvatar] = useState(false);
   const [mapLayout, setMapLayout] = useState({ w: 0, h: 0 });
 
@@ -96,6 +94,8 @@ export default function HouseScreen() {
   const [feedTime, setFeedTime] = useState<Date>(new Date());
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
+  /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
+  const [alonePrompt, setAlonePrompt] = useState(false);
 
   // Refs pour les callbacks async (évite les fermetures obsolètes).
   const positionsRef = useRef(positions);
@@ -107,8 +107,8 @@ export default function HouseScreen() {
     activeWalkRef.current = activeWalk;
   }, [positions, activeSession, activeWalk]);
 
-  // Délai de grâce avant de déclarer Ubuntu seul (le temps de déplacer
-  // les autres avatars de pièce en pièce sans démarrer de session).
+  // Délai de grâce avant de proposer la session (le temps de déplacer
+  // les autres avatars de pièce en pièce sans déclencher le panneau).
   const aloneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -190,6 +190,7 @@ export default function HouseScreen() {
         setPositions(snapshot.positions);
         setLastHeartbeat(snapshot.heartbeat);
         setActiveSession(snapshot.session);
+        if (snapshot.session) setAlonePrompt(false);
         setSessionEpisodes(snapshot.episodes);
         setActiveWalk(snapshot.walk);
       });
@@ -251,6 +252,7 @@ export default function HouseScreen() {
           if (!session?.id) return;
           if (session.ended_at === null) {
             setActiveSession(session);
+            setAlonePrompt(false);
           } else {
             setActiveSession((prev) => (prev && prev.id === session.id ? null : prev));
           }
@@ -343,13 +345,22 @@ export default function HouseScreen() {
       setSessionEpisodes([]);
       setRecap(null);
       showToast(
-        solitudeType === 'away' ? '🔴 SESSION : UBUNTU SEUL À LA MAISON' : '🔴 SESSION : UBUNTU ISOLÉ'
+        solitudeType === 'away'
+          ? '🔴 SESSION : UBUNTU SEUL À LA MAISON'
+          : '🔴 SESSION : UBUNTU SEMI-SEUL'
       );
     },
     [dog, showToast]
   );
 
-  const stopSession = useCallback(async () => {
+  /** Ramène Greg et Fiona à l'entrée de l'appartement (couloir intérieur). */
+  const returnHumansToEntrance = useCallback(() => {
+    setPositions((prev) => ({ ...prev, greg: 'couloir_int', fiona: 'couloir_int' }));
+    persistPosition('greg', 'couloir_int');
+    persistPosition('fiona', 'couloir_int');
+  }, [persistPosition]);
+
+  const stopSession = useCallback(async (opts?: { returnHumans?: boolean }) => {
     const session = activeSessionRef.current;
     if (!session) return;
     const { error } = await supabase.functions.invoke('close-session', {
@@ -359,6 +370,7 @@ export default function HouseScreen() {
       Alert.alert('Erreur', `Impossible de clôturer la session : ${error.message}`);
       return;
     }
+    if (opts?.returnHumans) returnHumansToEntrance();
     setActiveSession(null);
     setSessionEpisodes([]);
     setLastQuickLog(null);
@@ -369,7 +381,7 @@ export default function HouseScreen() {
       .maybeSingle();
     setRecap((summary as SessionSummary | null) ?? null);
     showToast('🟢 SESSION TERMINÉE');
-  }, [showToast]);
+  }, [returnHumansToEntrance, showToast]);
 
   /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
   const handleDrop = useCallback(
@@ -384,7 +396,8 @@ export default function HouseScreen() {
       const transition = computeTransition(prev, next);
       if (transition.walkStarted) startWalk();
       if (transition.walkEnded) endWalk();
-      // Session démarrée seulement si Ubuntu reste seul 5 s (délai de grâce).
+      // Ubuntu seul depuis 2 s : on PROPOSE la session (panneau en haut),
+      // elle ne démarre qu'après confirmation.
       if (transition.aloneStarted && !activeSessionRef.current) {
         if (aloneTimerRef.current) clearTimeout(aloneTimerRef.current);
         aloneTimerRef.current = setTimeout(() => {
@@ -392,26 +405,33 @@ export default function HouseScreen() {
           const current = positionsRef.current;
           if (!isUbuntuAlone(current) || activeSessionRef.current) return;
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          startSession(solitudeTypeOf(current));
-        }, 5000);
+          setAlonePrompt(true);
+        }, 2000);
       }
       if (transition.aloneEnded) {
         if (aloneTimerRef.current) {
           clearTimeout(aloneTimerRef.current);
           aloneTimerRef.current = null;
         }
+        setAlonePrompt(false);
         if (activeSessionRef.current) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           stopSession();
         }
       }
     },
-    [persistPosition, startWalk, endWalk, startSession, stopSession]
+    [persistPosition, startWalk, endWalk, stopSession]
   );
+
+  const confirmSession = useCallback(() => {
+    setAlonePrompt(false);
+    const current = positionsRef.current;
+    if (!isUbuntuAlone(current) || activeSessionRef.current) return;
+    startSession(solitudeTypeOf(current));
+  }, [startSession]);
 
   const handleHover = useCallback((space: Space | null) => {
     if (space) Haptics.selectionAsync();
-    setHoverZone(space);
   }, []);
 
   const openFeedForm = useCallback(() => {
@@ -502,6 +522,11 @@ export default function HouseScreen() {
 
   const ubuntuSlot = SLOTS[positions.ubuntu].ubuntu;
 
+  // Les panneaux et dialogues s'affichent tous en haut, dans l'espace vert
+  // au-dessus des arbres (sous le badge caméra).
+  const panelTop = insets.top + 40;
+  const pendingType = solitudeTypeOf(positions);
+
   // ------------------------------------------------------------- Rendu
 
   return (
@@ -517,29 +542,6 @@ export default function HouseScreen() {
 
             {/* Points aimantés des cases utilisables, pendant le drag */}
             {draggingAvatar ? <GridDots night={scheme === 'dark'} /> : null}
-
-            {/* Surbrillance de la zone survolée (l'aimant « s'allume ») —
-                une zone peut couvrir plusieurs rectangles (salon + avancée). */}
-            {hoverZone
-              ? ZONE_RECTS.filter((z) => z.space === hoverZone).map(({ rect }, i) => (
-                  <Animated.View
-                    key={`${hoverZone}-${i}`}
-                    entering={FadeIn.duration(120)}
-                    exiting={FadeOut.duration(120)}
-                    pointerEvents="none"
-                    style={[
-                      styles.zoneHighlight,
-                      {
-                        left: rect.x * scale,
-                        top: rect.y * scale,
-                        width: rect.w * scale,
-                        height: rect.h * scale,
-                        borderColor: colors.accent,
-                      },
-                    ]}
-                  />
-                ))
-              : null}
 
             {/* Avatars */}
             {(Object.keys(AVATARS) as Person[]).map((person) => (
@@ -596,13 +598,53 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Panneau session en cours (boîte de dialogue Pokémon) */}
+      {/* Proposition de session : Ubuntu est seul depuis 2 s, on demande
+          avant de lancer (panneau en haut, au-dessus des arbres) */}
+      {alonePrompt && !activeSession ? (
+        <Animated.View
+          entering={SlideInUp.duration(260)}
+          exiting={SlideOutUp.duration(160)}
+          style={[
+            styles.sessionPanel,
+            {
+              top: panelTop,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              boxShadow: `4px 4px 0px 0px ${colors.border}`,
+            },
+          ]}>
+          <Text style={[styles.sessionTitle, { color: colors.accent }]}>
+            {pendingType === 'away' ? '● UBUNTU EST SEUL' : '● UBUNTU EST SEMI-SEUL'}
+          </Text>
+          <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
+            {pendingType === 'away'
+              ? `Vous avez quitté l'appartement — Ubuntu est resté : ${SPACE_LABELS[positions.ubuntu]}.`
+              : `Vous êtes dans une autre pièce — Ubuntu est isolé : ${SPACE_LABELS[positions.ubuntu]}.`}{' '}
+            Lancer la session ?
+          </Text>
+          <View style={styles.dialogButtons}>
+            <Pressable
+              onPress={() => setAlonePrompt(false)}
+              style={[styles.dialogButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.dialogButtonText, { color: colors.text }]}>IGNORER</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmSession}
+              style={[styles.dialogButton, { backgroundColor: colors.accent, borderColor: colors.border }]}>
+              <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>DÉMARRER</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      {/* Panneau session en cours (boîte de dialogue Pokémon, en haut) */}
       {activeSession ? (
         <Animated.View
           entering={SlideInUp.duration(260)}
           style={[
             styles.sessionPanel,
             {
+              top: panelTop,
               backgroundColor: colors.card,
               borderColor: colors.border,
               boxShadow: `4px 4px 0px 0px ${colors.border}`,
@@ -610,7 +652,7 @@ export default function HouseScreen() {
           ]}>
           <View style={styles.sessionHeader}>
             <Text style={[styles.sessionTitle, { color: colors.accent }]}>
-              {activeSession.solitude_type === 'in_home' ? '● SEUL (PIÈCE FERMÉE)' : '● SEUL'}
+              {activeSession.solitude_type === 'in_home' ? '● SEMI-SEUL (AUTRE PIÈCE)' : '● SEUL'}
             </Text>
             <Text style={[styles.sessionChrono, { color: colors.text }]}>
               {formatChrono(secondsSince(activeSession.started_at, now))}
@@ -633,7 +675,7 @@ export default function HouseScreen() {
             <QuickChip label="😌" onPress={() => logObservation('relief')} />
             <QuickChip label="😰" onPress={() => logObservation('panic')} />
             <Pressable
-              onPress={stopSession}
+              onPress={() => stopSession({ returnHumans: true })}
               style={[styles.stopChip, { backgroundColor: colors.danger, borderColor: colors.border }]}>
               <Text style={[styles.stopChipText, { color: colors.accentText }]}>TERMINER</Text>
             </Pressable>
@@ -676,7 +718,7 @@ export default function HouseScreen() {
 
       {/* Formulaire nourriture */}
       <Modal visible={feedOpen} transparent animationType="fade" onRequestClose={() => setFeedOpen(false)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { paddingTop: panelTop }]}>
           <Animated.View
             entering={ZoomIn.duration(200)}
             style={[
@@ -743,7 +785,7 @@ export default function HouseScreen() {
 
       {/* Récap de fin de session */}
       <Modal visible={!!recap} transparent animationType="fade" onRequestClose={() => setRecap(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { paddingTop: panelTop }]}>
           {recap ? (
             <Animated.View
               entering={ZoomIn.duration(200)}
@@ -835,12 +877,6 @@ const styles = StyleSheet.create({
   cameraBadge: {
     position: 'absolute',
   },
-  zoneHighlight: {
-    position: 'absolute',
-    borderWidth: 3,
-    borderRadius: 2,
-    backgroundColor: '#FFFFFF22',
-  },
   walkBadge: {
     position: 'absolute',
     alignSelf: 'center',
@@ -867,15 +903,16 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'center',
   },
+  // Panneau ancré en haut de l'écran (le `top` exact dépend des insets).
   sessionPanel: {
     position: 'absolute',
     left: Spacing.md,
     right: Spacing.md,
-    bottom: 118,
     borderWidth: 3,
     borderRadius: 2,
     padding: Spacing.md,
     gap: Spacing.sm,
+    zIndex: 120,
   },
   sessionHeader: {
     flexDirection: 'row',
@@ -947,12 +984,13 @@ const styles = StyleSheet.create({
   menuItemText: {
     fontSize: 9,
   },
+  // Dialogues alignés en haut (dans l'espace vert au-dessus des arbres).
   modalBackdrop: {
     flex: 1,
     backgroundColor: '#00000066',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.lg,
+    justifyContent: 'flex-start',
+    paddingHorizontal: Spacing.lg,
   },
   dialog: {
     width: '100%',
