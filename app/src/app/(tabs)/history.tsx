@@ -58,6 +58,9 @@ const NIGHT_LOCATION_LABELS = {
 
 const MEAL_KIND_LABELS = { kibble: 'croquettes', pate: 'pâté', other: 'autre' } as const;
 
+/** Seuil de calme (%) à partir duquel une session est « réussie ». */
+const CALM_SUCCESS_PERCENT = 90;
+
 const FRACTION_LABELS: Record<number, string> = {
   0.25: '¼',
   0.5: '½',
@@ -146,11 +149,14 @@ export default function HistoryScreen() {
         const seconds = s.ended_at
           ? (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000
           : 0;
+        // Session réussie (≥ 90 % de calme) : pastille verte ; sinon
+        // pastille rouge et pourcentage en rouge.
+        const dot = s.calm_percent >= CALM_SUCCESS_PERCENT ? '🟢' : '🔴';
         items.push({
           key: `s-${s.session_id}`,
           type: 'session',
           at: s.started_at,
-          title: `🔴 ${formatTime(s.started_at)}${s.ended_at ? ` → ${formatTime(s.ended_at)}` : ''}`,
+          title: `${dot} ${formatTime(s.started_at)}${s.ended_at ? ` → ${formatTime(s.ended_at)}` : ''}`,
           detail: info([
             formatDuration(seconds),
             `${s.episode_count} épisode${s.episode_count > 1 ? 's' : ''}`,
@@ -412,7 +418,14 @@ function FeedRow({ item, onDelete }: { item: FeedItem; onDelete: () => void }) {
           <View style={styles.rowHeader}>
             <Text style={[styles.rowTitle, { color: colors.text }]}>{item.title}</Text>
             {item.calmPercent != null ? (
-              <Text style={[styles.calm, { color: colors.success }]}>
+              <Text
+                style={[
+                  styles.calm,
+                  {
+                    color:
+                      item.calmPercent >= CALM_SUCCESS_PERCENT ? colors.success : colors.danger,
+                  },
+                ]}>
                 {Math.round(item.calmPercent)}%
               </Text>
             ) : null}
