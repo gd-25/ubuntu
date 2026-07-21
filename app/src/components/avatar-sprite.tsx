@@ -18,16 +18,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import {
-  COL,
   FLAT_BOTTOM,
-  GRID_COLS,
-  GRID_TOP,
+  MAGNET_SPOTS,
   MAP_H,
   MAP_W,
   OUTSIDE_BOTTOM,
   SLOTS,
-  WALKABLE_CELLS,
-  WALKABLE_SET,
   ZONE_RECTS,
 } from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
@@ -36,11 +32,11 @@ import type { Person, Space } from '@/lib/types';
 const SPRING = { damping: 32, stiffness: 900, overshootClamping: true };
 
 /** Rayon (unités carte) dans lequel un point attire doucement l'avatar. */
-const MAGNET_RADIUS = 12;
+const MAGNET_RADIUS = 15;
 /** Force de l'aimant au centre du point (0 = rien, 1 = collé). */
 const MAGNET_PULL = 0.55;
 /** Rayon dans lequel « passer près d'un point » déclenche le haptic. */
-const HAPTIC_RADIUS = 9;
+const HAPTIC_RADIUS = 11;
 
 /** Zone contenant le point (x, y) — version worklet de spaceAt. */
 function zoneAt(x: number, y: number): Space {
@@ -71,6 +67,23 @@ function cellFree(spots: AvatarSpots, self: Person, cx: number, cy: number): boo
     if ((o.x - cx) * (o.x - cx) + (o.y - cy) * (o.y - cy) < OCCUPIED_R2) return false;
   }
   return true;
+}
+
+/** Point aimanté LIBRE le plus proche de (x, y), ou null si aucun. */
+function nearestFreeSpot(
+  spots: AvatarSpots,
+  self: Person,
+  x: number,
+  y: number
+): { x: number; y: number; d: number } | null {
+  'worklet';
+  let best: { x: number; y: number; d: number } | null = null;
+  for (const s of MAGNET_SPOTS) {
+    if (!cellFree(spots, self, s.x, s.y)) continue;
+    const d = (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y);
+    if (!best || d < best.d) best = { x: s.x, y: s.y, d };
+  }
+  return best;
 }
 
 /**
@@ -159,27 +172,18 @@ export function AvatarSprite({
       const nx = Math.min(Math.max(startX.value + e.translationX / scale, 14), MAP_W - 14);
       const ny = Math.min(Math.max(startY.value + e.translationY / scale, 20), MAP_H - 20);
 
-      // Case de la grille la plus proche du doigt.
-      const col = Math.min(GRID_COLS - 1, Math.max(0, Math.round((nx - COL / 2) / COL)));
-      const row = Math.min(9, Math.max(-3, Math.round((ny - GRID_TOP - COL / 2) / COL)));
-      const key = `${col},${row}`;
-
-      const cx = col * COL + COL / 2;
-      const cy = GRID_TOP + row * COL + COL / 2;
-      if (WALKABLE_SET[key] && cellFree(spots.value, person, cx, cy)) {
-        const d = Math.hypot(nx - cx, ny - cy);
-        if (d < MAGNET_RADIUS) {
-          // Aimant doux : plus on est près du point, plus il attire.
-          const t = (1 - d / MAGNET_RADIUS) * MAGNET_PULL;
-          x.value = nx + (cx - nx) * t;
-          y.value = ny + (cy - ny) * t;
-          if (d < HAPTIC_RADIUS && nearCell.value !== key) {
-            nearCell.value = key;
-            runOnJS(hapticTick)();
-          }
-        } else {
-          x.value = nx;
-          y.value = ny;
+      // Point aimanté libre le plus proche du doigt.
+      const spot = nearestFreeSpot(spots.value, person, nx, ny);
+      const d = spot ? Math.sqrt(spot.d) : Number.MAX_VALUE;
+      if (spot && d < MAGNET_RADIUS) {
+        // Aimant doux : plus on est près du point, plus il attire.
+        const t = (1 - d / MAGNET_RADIUS) * MAGNET_PULL;
+        x.value = nx + (spot.x - nx) * t;
+        y.value = ny + (spot.y - ny) * t;
+        const key = `${spot.x},${spot.y}`;
+        if (d < HAPTIC_RADIUS && nearCell.value !== key) {
+          nearCell.value = key;
+          runOnJS(hapticTick)();
         }
       } else {
         x.value = nx;
@@ -196,25 +200,16 @@ export function AvatarSprite({
       // Lâcher sur la grille : l'avatar reste sur le point LIBRE le plus
       // proche (jamais deux avatars sur le même point).
       if (y.value >= OUTSIDE_BOTTOM && y.value < FLAT_BOTTOM) {
-        let bestX = 0;
-        let bestY = 0;
-        let bestD = Number.MAX_VALUE;
-        for (const c of WALKABLE_CELLS) {
-          if (!cellFree(spots.value, person, c.x, c.y)) continue;
-          const d = (c.x - x.value) * (c.x - x.value) + (c.y - y.value) * (c.y - y.value);
-          if (d < bestD) {
-            bestD = d;
-            bestX = c.x;
-            bestY = c.y;
-          }
+        const spot = nearestFreeSpot(spots.value, person, x.value, y.value);
+        if (spot) {
+          x.value = withSpring(spot.x, SPRING);
+          y.value = withSpring(spot.y, SPRING);
+          spots.value = { ...spots.value, [person]: { x: spot.x, y: spot.y } };
+          const zone = zoneAt(spot.x, spot.y);
+          keepCellFor.value = zone;
+          runOnJS(onDropped)(person, zone, spot.x, spot.y);
+          return;
         }
-        x.value = withSpring(bestX, SPRING);
-        y.value = withSpring(bestY, SPRING);
-        spots.value = { ...spots.value, [person]: { x: bestX, y: bestY } };
-        const zone = zoneAt(bestX, bestY);
-        keepCellFor.value = zone;
-        runOnJS(onDropped)(person, zone, bestX, bestY);
-        return;
       }
       // Hors grille (dehors, palier) : aimant vers l'ancrage de la zone.
       const zone = zoneAt(x.value, y.value);

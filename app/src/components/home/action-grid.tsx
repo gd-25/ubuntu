@@ -1,0 +1,166 @@
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
+
+import { CUES_DAILY_GOAL } from '@/components/home/cues-modal';
+import { OVERALL_DAILY_GOAL } from '@/components/home/overall-modal';
+import { Text } from '@/components/text';
+import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * L'écran d'accueil comme outil de travail : le bouton SOLO (lancement
+ * instantané d'une session de solitude) et les six actions du quotidien,
+ * dans l'espace vert au-dessus de la forêt.
+ */
+export function ActionGrid({
+  onSolo,
+  onFeed,
+  onSortie,
+  onDodo,
+  onCues,
+  onOverall,
+  onGarde,
+  todayCues,
+  todayOveralls,
+}: {
+  onSolo: () => void;
+  onFeed: () => void;
+  onSortie: () => void;
+  onDodo: () => void;
+  onCues: () => void;
+  onOverall: () => void;
+  onGarde: () => void;
+  todayCues: number;
+  todayOveralls: number;
+}) {
+  const colors = useTheme();
+  return (
+    <Animated.View entering={FadeIn.duration(200)} style={styles.grid}>
+      <Pressable
+        onPress={onSolo}
+        style={({ pressed }) => [
+          styles.solo,
+          {
+            backgroundColor: colors.accent,
+            borderColor: colors.border,
+            boxShadow: pressed ? 'none' : `3px 3px 0px 0px ${colors.border}`,
+            transform: pressed ? [{ translateX: 2 }, { translateY: 2 }] : [],
+          },
+        ]}>
+        <Text style={styles.soloEmoji}>🚪</Text>
+        <Text style={[styles.soloText, { color: colors.accentText }]}>SOLO</Text>
+        <Text style={[styles.soloHint, { color: colors.accentText }]}>DÉMARRE DIRECT</Text>
+      </Pressable>
+      <View style={styles.row}>
+        <ActionButton emoji="🍖" label="NOURRITURE" onPress={onFeed} />
+        <ActionButton emoji="🚶" label="SORTIE" onPress={onSortie} />
+        <ActionButton emoji="🌙" label="DODO" onPress={onDodo} />
+      </View>
+      <View style={styles.row}>
+        <ActionButton
+          emoji="🔑"
+          label="FAUX SIGNAUX"
+          badge={`${todayCues}/${CUES_DAILY_GOAL}`}
+          badgeDone={todayCues >= CUES_DAILY_GOAL}
+          onPress={onCues}
+        />
+        <ActionButton
+          emoji="🐾"
+          label="OVERALL"
+          badge={`${todayOveralls}/${OVERALL_DAILY_GOAL}`}
+          badgeDone={todayOveralls >= OVERALL_DAILY_GOAL}
+          onPress={onOverall}
+        />
+        <ActionButton emoji="🤝" label="GARDE" onPress={onGarde} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function ActionButton({
+  emoji,
+  label,
+  badge,
+  badgeDone,
+  onPress,
+}: {
+  emoji: string;
+  label: string;
+  badge?: string;
+  badgeDone?: boolean;
+  onPress: () => void;
+}) {
+  const colors = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          boxShadow: pressed ? 'none' : `3px 3px 0px 0px ${colors.border}`,
+          transform: pressed ? [{ translateX: 2 }, { translateY: 2 }] : [],
+        },
+      ]}>
+      <Text style={styles.buttonEmoji}>{emoji}</Text>
+      <Text style={[styles.buttonText, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {badge ? (
+        <Text style={[styles.badge, { color: badgeDone ? colors.success : colors.textSecondary }]}>
+          {badge}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  grid: {
+    gap: Spacing.sm,
+  },
+  solo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderWidth: 3,
+    borderRadius: 2,
+    paddingVertical: 13,
+  },
+  soloEmoji: {
+    fontSize: 15,
+  },
+  soloText: {
+    fontSize: 13,
+  },
+  soloHint: {
+    fontSize: 7,
+    opacity: 0.85,
+    marginTop: 3,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  button: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 3,
+    borderRadius: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+  },
+  buttonEmoji: {
+    fontSize: 17,
+  },
+  buttonText: {
+    fontSize: 6.5,
+  },
+  badge: {
+    fontSize: 6.5,
+  },
+});

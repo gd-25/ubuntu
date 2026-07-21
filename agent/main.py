@@ -24,6 +24,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
+
 from clips import ClipRecorder, segment_output_args
 from detector import (
     HOP_DURATION,
@@ -119,10 +121,13 @@ class Agent:
                 on_uploaded=lambda episode_id, clip_path: self.uploader.enqueue_update(
                     "vocal_episodes", episode_id, {"clip_path": clip_path}
                 ),
+                should_record=self.session_open,
             )
 
         self.started_at = time.time()
         self.stream_alive = False
+        self._supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+        self._service_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
         self.last_rms = 0.0
         # Max depuis le dernier heartbeat : un instantané raterait les
         # aboiements entre deux battements.
@@ -314,6 +319,35 @@ class Agent:
             )
             if self.clip_recorder:
                 self.clip_recorder.request(episode_id, ep.started_at, ep.ended_at)
+
+    def session_open(self) -> bool:
+        """Une session est-elle ouverte pour le chien ?
+
+        La vidéo ne s'enregistre qu'en session : hors session (nuit, absence
+        non loggée), l'épisode reste audio seul. Appelé depuis le thread
+        clips (jamais la boucle audio) ; en cas de doute (réseau, panne
+        Supabase), pas de clip — l'épisode reste orphelin, donnée conservée.
+        """
+        try:
+            resp = requests.get(
+                f"{self._supabase_url}/rest/v1/sessions",
+                params={
+                    "dog_id": f"eq.{self.dog_id}",
+                    "ended_at": "is.null",
+                    "select": "id",
+                    "limit": "1",
+                },
+                headers={
+                    "apikey": self._service_key,
+                    "Authorization": f"Bearer {self._service_key}",
+                },
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return len(resp.json()) > 0
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("vérification de session impossible (%s) : pas de clip", exc)
+            return False
 
     # ------------------------------------------------------------ heartbeat
 

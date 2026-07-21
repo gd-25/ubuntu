@@ -1,23 +1,25 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
-import Animated, {
-  SlideInUp,
-  SlideOutUp,
-  useSharedValue,
-  ZoomIn,
-  ZoomOut,
-} from 'react-native-reanimated';
+import Animated, { SlideInUp, SlideOutUp, useSharedValue, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarSprite, type AvatarSpots } from '@/components/avatar-sprite';
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import { GridDots } from '@/components/grid-dots';
+import { ActionGrid } from '@/components/home/action-grid';
+import { CuesModal } from '@/components/home/cues-modal';
+import { DodoModal } from '@/components/home/dodo-modal';
+import { FeedModal } from '@/components/home/feed-modal';
+import { GardeModal } from '@/components/home/garde-modal';
+import { OverallModal, type MatPlacement } from '@/components/home/overall-modal';
+import { SoloPicker } from '@/components/home/solo-picker';
+import { SortieModal } from '@/components/home/sortie-modal';
 import { HouseMap } from '@/components/house-map';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Text } from '@/components/text';
+import { UbuntuMat } from '@/components/ubuntu-mat';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -30,12 +32,14 @@ import {
 import {
   computeTransition,
   DEFAULT_POSITIONS,
+  departureTypeOf,
   isOnUbuntuMat,
   isUbuntuAlone,
   MAP_H,
   MAP_W,
   SLOTS,
   solitudeTypeOf,
+  spaceAt,
   SPACE_LABELS,
   type Positions,
 } from '@/lib/house';
@@ -44,6 +48,7 @@ import type {
   Activity,
   AgentHeartbeat,
   AvatarPosition,
+  DepartureState,
   ObservedKind,
   Person,
   Session,
@@ -60,13 +65,6 @@ const AVATARS: Record<Person, { source: number; w: number; h: number; z: number 
   fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32, z: 11 },
   ubuntu: { source: require('../../../assets/images/avatars/ubuntu.png'), w: 32, h: 34, z: 20 },
 };
-
-const MEAL_FRACTIONS = [
-  { value: 0.25, label: '¼' },
-  { value: 0.5, label: '½' },
-  { value: 0.75, label: '¾' },
-  { value: 1, label: 'TOUT' },
-] as const;
 
 export default function HouseScreen() {
   const colors = useTheme();
@@ -98,10 +96,20 @@ export default function HouseScreen() {
 
   // --- UI ---
   const [toast, setToast] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
-  const [feedFraction, setFeedFraction] = useState<number>(0.5);
-  const [feedTime, setFeedTime] = useState<Date>(new Date());
+  const [sortieOpen, setSortieOpen] = useState(false);
+  const [dodoOpen, setDodoOpen] = useState(false);
+  const [cuesOpen, setCuesOpen] = useState(false);
+  const [gardeOpen, setGardeOpen] = useState(false);
+  /** Mode placement Overall : le tapis clignote et se laisse déplacer. */
+  const [overallPlacing, setOverallPlacing] = useState(false);
+  /** Tapis posé : la modale de session Overall s'ouvre sur cette position. */
+  const [overallPlacement, setOverallPlacement] = useState<MatPlacement | null>(null);
+  /** Mini-picker d'état au départ, affiché juste après le lancement SOLO. */
+  const [soloPickerFor, setSoloPickerFor] = useState<string | null>(null);
+  /** Compteurs du jour pour les objectifs (faux signaux 15/j, Overall 2/j). */
+  const [todayCues, setTodayCues] = useState(0);
+  const [todayOveralls, setTodayOveralls] = useState(0);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
@@ -143,7 +151,9 @@ export default function HouseScreen() {
 
   const fetchAll = useCallback(async () => {
     if (!dog) return null;
-    const [posRes, heartbeatRes, sessionRes, walkRes] = await Promise.all([
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [posRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes] = await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase
         .from('agent_heartbeats')
@@ -166,6 +176,17 @@ export default function HouseScreen() {
         .is('ended_at', null)
         .order('at', { ascending: false })
         .limit(1),
+      supabase
+        .from('activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('dog_id', dog.id)
+        .eq('kind', 'fake_cue')
+        .gte('at', todayStart.toISOString()),
+      supabase
+        .from('overall_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('dog_id', dog.id)
+        .gte('at', todayStart.toISOString()),
     ]);
 
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
@@ -189,6 +210,8 @@ export default function HouseScreen() {
       session,
       episodes,
       walk: (walkRes.data?.[0] as Activity | undefined) ?? null,
+      todayCues: cuesRes.count ?? 0,
+      todayOveralls: overallRes.count ?? 0,
     };
   }, [dog]);
 
@@ -203,6 +226,8 @@ export default function HouseScreen() {
         if (snapshot.session) setAlonePrompt(false);
         setSessionEpisodes(snapshot.episodes);
         setActiveWalk(snapshot.walk);
+        setTodayCues(snapshot.todayCues);
+        setTodayOveralls(snapshot.todayOveralls);
       });
       return () => {
         ignore = true;
@@ -361,6 +386,8 @@ export default function HouseScreen() {
           trigger: 'manual',
           started_at: new Date().toISOString(),
           solitude_type: solitudeType,
+          departure_type: departureTypeOf(positionsRef.current),
+          is_exercise: true,
         })
         .select()
         .single();
@@ -368,9 +395,12 @@ export default function HouseScreen() {
         Alert.alert('Erreur', `Session non démarrée : ${error.message}`);
         return;
       }
-      setActiveSession(data as Session);
+      const session = data as Session;
+      setActiveSession(session);
       setSessionEpisodes([]);
       setRecap(null);
+      // L'état d'Ubuntu au départ se capture au moment T, en un seul tap.
+      setSoloPickerFor(session.id);
       showToast(
         solitudeType === 'away'
           ? '🔴 SESSION : UBUNTU SEUL À LA MAISON'
@@ -380,35 +410,81 @@ export default function HouseScreen() {
     [dog, showToast]
   );
 
-  /** Ramène Greg et Fiona à l'entrée de l'appartement (couloir intérieur). */
-  const returnHumansToEntrance = useCallback(() => {
-    setPositions((prev) => ({ ...prev, greg: 'couloir_int', fiona: 'couloir_int' }));
-    persistPosition('greg', 'couloir_int');
-    persistPosition('fiona', 'couloir_int');
-  }, [persistPosition]);
-
-  const stopSession = useCallback(async (opts?: { returnHumans?: boolean }) => {
-    const session = activeSessionRef.current;
-    if (!session) return;
-    const { error } = await supabase.functions.invoke('close-session', {
-      body: { session_id: session.id },
-    });
-    if (error) {
-      Alert.alert('Erreur', `Impossible de clôturer la session : ${error.message}`);
+  /** Bouton SOLO : lancement instantané, confirmation haptique immédiate. */
+  const startSolo = useCallback(() => {
+    if (activeSessionRef.current) {
+      showToast('⚠️ UNE SESSION EST DÉJÀ EN COURS');
       return;
     }
-    if (opts?.returnHumans) returnHumansToEntrance();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAlonePrompt(false);
+    startSession(solitudeTypeOf(positionsRef.current));
+  }, [startSession, showToast]);
+
+  /** Mini-picker post-SOLO : état d'Ubuntu au moment du départ. */
+  const pickDepartureState = useCallback(
+    async (state: DepartureState) => {
+      const sessionId = soloPickerFor;
+      setSoloPickerFor(null);
+      if (!sessionId) return;
+      Haptics.selectionAsync();
+      setActiveSession((prev) =>
+        prev && prev.id === sessionId ? { ...prev, departure_state: state } : prev
+      );
+      const { error } = await supabase
+        .from('sessions')
+        .update({ departure_state: state })
+        .eq('id', sessionId);
+      if (error) console.warn("État au départ non enregistré :", error.message);
+    },
+    [soloPickerFor]
+  );
+
+  /**
+   * TERMINER, immédiat : haptic + panneau fermé tout de suite, la clôture
+   * (edge function + récap) se fait en arrière-plan. Les humains gardent
+   * leur position — on ne replace plus personne.
+   */
+  const stopSession = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setActiveSession(null);
     setSessionEpisodes([]);
     setLastQuickLog(null);
-    const { data: summary } = await supabase
-      .from('session_summaries')
-      .select('*')
-      .eq('session_id', session.id)
-      .maybeSingle();
-    setRecap((summary as SessionSummary | null) ?? null);
+    setSoloPickerFor(null);
     showToast('🟢 SESSION TERMINÉE');
-  }, [returnHumansToEntrance, showToast]);
+    (async () => {
+      const { error } = await supabase.functions.invoke('close-session', {
+        body: { session_id: session.id },
+      });
+      if (error) {
+        // La clôture a échoué : on restaure le panneau pour réessayer.
+        setActiveSession(session);
+        showToast('⚠️ CLÔTURE IMPOSSIBLE — RÉESSAYEZ');
+        return;
+      }
+      const { data: summary } = await supabase
+        .from('session_summaries')
+        .select('*')
+        .eq('session_id', session.id)
+        .maybeSingle();
+      setRecap((summary as SessionSummary | null) ?? null);
+    })();
+  }, [showToast]);
+
+  /** Toggle exercice / absence subie sur la session en cours (optimiste). */
+  const setExercise = useCallback(async (isExercise: boolean) => {
+    const session = activeSessionRef.current;
+    if (!session || session.is_exercise === isExercise) return;
+    Haptics.selectionAsync();
+    setActiveSession((prev) => (prev ? { ...prev, is_exercise: isExercise } : prev));
+    const { error } = await supabase
+      .from('sessions')
+      .update({ is_exercise: isExercise })
+      .eq('id', session.id);
+    if (error) console.warn('Toggle exercice non enregistré :', error.message);
+  }, []);
 
   /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
   const handleDrop = useCallback(
@@ -468,30 +544,26 @@ export default function HouseScreen() {
     if (space) Haptics.selectionAsync();
   }, []);
 
-  const openFeedForm = useCallback(() => {
-    setMenuOpen(false);
-    setFeedFraction(0.5);
-    setFeedTime(new Date());
-    setFeedOpen(true);
+  // ------------------------------------------------- Placement Overall
+
+  /** Bouton OVERALL : le tapis clignote, on le pose là où il sera. */
+  const startOverallPlacing = useCallback(() => {
+    Haptics.selectionAsync();
+    setOverallPlacing(true);
+    showToast('🐾 POSEZ LE TAPIS LÀ OÙ VOUS LE METTEZ');
+  }, [showToast]);
+
+  /** Tapis lâché : la modale de session s'ouvre sur cette position. */
+  const handleMatPlaced = useCallback((x: number, y: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setOverallPlacement({ x, y, space: spaceAt(x, y) });
   }, []);
 
-  const saveMeal = useCallback(async () => {
-    if (!dog) return;
-    const at = new Date(Math.min(feedTime.getTime(), Date.now()));
-    const { error } = await supabase.from('activities').insert({
-      dog_id: dog.id,
-      kind: 'meal',
-      at: at.toISOString(),
-      meal_fraction: feedFraction,
-    });
-    if (error) {
-      Alert.alert('Erreur', `Repas non enregistré : ${error.message}`);
-      return;
-    }
-    setFeedOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showToast(`🍖 REPAS NOTÉ À ${formatTime(at.toISOString())}`);
-  }, [dog, feedFraction, feedTime, showToast]);
+  /** Fin (enregistrée ou annulée) : le tapis ressort vers sa place. */
+  const closeOverall = useCallback(() => {
+    setOverallPlacement(null);
+    setOverallPlacing(false);
+  }, []);
 
   const logManualWhine = useCallback(async () => {
     const session = activeSessionRef.current;
@@ -554,8 +626,6 @@ export default function HouseScreen() {
       : 0;
   const mapHeight = MAP_H * scale;
 
-  const ubuntuSlot = SLOTS[positions.ubuntu].ubuntu;
-
   // Les panneaux et dialogues s'affichent tous en haut, dans l'espace vert
   // au-dessus des arbres (sous le badge caméra).
   const panelTop = insets.top + 40;
@@ -577,6 +647,15 @@ export default function HouseScreen() {
             {/* Points aimantés des cases utilisables, pendant le drag */}
             {draggingAvatar ? <GridDots night={scheme === 'dark'} /> : null}
 
+            {/* Tapis d'Ubuntu : à sa place au-dessus du canapé, déplaçable
+                pendant le placement d'une session Overall */}
+            <UbuntuMat
+              scale={scale}
+              night={scheme === 'dark'}
+              placing={overallPlacing}
+              onPlaced={handleMatPlaced}
+            />
+
             {/* Avatars */}
             {(Object.keys(AVATARS) as Person[]).map((person) => (
               <AvatarSprite
@@ -592,7 +671,6 @@ export default function HouseScreen() {
                 onDropped={handleDrop}
                 onHoverSpace={handleHover}
                 onDragChange={setDraggingAvatar}
-                onTap={person === 'ubuntu' ? () => setMenuOpen(true) : undefined}
               />
             ))}
 
@@ -631,6 +709,56 @@ export default function HouseScreen() {
           ]}>
           <Text style={[styles.toastText, { color: colors.text }]}>{toast}</Text>
         </Animated.View>
+      ) : null}
+
+      {/* L'outil de travail : SOLO + les 6 actions, dans l'espace vert
+          (masqué quand un panneau occupe le haut de l'écran) */}
+      {!activeSession && !alonePrompt && !soloPickerFor && !overallPlacing ? (
+        <View style={[styles.actionsWrap, { top: panelTop }]}>
+          <ActionGrid
+            onSolo={startSolo}
+            onFeed={() => setFeedOpen(true)}
+            onSortie={() => setSortieOpen(true)}
+            onDodo={() => setDodoOpen(true)}
+            onCues={() => setCuesOpen(true)}
+            onOverall={startOverallPlacing}
+            onGarde={() => setGardeOpen(true)}
+            todayCues={todayCues}
+            todayOveralls={todayOveralls}
+          />
+        </View>
+      ) : null}
+
+      {/* Placement Overall en cours : consigne + annulation */}
+      {overallPlacing && !overallPlacement ? (
+        <Animated.View
+          entering={SlideInUp.duration(240)}
+          exiting={SlideOutUp.duration(160)}
+          style={[
+            styles.placingBanner,
+            {
+              top: panelTop,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              boxShadow: `4px 4px 0px 0px ${colors.border}`,
+            },
+          ]}>
+          <Text style={[styles.placingText, { color: colors.text }]}>
+            🐾 GLISSEZ LE TAPIS LÀ OÙ VOUS LE POSEZ POUR LA SESSION
+          </Text>
+          <Pressable onPress={closeOverall} hitSlop={8}>
+            <Text style={[styles.placingCancel, { color: colors.textSecondary }]}>ANNULER</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+
+      {/* Mini-picker d'état au départ (un seul tap, juste après SOLO) */}
+      {soloPickerFor ? (
+        <SoloPicker
+          top={panelTop}
+          onPick={pickDepartureState}
+          onDismiss={() => setSoloPickerFor(null)}
+        />
       ) : null}
 
       {/* Proposition de session : Ubuntu est seul depuis 2 s, on demande
@@ -672,8 +800,9 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Panneau session en cours (boîte de dialogue Pokémon, en haut) */}
-      {activeSession ? (
+      {/* Panneau session en cours (boîte de dialogue Pokémon, en haut) —
+          laisse la place au mini-picker d'état au départ juste après SOLO */}
+      {activeSession && !soloPickerFor ? (
         <Animated.View
           entering={SlideInUp.duration(260)}
           style={[
@@ -705,12 +834,50 @@ export default function HouseScreen() {
             nowMs={now}
             showLegend={false}
           />
+          {/* Exercice d'entraînement ou absence subie (courses…) ? Les
+              absences subies sont filtrables dans les stats. */}
+          <View style={styles.exerciseRow}>
+            <Pressable
+              onPress={() => setExercise(true)}
+              style={[
+                styles.exerciseChip,
+                {
+                  backgroundColor: activeSession.is_exercise ? colors.accent : colors.background,
+                  borderColor: colors.border,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.exerciseChipText,
+                  { color: activeSession.is_exercise ? colors.accentText : colors.text },
+                ]}>
+                🎯 EXERCICE
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setExercise(false)}
+              style={[
+                styles.exerciseChip,
+                {
+                  backgroundColor: !activeSession.is_exercise ? colors.accent : colors.background,
+                  borderColor: colors.border,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.exerciseChipText,
+                  { color: !activeSession.is_exercise ? colors.accentText : colors.text },
+                ]}>
+                🛒 SUBIE
+              </Text>
+            </Pressable>
+          </View>
           <View style={styles.quickRow}>
             <QuickChip label="😢" onPress={logManualWhine} />
             <QuickChip label="😌" onPress={() => logObservation('relief')} />
             <QuickChip label="😰" onPress={() => logObservation('panic')} />
             <Pressable
-              onPress={() => stopSession({ returnHumans: true })}
+              onPress={stopSession}
               style={[styles.stopChip, { backgroundColor: colors.danger, borderColor: colors.border }]}>
               <Text style={[styles.stopChipText, { color: colors.accentText }]}>TERMINER</Text>
             </Pressable>
@@ -723,100 +890,58 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Menu Ubuntu (tap sur l'avatar) */}
-      {menuOpen && scale > 0 ? (
-        <>
-          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-          <Animated.View
-            entering={ZoomIn.duration(180)}
-            exiting={ZoomOut.duration(130)}
-            style={[
-              styles.ubuntuMenu,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                boxShadow: `4px 4px 0px 0px ${colors.border}`,
-                left: Math.min(Math.max(ubuntuSlot.x * scale - 80, 12), mapLayout.w - 172),
-                top: Math.max(ubuntuSlot.y * scale - 118, insets.top + 46),
-              },
-            ]}>
-            <Text style={[styles.menuTitle, { color: colors.textSecondary }]}>UBUNTU</Text>
-            <Pressable onPress={openFeedForm} style={styles.menuItem}>
-              <Text style={[styles.menuItemText, { color: colors.text }]}>▶ 🍖 NOURRITURE</Text>
-            </Pressable>
-            <Pressable onPress={() => setMenuOpen(false)} style={styles.menuItem}>
-              <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>✕ FERMER</Text>
-            </Pressable>
-          </Animated.View>
-        </>
-      ) : null}
-
-      {/* Formulaire nourriture */}
-      <Modal visible={feedOpen} transparent animationType="fade" onRequestClose={() => setFeedOpen(false)}>
-        <View style={[styles.modalBackdrop, { paddingTop: panelTop }]}>
-          <Animated.View
-            entering={ZoomIn.duration(200)}
-            style={[
-              styles.dialog,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                boxShadow: `5px 5px 0px 0px ${colors.border}`,
-              },
-            ]}>
-            <Text style={[styles.dialogTitle, { color: colors.text }]}>🍖 NOURRITURE</Text>
-            <Text style={[styles.dialogLabel, { color: colors.textSecondary }]}>
-              QUELLE PART DE SA RATION ?
-            </Text>
-            <View style={styles.fractionRow}>
-              {MEAL_FRACTIONS.map(({ value, label }) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setFeedFraction(value)}
-                  style={[
-                    styles.fractionChip,
-                    {
-                      backgroundColor: feedFraction === value ? colors.accent : colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.fractionText,
-                      { color: feedFraction === value ? colors.accentText : colors.text },
-                    ]}>
-                    {label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={[styles.dialogLabel, { color: colors.textSecondary }]}>À QUELLE HEURE ?</Text>
-            <DateTimePicker
-              value={feedTime}
-              mode="time"
-              display="spinner"
-              maximumDate={new Date()}
-              themeVariant={scheme === 'dark' ? 'dark' : 'light'}
-              onChange={(_, date) => {
-                if (date) setFeedTime(date);
-              }}
-              style={styles.timePicker}
-            />
-            <View style={styles.dialogButtons}>
-              <Pressable
-                onPress={() => setFeedOpen(false)}
-                style={[styles.dialogButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={[styles.dialogButtonText, { color: colors.text }]}>ANNULER</Text>
-              </Pressable>
-              <Pressable
-                onPress={saveMeal}
-                style={[styles.dialogButton, { backgroundColor: colors.accent, borderColor: colors.border }]}>
-                <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>OK !</Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
+      {/* Les modales des actions du quotidien */}
+      <FeedModal
+        visible={feedOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        onClose={() => setFeedOpen(false)}
+        onSaved={showToast}
+      />
+      <SortieModal
+        visible={sortieOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        onClose={() => setSortieOpen(false)}
+        onSaved={showToast}
+      />
+      <DodoModal
+        visible={dodoOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        onClose={() => setDodoOpen(false)}
+        onSaved={showToast}
+      />
+      <CuesModal
+        visible={cuesOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        todayCount={todayCues}
+        onClose={() => setCuesOpen(false)}
+        onSaved={(message) => {
+          setTodayCues((n) => n + 1);
+          showToast(message);
+        }}
+      />
+      <OverallModal
+        visible={!!overallPlacement}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        placement={overallPlacement}
+        todayCount={todayOveralls}
+        onClose={closeOverall}
+        onSaved={(message) => {
+          setTodayOveralls((n) => n + 1);
+          showToast(message);
+        }}
+      />
+      <GardeModal
+        visible={gardeOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        onClose={() => setGardeOpen(false)}
+        onSaved={showToast}
+      />
 
       {/* Récap de fin de session */}
       <Modal visible={!!recap} transparent animationType="fade" onRequestClose={() => setRecap(null)}>
@@ -938,8 +1063,14 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'center',
   },
-  // Panneau ancré en haut de l'écran (le `top` exact dépend des insets).
-  sessionPanel: {
+  // L'outil de travail (SOLO + 6 boutons), dans l'espace vert.
+  actionsWrap: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    zIndex: 110,
+  },
+  placingBanner: {
     position: 'absolute',
     left: Spacing.md,
     right: Spacing.md,
@@ -947,7 +1078,45 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     padding: Spacing.md,
     gap: Spacing.sm,
+    alignItems: 'center',
     zIndex: 120,
+  },
+  placingText: {
+    fontSize: 8,
+    lineHeight: 13,
+    textAlign: 'center',
+  },
+  placingCancel: {
+    fontSize: 8,
+    marginTop: 2,
+  },
+  // Panneau ancré en haut de l'écran (le `top` exact dépend des insets).
+  // Padding vertical généreux : les chips emoji ne doivent jamais déborder.
+  sessionPanel: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    borderWidth: 3,
+    borderRadius: 2,
+    padding: Spacing.md,
+    paddingBottom: Spacing.md + 2,
+    gap: 10,
+    zIndex: 120,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  exerciseChip: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 2,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exerciseChipText: {
+    fontSize: 7,
   },
   sessionHeader: {
     flexDirection: 'row',
@@ -972,52 +1141,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  // Hauteur FIXE et contenu centré : les emojis ne débordent plus des chips.
   quickChip: {
     borderWidth: 2,
     borderRadius: 2,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quickChipText: {
     fontSize: 13,
+    lineHeight: 18,
   },
   stopChip: {
     marginLeft: 'auto',
     borderWidth: 2,
     borderRadius: 2,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stopChipText: {
     fontSize: 8,
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#00000033',
-    zIndex: 150,
-  },
-  ubuntuMenu: {
-    position: 'absolute',
-    width: 160,
-    borderWidth: 3,
-    borderRadius: 2,
-    padding: Spacing.sm,
-    gap: 2,
-    zIndex: 160,
-  },
-  menuTitle: {
-    fontSize: 7,
-    marginBottom: 2,
-  },
-  menuItem: {
-    paddingVertical: 8,
-  },
-  menuItemText: {
-    fontSize: 9,
   },
   // Dialogues alignés en haut (dans l'espace vert au-dessus des arbres).
   modalBackdrop: {
@@ -1038,26 +1185,6 @@ const styles = StyleSheet.create({
   dialogTitle: {
     fontSize: 12,
     marginBottom: 2,
-  },
-  dialogLabel: {
-    fontSize: 8,
-  },
-  fractionRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  fractionChip: {
-    flex: 1,
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  fractionText: {
-    fontSize: 10,
-  },
-  timePicker: {
-    alignSelf: 'center',
   },
   dialogButtons: {
     flexDirection: 'row',

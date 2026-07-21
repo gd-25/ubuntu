@@ -40,7 +40,12 @@ export function EpisodeTimeline({
   const trackY = (SVG_HEIGHT - TRACK_HEIGHT) / 2;
 
   return (
-    <View style={styles.container} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View style={styles.container}>
+      {/* La hauteur du SVG est réservée dès le premier rendu (la piste
+          apparaît au 2e passage, une fois la largeur mesurée) : sinon le
+          panneau parent fige sa hauteur sans elle pendant son animation
+          d'entrée et le bas du contenu déborde. */}
+      <View style={styles.track} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
         <Svg width={width} height={SVG_HEIGHT}>
           <Rect
@@ -79,6 +84,7 @@ export function EpisodeTimeline({
           />
         </Svg>
       ) : null}
+      </View>
       <View style={styles.axis}>
         <Text style={[styles.axisLabel, { color: colors.textSecondary }]}>
           {formatTime(sessionStart)}
@@ -112,6 +118,9 @@ function Legend() {
 const styles = StyleSheet.create({
   container: {
     gap: 4,
+  },
+  track: {
+    height: SVG_HEIGHT,
   },
   axis: {
     flexDirection: 'row',

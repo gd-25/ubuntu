@@ -605,9 +605,8 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         height={6 * COL - 3}
         fill="url(#rugCheck)"
       />
-      {/* Petit tapis gris clair 2×1 juste au-dessus du canapé */}
-      <Rect x={CX(20)} y={RY(5)} width={2 * COL} height={COL} rx={2} fill={p.greyRug} />
-      <Rect x={CX(20) + 2} y={RY(5) + 2} width={2 * COL - 4} height={COL - 4} rx={1} fill={p.sofaLight} />
+      {/* Le petit tapis gris d'Ubuntu est un composant à part (UbuntuMat) :
+          il se déplace sur le plan pendant les sessions Overall */}
 
       {/* Bureau : tapis gris foncé uni 3×3, sans bordure ni motif */}
       <Rect x={0} y={RY(0)} width={3 * COL} height={3 * COL} fill={p.greyRugEdge} />
@@ -697,18 +696,20 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={CX(21) + 1} y={RY(2) + 27} width={COL - 2} height={4} rx={1} fill={p.wood} />
       <Rect x={CX(21) + 3} y={RY(2) + 3} width={COL - 6} height={2} fill={p.merisierLight} />
 
-      {/* Canapé 2×3 (rangées 6-8) : bords fins façon tables, dossier contre
-          le mur, accoudoirs, couture, face avant ombrée et pieds */}
-      <Rect x={CX(20) + 4} y={RY(6) + 46} width={5} height={6} rx={1} fill={p.outline} />
-      <Rect x={CX(20) + 23} y={RY(6) + 46} width={5} height={6} rx={1} fill={p.outline} />
-      <Rect x={CX(20)} y={RY(6) - 2} width={2 * COL} height={50} rx={4} fill={p.outline} />
-      <Rect x={CX(20) + 1} y={RY(6) - 1} width={30} height={48} rx={3} fill={p.sofaLight} />
-      <Rect x={CX(20) + 22} y={RY(6)} width={9} height={42} rx={3} fill={p.greyRug} />
-      <Rect x={CX(20) + 25} y={RY(6) + 2} width={2} height={38} fill={p.sofaLight} />
-      <Rect x={CX(20) + 1} y={RY(6) - 1} width={23} height={8} rx={3} fill={p.greyRug} />
-      <Rect x={CX(20) + 1} y={RY(6) + 34} width={23} height={8} rx={3} fill={p.greyRug} />
-      <Rect x={CX(20) + 3} y={RY(6) + 20} width={20} height={2} fill={p.greyRugEdge} />
-      <Rect x={CX(20) + 1} y={RY(6) + 42} width={30} height={5} rx={1} fill={p.greyRugEdge} />
+      {/* Canapé agrandi (3 places, rangées 5,5-9) : bords fins façon tables,
+          dossier contre le mur, accoudoirs, deux coutures (trois assises),
+          face avant ombrée et pieds */}
+      <Rect x={CX(20) + 2} y={RY(6) + 52} width={5} height={6} rx={1} fill={p.outline} />
+      <Rect x={CX(20) + 25} y={RY(6) + 52} width={5} height={6} rx={1} fill={p.outline} />
+      <Rect x={CX(20) - 2} y={RY(6) - 8} width={2 * COL + 2} height={62} rx={4} fill={p.outline} />
+      <Rect x={CX(20) - 1} y={RY(6) - 7} width={2 * COL} height={60} rx={3} fill={p.sofaLight} />
+      <Rect x={CX(20) + 22} y={RY(6) - 6} width={10} height={54} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) + 26} y={RY(6) - 4} width={2} height={50} fill={p.sofaLight} />
+      <Rect x={CX(20) - 1} y={RY(6) - 7} width={24} height={8} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) - 1} y={RY(6) + 40} width={24} height={8} rx={3} fill={p.greyRug} />
+      <Rect x={CX(20) + 1} y={RY(6) + 14} width={21} height={2} fill={p.greyRugEdge} />
+      <Rect x={CX(20) + 1} y={RY(6) + 27} width={21} height={2} fill={p.greyRugEdge} />
+      <Rect x={CX(20) - 1} y={RY(6) + 48} width={2 * COL} height={5} rx={1} fill={p.greyRugEdge} />
 
       {/* Table basse 2×2 : plateau bois sur pieds (3D) */}
       <Rect x={CX(17) + 2} y={RY(7) + 24} width={5} height={7} rx={1} fill={p.outline} />

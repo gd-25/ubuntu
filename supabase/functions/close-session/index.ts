@@ -8,6 +8,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { formatDuration, sendExpoPush } from "../_shared/push.ts";
 
+/** Écart fin de session ↔ dernier épisode sous lequel on considère être
+ * rentré pendant/juste après une vocalise. */
+const RETURN_SILENCE_THRESHOLD_MS = 30_000;
+
 Deno.serve(async (req) => {
   const { session_id } = await req.json();
   if (!session_id) {
@@ -35,6 +39,26 @@ Deno.serve(async (req) => {
       { status: 404 },
     );
   }
+
+  // « Rentré sur silence » calculé, pas saisi : la session se termine à
+  // l'ouverture de la porte. Si le dernier épisode vocal s'est terminé
+  // moins de 30 s avant la fin (ou déborde dessus), on est rentré
+  // pendant/juste après une vocalise.
+  const { data: lastEpisode } = await userClient
+    .from("vocal_episodes")
+    .select("ended_at")
+    .eq("session_id", session_id)
+    .order("ended_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const returnedDuringVocalization = lastEpisode
+    ? Date.parse(session.ended_at) - Date.parse(lastEpisode.ended_at) <
+      RETURN_SILENCE_THRESHOLD_MS
+    : false;
+  await userClient
+    .from("sessions")
+    .update({ returned_during_vocalization: returnedDuringVocalization })
+    .eq("id", session_id);
 
   const { data: summary } = await userClient
     .from("session_summaries")

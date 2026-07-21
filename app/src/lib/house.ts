@@ -1,4 +1,4 @@
-import type { Person, SolitudeType, Space } from '@/lib/types';
+import type { DepartureType, Person, SolitudeType, Space } from '@/lib/types';
 
 /**
  * Géométrie du plan (repère « carte » en unités fixes, mis à l'échelle à
@@ -90,7 +90,7 @@ function isFurnished(col: number, row: number): boolean {
  * salon comprise) et tout l'intérieur (rangées 0-9) hors meubles. Le dehors
  * et le palier ne sont pas quadrillés : on y retombe sur l'ancrage de zone.
  */
-export const WALKABLE_CELLS: { col: number; row: number; x: number; y: number }[] = [];
+const WALKABLE_CELLS: { col: number; row: number; x: number; y: number }[] = [];
 for (let row = -3; row <= 9; row++) {
   for (let col = 0; col < GRID_COLS; col++) {
     if (isFurnished(col, row)) continue;
@@ -98,9 +98,58 @@ for (let row = -3; row <= 9; row++) {
   }
 }
 
-/** Index `col,row` → true, pour les worklets (lookup O(1)). */
-export const WALKABLE_SET: Record<string, true> = {};
-for (const c of WALKABLE_CELLS) WALKABLE_SET[`${c.col},${c.row}`] = true;
+// -------------------------------------------------------- Tapis d'Ubuntu
+
+/** Tapis gris 2×1 d'Ubuntu, remonté d'une demi-tuile au-dessus du canapé. */
+export const UBUNTU_MAT_W = 2 * COL;
+export const UBUNTU_MAT_H = COL;
+/** Position « maison » du tapis (coin haut-gauche, unités carte). */
+export const UBUNTU_MAT_HOME = { x: 20 * COL, y: GRID_TOP + 4.5 * COL };
+/** Centre du tapis au repos : son unique point aimanté. */
+export const UBUNTU_MAT_SPOT = {
+  x: UBUNTU_MAT_HOME.x + UBUNTU_MAT_W / 2,
+  y: UBUNTU_MAT_HOME.y + UBUNTU_MAT_H / 2,
+};
+
+// ------------------------------------------------------- Points aimantés
+
+/**
+ * Cases couvertes par une règle spéciale (meuble praticable ou tapis) :
+ * exclues de la grille générique, remplacées par des points dédiés.
+ */
+function hasSpecialSpots(col: number, row: number): boolean {
+  if (col <= 2 && row >= 0 && row <= 2) return true; // tapis gris foncé du bureau
+  if (col >= 8 && col <= 10 && row >= 1 && row <= 5) return true; // lit
+  if (col >= 20 && row >= 4 && row <= 9) return true; // canapé + tapis d'Ubuntu
+  return false;
+}
+
+/**
+ * Points aimantés du plan : une case sur deux dans chaque direction (un
+ * point « au milieu de 4 » de l'ancienne grille serrée), plus des points
+ * dédiés là où une règle particulière s'applique : le centre du tapis du
+ * bureau, le centre du tapis d'Ubuntu, trois places dans le canapé, deux
+ * places dans le lit, et un point pour la sdb et les wc (rangées impaires,
+ * sans quoi ces pièces n'auraient aucun point).
+ */
+export const MAGNET_SPOTS: { x: number; y: number }[] = [];
+for (const c of WALKABLE_CELLS) {
+  if (((c.col % 2) + 2) % 2 !== 0) continue;
+  if (((c.row % 2) + 2) % 2 !== 0) continue;
+  if (hasSpecialSpots(c.col, c.row)) continue;
+  MAGNET_SPOTS.push({ x: c.x, y: c.y });
+}
+MAGNET_SPOTS.push(
+  { x: 1.5 * COL, y: GRID_TOP + 1.5 * COL }, // centre du tapis du bureau
+  { x: 2 * COL, y: cellCenter(0, 7).y }, // salle de bain (rangée 7)
+  { x: 13.5 * COL, y: GRID_TOP + 6 * COL }, // wc
+  { x: 152, y: 505 }, // lit, côté oreiller
+  { x: 152, y: 528 }, // lit, pied du lit
+  { x: 330, y: 552 }, // canapé, place haute
+  { x: 330, y: 565 }, // canapé, place du milieu
+  { x: 330, y: 578 }, // canapé, place basse
+  { x: UBUNTU_MAT_SPOT.x, y: UBUNTU_MAT_SPOT.y } // centre du tapis d'Ubuntu
+);
 
 /**
  * Rectangles de hit-test, ORDONNÉS : le premier qui contient le point gagne
@@ -190,13 +239,14 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
 };
 
 /**
- * Le point (x, y) est-il sur le petit tapis gris d'Ubuntu (2×1, juste
- * au-dessus du canapé) ? Chaque arrivée dessus est trackée en activité.
+ * Le point (x, y) est-il sur le petit tapis gris d'Ubuntu (à sa position
+ * maison) ? Chaque arrivée dessus est trackée en activité.
  */
 export function isOnUbuntuMat(x: number, y: number): boolean {
-  const col = Math.floor(x / COL);
-  const row = Math.floor((y - GRID_TOP) / COL);
-  return row === 5 && (col === 20 || col === 21);
+  return (
+    Math.abs(x - UBUNTU_MAT_SPOT.x) <= UBUNTU_MAT_W / 2 &&
+    Math.abs(y - UBUNTU_MAT_SPOT.y) <= UBUNTU_MAT_H / 2
+  );
 }
 
 /** Zone contenant le point (x, y) — coordonnées carte. */
@@ -237,6 +287,19 @@ function isOut(space: Space): boolean {
 export function solitudeTypeOf(positions: Positions): SolitudeType {
   if (isOut(positions.greg) && isOut(positions.fiona)) return 'away';
   return 'in_home';
+}
+
+/**
+ * Type de départ, déduit des positions au moment du tap SOLO : qui a quitté
+ * l'appartement. Si personne n'est sorti (session semi-seul lancée depuis
+ * l'intérieur), on considère un départ à deux.
+ */
+export function departureTypeOf(positions: Positions): DepartureType {
+  const gregOut = isOut(positions.greg);
+  const fionaOut = isOut(positions.fiona);
+  if (gregOut && !fionaOut) return 'solo_greg';
+  if (fionaOut && !gregOut) return 'solo_fiona';
+  return 'duo';
 }
 
 export interface Transition {

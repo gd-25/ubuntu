@@ -75,6 +75,7 @@ class ClipRecorder:
         service_key: str,
         dog_id: str,
         on_uploaded,  # callable(episode_id, clip_path)
+        should_record=None,  # callable() -> bool : None = toujours
         preroll: float = 4.0,
         postroll: float = 2.0,
     ):
@@ -88,6 +89,10 @@ class ClipRecorder:
         }
         self.dog_id = dog_id
         self.on_uploaded = on_uploaded
+        # La vidéo ne s'enregistre qu'en session : les épisodes orphelins
+        # (nuit, absence non loggée…) restent audio seul. Vérifié dans CE
+        # thread pour ne jamais bloquer la boucle audio.
+        self.should_record = should_record
         self.preroll = preroll
         self.postroll = postroll
 
@@ -122,7 +127,10 @@ class ClipRecorder:
                 return
             episode_id, started_at, ended_at = item
             try:
-                self._make_clip(episode_id, started_at, ended_at)
+                if self.should_record is not None and not self.should_record():
+                    log.info("clip %s : hors session, épisode audio seul", episode_id)
+                else:
+                    self._make_clip(episode_id, started_at, ended_at)
             except Exception:
                 log.exception("clip %s : échec", episode_id)
             self._cleanup()
