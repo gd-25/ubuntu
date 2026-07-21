@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
 import { Text, TextInput } from '@/components/text';
@@ -47,7 +47,6 @@ export function OverallModal({
 }) {
   const colors = useTheme();
   const [duration, setDuration] = useState<number>(5);
-  const [treats, setTreats] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
   // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
@@ -57,7 +56,6 @@ export function OverallModal({
     setWasVisible(visible);
     if (visible) {
       setDuration(5);
-      setTreats(0);
       setNotes('');
     }
   }
@@ -68,7 +66,6 @@ export function OverallModal({
       dog_id: dogId,
       at: new Date().toISOString(),
       duration_minutes: duration,
-      treats_count: treats,
       notes: notes.trim() || null,
       mat_x: Math.round(placement.x),
       mat_y: Math.round(placement.y),
@@ -105,20 +102,6 @@ export function OverallModal({
           <Chip key={d} label={String(d)} selected={duration === d} onPress={() => setDuration(d)} />
         ))}
       </View>
-      <DialogLabel>FRIANDISES DONNÉES</DialogLabel>
-      <View style={styles.stepperRow}>
-        <Pressable
-          onPress={() => setTreats((t) => Math.max(0, t - 1))}
-          style={[styles.stepBtn, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Text style={[styles.stepBtnText, { color: colors.text }]}>−</Text>
-        </Pressable>
-        <Text style={[styles.treats, { color: colors.text }]}>{treats}</Text>
-        <Pressable
-          onPress={() => setTreats((t) => t + 1)}
-          style={[styles.stepBtn, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Text style={[styles.stepBtnText, { color: colors.text }]}>+</Text>
-        </Pressable>
-      </View>
       <DialogLabel>OBSERVATIONS</DialogLabel>
       <TextInput
         value={notes}
@@ -152,28 +135,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 6,
-  },
-  stepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  stepBtn: {
-    borderWidth: 2,
-    borderRadius: 2,
-    width: 44,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  stepBtnText: {
-    fontSize: 14,
-  },
-  treats: {
-    fontSize: 16,
-    minWidth: 40,
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
   },
   notes: {
     borderWidth: 2,

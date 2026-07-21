@@ -1,7 +1,7 @@
-/* eslint-disable react-hooks/immutability -- les écritures de shared values
-   Reanimated (.value) dans les worklets de geste sont le fonctionnement normal
-   de la lib ; le React Compiler saute déjà ce composant. */
-import { useEffect } from 'react';
+/* eslint-disable react-hooks/immutability, react-hooks/refs -- les lectures et
+   écritures de shared values Reanimated (.value) vivent dans des worklets de
+   geste (exécutés hors rendu) ; le React Compiler saute déjà ce composant. */
+import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -148,6 +148,19 @@ export function MapObject({
   const startY = useSharedValue(0);
   const dragging = useSharedValue(false);
   const blink = useSharedValue(1);
+  // La position de l'autre objet et les callbacks passent par des shared
+  // values / refs : le geste reste STABLE entre les rendus (un Pan recréé
+  // pendant un drag ferait sauter l'objet sous le doigt).
+  const otherSpot = useSharedValue<Spot>(otherPos);
+  useEffect(() => {
+    otherSpot.value = otherPos;
+  }, [otherPos, otherSpot]);
+  const onDroppedRef = useRef(onDropped);
+  const onDragChangeRef = useRef(onDragChange);
+  useEffect(() => {
+    onDroppedRef.current = onDropped;
+    onDragChangeRef.current = onDragChange;
+  }, [onDropped, onDragChange]);
 
   // Position contrôlée : ressort vers la valeur du parent (fetch, realtime,
   // lâcher validé) — sauf pendant un drag local.
@@ -170,42 +183,56 @@ export function MapObject({
     blink.value = withTiming(1, { duration: 150 });
   }, [blinking, blink]);
 
-  const pan = Gesture.Pan()
-    .minDistance(4)
-    .onStart(() => {
-      dragging.value = true;
-      startX.value = x.value;
-      startY.value = y.value;
-      if (onDragChange) runOnJS(onDragChange)(true);
-    })
-    .onUpdate((e) => {
-      x.value = Math.min(Math.max(startX.value + e.translationX / scale, w / 2), MAP_W - w / 2);
-      y.value = Math.min(Math.max(startY.value + e.translationY / scale, h / 2), MAP_H - h / 2);
-    })
-    .onEnd(() => {
-      // Point intérieur libre (pas celui de l'autre objet) le plus proche.
-      let best: Spot | null = null;
-      let bestD = Number.MAX_VALUE;
-      for (const s of FURNITURE_SPOTS) {
-        const dOther =
-          (s.x - otherPos.x) * (s.x - otherPos.x) + (s.y - otherPos.y) * (s.y - otherPos.y);
-        if (dOther < OCCUPIED_R2) continue;
-        const d = (s.x - x.value) * (s.x - x.value) + (s.y - y.value) * (s.y - y.value);
-        if (d < bestD) {
-          bestD = d;
-          best = s;
-        }
-      }
-      if (best) {
-        x.value = withSpring(best.x, SPRING);
-        y.value = withSpring(best.y, SPRING);
-        runOnJS(onDropped)(best.x, best.y);
-      }
-    })
-    .onFinalize(() => {
-      dragging.value = false;
-      if (onDragChange) runOnJS(onDragChange)(false);
-    });
+  const emitDragChange = (value: boolean) => {
+    onDragChangeRef.current?.(value);
+  };
+  const emitDropped = (dx: number, dy: number) => {
+    onDroppedRef.current(dx, dy);
+  };
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(4)
+        .onStart(() => {
+          dragging.value = true;
+          startX.value = x.value;
+          startY.value = y.value;
+          runOnJS(emitDragChange)(true);
+        })
+        .onUpdate((e) => {
+          x.value = Math.min(Math.max(startX.value + e.translationX / scale, w / 2), MAP_W - w / 2);
+          y.value = Math.min(Math.max(startY.value + e.translationY / scale, h / 2), MAP_H - h / 2);
+        })
+        .onEnd(() => {
+          // Point intérieur libre (pas celui de l'autre objet) le plus proche.
+          const other = otherSpot.value;
+          let best: Spot | null = null;
+          let bestD = Number.MAX_VALUE;
+          for (const s of FURNITURE_SPOTS) {
+            const dOther = (s.x - other.x) * (s.x - other.x) + (s.y - other.y) * (s.y - other.y);
+            if (dOther < OCCUPIED_R2) continue;
+            const d = (s.x - x.value) * (s.x - x.value) + (s.y - y.value) * (s.y - y.value);
+            if (d < bestD) {
+              bestD = d;
+              best = s;
+            }
+          }
+          if (best) {
+            x.value = withSpring(best.x, SPRING);
+            y.value = withSpring(best.y, SPRING);
+            runOnJS(emitDropped)(best.x, best.y);
+          }
+        })
+        .onFinalize(() => {
+          dragging.value = false;
+          runOnJS(emitDragChange)(false);
+        }),
+    // Shared values et émetteurs stables : seuls scale et la taille
+    // recréent le geste (un Pan recréé en plein drag ferait sauter l'objet).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scale, w, h]
+  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [

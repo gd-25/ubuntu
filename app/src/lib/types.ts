@@ -91,7 +91,7 @@ export interface SessionTag {
 export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'fake_cue' | 'care' | 'other';
 
 /** Objets joués pendant un faux signal de départ. */
-export type FakeCue = 'keys' | 'shoes' | 'socks' | 'elevator';
+export type FakeCue = 'keys' | 'shoes' | 'socks' | 'elevator' | 'stairs' | 'gate';
 
 /** Type de repas : croquettes / pâté / autre. */
 export type MealKind = 'kibble' | 'pate' | 'other';

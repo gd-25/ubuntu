@@ -16,6 +16,8 @@ const CUES: { value: FakeCue; emoji: string; label: string }[] = [
   { value: 'shoes', emoji: '👟', label: 'CHAUSSURES' },
   { value: 'socks', emoji: '🧦', label: 'CHAUSSETTES' },
   { value: 'elevator', emoji: '🛗', label: 'ASCENSEUR' },
+  { value: 'stairs', emoji: '🪜', label: 'ESCALIER' },
+  { value: 'gate', emoji: '🚧', label: 'PORTAIL' },
 ];
 
 /**
@@ -87,30 +89,20 @@ export function CuesModal({
         </Text>
       </View>
       <View style={styles.grid}>
-        <View style={styles.gridRow}>
-          {CUES.slice(0, 2).map(({ value, emoji, label }) => (
-            <Chip
-              key={value}
-              big
-              emoji={emoji}
-              label={label}
-              selected={selected.includes(value)}
-              onPress={() => toggle(value)}
-            />
-          ))}
-        </View>
-        <View style={styles.gridRow}>
-          {CUES.slice(2).map(({ value, emoji, label }) => (
-            <Chip
-              key={value}
-              big
-              emoji={emoji}
-              label={label}
-              selected={selected.includes(value)}
-              onPress={() => toggle(value)}
-            />
-          ))}
-        </View>
+        {[0, 3].map((i) => (
+          <View key={i} style={styles.gridRow}>
+            {CUES.slice(i, i + 3).map(({ value, emoji, label }) => (
+              <Chip
+                key={value}
+                big
+                emoji={emoji}
+                label={label}
+                selected={selected.includes(value)}
+                onPress={() => toggle(value)}
+              />
+            ))}
+          </View>
+        ))}
       </View>
       <DialogButtons
         onCancel={onClose}

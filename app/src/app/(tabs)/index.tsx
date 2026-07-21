@@ -124,9 +124,11 @@ export default function HouseScreen() {
   const [overallPlacement, setOverallPlacement] = useState<MatPlacement | null>(null);
   /** Mini-picker d'état au départ, affiché juste après le lancement SOLO. */
   const [soloPickerFor, setSoloPickerFor] = useState<string | null>(null);
-  /** Compteurs du jour pour les objectifs (faux signaux 15/j, Overall 2/j). */
+  /** Compteurs du jour pour les objectifs (faux signaux 15/j, Overall 2/j,
+      minutes de solitude 15 min/j). */
   const [todayCues, setTodayCues] = useState(0);
   const [todayOveralls, setTodayOveralls] = useState(0);
+  const [todaySoloMinutes, setTodaySoloMinutes] = useState(0);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
@@ -172,7 +174,7 @@ export default function HouseScreen() {
     if (!dog) return null;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const [posRes, objectRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes] =
+    const [posRes, objectRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes, soloRes] =
       await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase.from('object_positions').select('*').eq('dog_id', dog.id),
@@ -208,6 +210,11 @@ export default function HouseScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('dog_id', dog.id)
         .gte('at', todayStart.toISOString()),
+      supabase
+        .from('sessions')
+        .select('started_at, ended_at')
+        .eq('dog_id', dog.id)
+        .gte('started_at', todayStart.toISOString()),
     ]);
 
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
@@ -225,12 +232,24 @@ export default function HouseScreen() {
     const nextPositions = { ...DEFAULT_POSITIONS };
     for (const row of positionRows) nextPositions[row.person] = row.space;
 
-    const objectRows = (objectRes.data as ObjectPosition[] | null) ?? [];
-    const nextObjects: Record<MapObjectKind, Spot> = {
-      mat: UBUNTU_MAT_SPOT,
-      basket: BASKET_HOME,
-    };
-    for (const row of objectRows) nextObjects[row.object] = { x: Number(row.x), y: Number(row.y) };
+    // Objets : ne JAMAIS retomber sur les positions par défaut sur une
+    // erreur réseau (le tapis/panier se téléporterait chez lui) — on ne
+    // remplace l'état que si la requête a vraiment répondu.
+    let nextObjects: Record<MapObjectKind, Spot> | null = null;
+    if (!objectRes.error) {
+      nextObjects = { mat: UBUNTU_MAT_SPOT, basket: BASKET_HOME };
+      for (const row of (objectRes.data as ObjectPosition[] | null) ?? []) {
+        nextObjects[row.object] = { x: Number(row.x), y: Number(row.y) };
+      }
+    }
+
+    // Minutes de solitude cumulées aujourd'hui (sessions en cours comprises).
+    const nowMs = Date.now();
+    const soloSeconds = ((soloRes.data as { started_at: string; ended_at: string | null }[] | null) ?? [])
+      .reduce((sum, s) => {
+        const end = s.ended_at ? new Date(s.ended_at).getTime() : nowMs;
+        return sum + Math.max(0, end - new Date(s.started_at).getTime()) / 1000;
+      }, 0);
 
     return {
       positions: nextPositions,
@@ -241,6 +260,7 @@ export default function HouseScreen() {
       walk: (walkRes.data?.[0] as Activity | undefined) ?? null,
       todayCues: cuesRes.count ?? 0,
       todayOveralls: overallRes.count ?? 0,
+      todaySoloMinutes: Math.round(soloSeconds / 60),
     };
   }, [dog]);
 
@@ -250,7 +270,7 @@ export default function HouseScreen() {
       fetchAll().then((snapshot) => {
         if (ignore || !snapshot) return;
         setPositions(snapshot.positions);
-        setObjectPos(snapshot.objects);
+        if (snapshot.objects) setObjectPos(snapshot.objects);
         setLastHeartbeat(snapshot.heartbeat);
         setActiveSession(snapshot.session);
         if (snapshot.session) setAlonePrompt(false);
@@ -258,6 +278,7 @@ export default function HouseScreen() {
         setActiveWalk(snapshot.walk);
         setTodayCues(snapshot.todayCues);
         setTodayOveralls(snapshot.todayOveralls);
+        setTodaySoloMinutes(snapshot.todaySoloMinutes);
       });
       return () => {
         ignore = true;
@@ -503,6 +524,9 @@ export default function HouseScreen() {
         showToast('⚠️ CLÔTURE IMPOSSIBLE — RÉESSAYEZ');
         return;
       }
+      // Récap seulement pour les vraies absences (≥ 10 min) — les micro
+      // sorties n'en ont pas besoin.
+      if (secondsSince(session.started_at) < 600) return;
       const { data: summary } = await supabase
         .from('session_summaries')
         .select('*')
@@ -617,12 +641,12 @@ export default function HouseScreen() {
 
   // ------------------------------------------------- Placement Overall
 
-  /** Bouton OVERALL : le tapis clignote, on le pose là où il sera. */
+  /** Bouton OVERALL : le tapis clignote, on le pose là où il sera (la
+      bannière de placement porte la consigne — pas de toast en doublon). */
   const startOverallPlacing = useCallback(() => {
     Haptics.selectionAsync();
     setOverallPlacing(true);
-    showToast('🐾 POSEZ LE TAPIS LÀ OÙ VOUS LE METTEZ');
-  }, [showToast]);
+  }, []);
 
   /** Fin (enregistrée ou annulée) : le tapis reste où il a été posé. */
   const closeOverall = useCallback(() => {
@@ -832,6 +856,7 @@ export default function HouseScreen() {
             onGarde={() => setGardeOpen(true)}
             todayCues={todayCues}
             todayOveralls={todayOveralls}
+            todaySoloMinutes={todaySoloMinutes}
           />
         </View>
       ) : null}

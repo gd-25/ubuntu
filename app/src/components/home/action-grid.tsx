@@ -12,6 +12,9 @@ import { useTheme } from '@/hooks/use-theme';
  * instantané d'une session de solitude) et les six actions du quotidien,
  * dans l'espace vert au-dessus de la forêt.
  */
+/** Objectif quotidien de solitude (minutes) — codé en dur pour l'instant. */
+export const SOLO_DAILY_GOAL_MINUTES = 15;
+
 export function ActionGrid({
   onSolo,
   onFeed,
@@ -22,6 +25,7 @@ export function ActionGrid({
   onGarde,
   todayCues,
   todayOveralls,
+  todaySoloMinutes,
 }: {
   onSolo: () => void;
   onFeed: () => void;
@@ -32,6 +36,8 @@ export function ActionGrid({
   onGarde: () => void;
   todayCues: number;
   todayOveralls: number;
+  /** Minutes de solitude cumulées aujourd'hui (objectif 15 min/j). */
+  todaySoloMinutes: number;
 }) {
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.grid}>
@@ -56,7 +62,13 @@ export function ActionGrid({
           badgeDone={todayOveralls >= OVERALL_DAILY_GOAL}
           onPress={onOverall}
         />
-        <ActionButton emoji="🚪" label="SOLO" accent onPress={onSolo} />
+        <ActionButton
+          emoji="🚪"
+          label="SOLO"
+          badge={`${todaySoloMinutes}/${SOLO_DAILY_GOAL_MINUTES} MIN`}
+          badgeDone={todaySoloMinutes >= SOLO_DAILY_GOAL_MINUTES}
+          onPress={onSolo}
+        />
       </View>
     </Animated.View>
   );
@@ -67,15 +79,12 @@ function ActionButton({
   label,
   badge,
   badgeDone,
-  accent = false,
   onPress,
 }: {
   emoji: string;
   label: string;
   badge?: string;
   badgeDone?: boolean;
-  /** Fond rouge (SOLO) : l'action phare, même taille que les autres. */
-  accent?: boolean;
   onPress: () => void;
 }) {
   const colors = useTheme();
@@ -85,16 +94,14 @@ function ActionButton({
       style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: accent ? colors.accent : colors.card,
+          backgroundColor: colors.card,
           borderColor: colors.border,
           boxShadow: pressed ? 'none' : `3px 3px 0px 0px ${colors.border}`,
           transform: pressed ? [{ translateX: 2 }, { translateY: 2 }] : [],
         },
       ]}>
       <Text style={styles.buttonEmoji}>{emoji}</Text>
-      <Text
-        style={[styles.buttonText, { color: accent ? colors.accentText : colors.text }]}
-        numberOfLines={1}>
+      <Text style={[styles.buttonText, { color: colors.text }]} numberOfLines={1}>
         {label}
       </Text>
       {badge ? (
