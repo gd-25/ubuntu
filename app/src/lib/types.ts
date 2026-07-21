@@ -93,6 +93,9 @@ export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'fake_cue' | 'care
 /** Objets joués pendant un faux signal de départ. */
 export type FakeCue = 'keys' | 'shoes' | 'socks' | 'elevator';
 
+/** Type de repas : croquettes / pâté / autre. */
+export type MealKind = 'kibble' | 'pate' | 'other';
+
 export interface Activity {
   id: string;
   dog_id: string;
@@ -100,8 +103,9 @@ export interface Activity {
   at: string;
   /** Fin de balade (null tant que la balade est en cours). */
   ended_at: string | null;
-  /** Repas : fraction de la ration (0.25 / 0.5 / 0.75 / 1). */
+  /** Repas : fraction de la ration (0.25 / 0.5 / 0.75 / 1) et type. */
   meal_fraction: number | null;
+  meal_kind: MealKind | null;
   notes: string | null;
   /** Sortie : cacas et lâché en liberté (grosse balade). */
   poop_small: boolean | null;
@@ -129,7 +133,20 @@ export interface Night {
   ended_at: string;
   location: NightLocation;
   notes: string | null;
+  /** Où était le panier cette nuit-là (unités carte + zone). */
+  basket_x: number | null;
+  basket_y: number | null;
+  basket_space: Space | null;
   created_at: string;
+}
+
+/** Objet déplaçable du plan (tapis, panier) : position exacte partagée. */
+export interface ObjectPosition {
+  dog_id: string;
+  object: 'mat' | 'basket';
+  x: number;
+  y: number;
+  updated_at: string;
 }
 
 /**

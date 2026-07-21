@@ -81,7 +81,6 @@ function isFurnished(col: number, row: number): boolean {
   if (col === 21 && (row === 2 || row === 3)) return true; // meuble à lampe
   if (col >= 17 && col <= 20 && (row === -1 || row === 0)) return true; // table blanche
   if (col >= 17 && col <= 18 && (row === 7 || row === 8)) return true; // table basse
-  if (row === 9 && col >= 4 && col <= 11) return true; // bande d'entrée (8 cases dès col 4)
   return false;
 }
 
@@ -98,18 +97,24 @@ for (let row = -3; row <= 9; row++) {
   }
 }
 
-// -------------------------------------------------------- Tapis d'Ubuntu
+// --------------------------------------------- Objets déplaçables du plan
 
-/** Tapis gris 2×1 d'Ubuntu, remonté d'une demi-tuile au-dessus du canapé. */
+export interface Spot {
+  x: number;
+  y: number;
+}
+
+/** Tapis gris 2×1 d'Ubuntu. */
 export const UBUNTU_MAT_W = 2 * COL;
 export const UBUNTU_MAT_H = COL;
-/** Position « maison » du tapis (coin haut-gauche, unités carte). */
-export const UBUNTU_MAT_HOME = { x: 20 * COL, y: GRID_TOP + 4.5 * COL };
-/** Centre du tapis au repos : son unique point aimanté. */
-export const UBUNTU_MAT_SPOT = {
-  x: UBUNTU_MAT_HOME.x + UBUNTU_MAT_W / 2,
-  y: UBUNTU_MAT_HOME.y + UBUNTU_MAT_H / 2,
-};
+/** Position par défaut du tapis : une demi-tuile au-dessus du canapé. */
+export const UBUNTU_MAT_SPOT: Spot = { x: 21 * COL, y: GRID_TOP + 5 * COL };
+
+/** Panier bleu d'Ubuntu (rond, dessiné en pixel-art dans MapObject). */
+export const BASKET_W = 22;
+export const BASKET_H = 18;
+/** Position par défaut du panier : le salon, près de la table blanche. */
+export const BASKET_HOME: Spot = { x: 296, y: 489 };
 
 // ------------------------------------------------------- Points aimantés
 
@@ -124,32 +129,78 @@ function hasSpecialSpots(col: number, row: number): boolean {
   return false;
 }
 
-/**
- * Points aimantés du plan : une case sur deux dans chaque direction (un
- * point « au milieu de 4 » de l'ancienne grille serrée), plus des points
- * dédiés là où une règle particulière s'applique : le centre du tapis du
- * bureau, le centre du tapis d'Ubuntu, trois places dans le canapé, deux
- * places dans le lit, et un point pour la sdb et les wc (rangées impaires,
- * sans quoi ces pièces n'auraient aucun point).
- */
-export const MAGNET_SPOTS: { x: number; y: number }[] = [];
+/** Grille générique intérieure : une case sur deux dans chaque direction
+ * (un point « au milieu de 4 » de l'ancienne grille serrée). */
+const INDOOR_GRID_SPOTS: Spot[] = [];
 for (const c of WALKABLE_CELLS) {
   if (((c.col % 2) + 2) % 2 !== 0) continue;
   if (((c.row % 2) + 2) % 2 !== 0) continue;
   if (hasSpecialSpots(c.col, c.row)) continue;
-  MAGNET_SPOTS.push({ x: c.x, y: c.y });
+  INDOOR_GRID_SPOTS.push({ x: c.x, y: c.y });
 }
-MAGNET_SPOTS.push(
-  { x: 1.5 * COL, y: GRID_TOP + 1.5 * COL }, // centre du tapis du bureau
+
+/** Points de sol des pièces à rangées impaires (sinon aucun point). */
+const SDB_WC_SPOTS: Spot[] = [
   { x: 2 * COL, y: cellCenter(0, 7).y }, // salle de bain (rangée 7)
   { x: 13.5 * COL, y: GRID_TOP + 6 * COL }, // wc
+];
+
+/** Places sur les meubles praticables : réservées aux avatars. */
+const FURNITURE_SURFACE_SPOTS: Spot[] = [
+  { x: 1.5 * COL, y: GRID_TOP + 1.5 * COL }, // centre du tapis du bureau
   { x: 152, y: 505 }, // lit, côté oreiller
   { x: 152, y: 528 }, // lit, pied du lit
   { x: 330, y: 552 }, // canapé, place haute
   { x: 330, y: 565 }, // canapé, place du milieu
   { x: 330, y: 578 }, // canapé, place basse
-  { x: UBUNTU_MAT_SPOT.x, y: UBUNTU_MAT_SPOT.y } // centre du tapis d'Ubuntu
-);
+];
+
+/**
+ * Points extérieurs (forêt hors arbres, chemin compris) et palier : même
+ * densité que l'intérieur, pour poser les avatars partout dehors aussi.
+ */
+const TREES: [number, number][] = [
+  [4, 265], [64, 265], [124, 265], [184, 265], [244, 265], [306, 265],
+  [4, 341], [64, 341], [124, 341], [184, 341], [244, 341], [320, 341],
+];
+function isOnTree(x: number, y: number): boolean {
+  return TREES.some(([tx, ty]) => x >= tx - 6 && x <= tx + 34 && y >= ty - 6 && y <= ty + 46);
+}
+const OUTDOOR_SPOTS: Spot[] = [];
+for (let y = 9; y <= 361; y += 2 * COL) {
+  for (let x = 8; x <= 328; x += 2 * COL) {
+    if (isOnTree(x, y)) continue;
+    OUTDOOR_SPOTS.push({ x, y });
+  }
+}
+// Palier (moquette noire, en bas) : une rangée de points au milieu.
+for (let x = 8; x <= 328; x += 2 * COL) {
+  OUTDOOR_SPOTS.push({ x, y: 633 });
+}
+
+/**
+ * Points aimantés des AVATARS : tout le plan — intérieur (grille espacée +
+ * sdb/wc + tapis d'Ubuntu + places des meubles) et extérieur (forêt,
+ * chemin, palier).
+ */
+export const MAGNET_SPOTS: Spot[] = [
+  ...INDOOR_GRID_SPOTS,
+  ...SDB_WC_SPOTS,
+  ...FURNITURE_SURFACE_SPOTS,
+  UBUNTU_MAT_SPOT,
+  ...OUTDOOR_SPOTS,
+];
+
+/**
+ * Points où poser le tapis et le panier : l'intérieur uniquement (jamais
+ * dehors ni sur le palier), et jamais sur le tapis du bureau, le lit ou
+ * le canapé.
+ */
+export const FURNITURE_SPOTS: Spot[] = [
+  ...INDOOR_GRID_SPOTS,
+  ...SDB_WC_SPOTS,
+  UBUNTU_MAT_SPOT,
+];
 
 /**
  * Rectangles de hit-test, ORDONNÉS : le premier qui contient le point gagne
@@ -239,14 +290,11 @@ export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
 };
 
 /**
- * Le point (x, y) est-il sur le petit tapis gris d'Ubuntu (à sa position
- * maison) ? Chaque arrivée dessus est trackée en activité.
+ * Le point (x, y) est-il sur le petit tapis gris d'Ubuntu, où qu'il soit
+ * posé sur le plan ? Chaque arrivée dessus est trackée en activité.
  */
-export function isOnUbuntuMat(x: number, y: number): boolean {
-  return (
-    Math.abs(x - UBUNTU_MAT_SPOT.x) <= UBUNTU_MAT_W / 2 &&
-    Math.abs(y - UBUNTU_MAT_SPOT.y) <= UBUNTU_MAT_H / 2
-  );
+export function isOnUbuntuMat(x: number, y: number, mat: Spot = UBUNTU_MAT_SPOT): boolean {
+  return Math.abs(x - mat.x) <= UBUNTU_MAT_W / 2 && Math.abs(y - mat.y) <= UBUNTU_MAT_H / 2;
 }
 
 /** Zone contenant le point (x, y) — coordonnées carte. */

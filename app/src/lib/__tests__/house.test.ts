@@ -1,6 +1,7 @@
 import {
   computeTransition,
   departureTypeOf,
+  FURNITURE_SPOTS,
   isOnUbuntuMat,
   isUbuntuAlone,
   MAGNET_SPOTS,
@@ -69,11 +70,26 @@ describe('departureTypeOf', () => {
 });
 
 describe('points aimantés (MAGNET_SPOTS)', () => {
-  it('chaque pièce intérieure garde au moins un point', () => {
+  it('chaque zone (extérieur et palier compris) a au moins un point', () => {
     const spaces = new Set(MAGNET_SPOTS.map((s) => spaceAt(s.x, s.y)));
-    for (const space of ['bureau', 'chambre', 'salon', 'sdb', 'wc', 'couloir_int', 'balcon']) {
+    for (const space of [
+      'bureau',
+      'chambre',
+      'salon',
+      'sdb',
+      'wc',
+      'couloir_int',
+      'balcon',
+      'dehors',
+      'couloir_ext',
+    ]) {
       expect(spaces).toContain(space);
     }
+  });
+
+  it('le dehors est quadrillé à peu près comme l’intérieur', () => {
+    const outdoor = MAGNET_SPOTS.filter((s) => spaceAt(s.x, s.y) === 'dehors');
+    expect(outdoor.length).toBeGreaterThan(50);
   });
 
   it('le centre du tapis d’Ubuntu est un point aimanté', () => {
@@ -81,17 +97,43 @@ describe('points aimantés (MAGNET_SPOTS)', () => {
       MAGNET_SPOTS.some((s) => s.x === UBUNTU_MAT_SPOT.x && s.y === UBUNTU_MAT_SPOT.y)
     ).toBe(true);
   });
+});
 
-  it('la grille est espacée : nettement moins de points que de cases', () => {
-    expect(MAGNET_SPOTS.length).toBeLessThan(70);
+describe('points du tapis et du panier (FURNITURE_SPOTS)', () => {
+  it('aucun point dehors ni sur le palier', () => {
+    for (const s of FURNITURE_SPOTS) {
+      const space = spaceAt(s.x, s.y);
+      expect(space).not.toBe('dehors');
+      expect(space).not.toBe('couloir_ext');
+    }
+  });
+
+  it('jamais sur le tapis du bureau, le lit ou le canapé', () => {
+    const forbidden = [
+      { x: 24, y: 473 }, // tapis du bureau
+      { x: 152, y: 505 }, // lit (oreiller)
+      { x: 152, y: 528 }, // lit (pied)
+      { x: 330, y: 552 }, // canapé haut
+      { x: 330, y: 565 }, // canapé milieu
+      { x: 330, y: 578 }, // canapé bas
+    ];
+    for (const f of forbidden) {
+      expect(FURNITURE_SPOTS.some((s) => s.x === f.x && s.y === f.y)).toBe(false);
+    }
   });
 });
 
 describe('isOnUbuntuMat', () => {
-  it('reconnaît le point du tapis (et lui seul)', () => {
+  it('reconnaît le tapis à sa position par défaut', () => {
     expect(isOnUbuntuMat(UBUNTU_MAT_SPOT.x, UBUNTU_MAT_SPOT.y)).toBe(true);
     // La place haute du canapé, juste en dessous, n'est pas le tapis.
     expect(isOnUbuntuMat(330, 552)).toBe(false);
+  });
+
+  it('suit le tapis quand il est déplacé', () => {
+    const moved = { x: 120, y: 500 };
+    expect(isOnUbuntuMat(120, 500, moved)).toBe(true);
+    expect(isOnUbuntuMat(UBUNTU_MAT_SPOT.x, UBUNTU_MAT_SPOT.y, moved)).toBe(false);
   });
 });
 

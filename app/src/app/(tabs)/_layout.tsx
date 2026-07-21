@@ -48,7 +48,7 @@ interface TabBarProps {
   };
 }
 
-/** Tab bar façon menu Pokémon : cadre pixel, curseur ▶ sur l'onglet actif. */
+/** Tab bar façon menu Pokémon : cadre pixel, onglet actif en accent. */
 function PixelTabBar({ state, navigation }: TabBarProps) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
@@ -87,7 +87,6 @@ function PixelTabBar({ state, navigation }: TabBarProps) {
                 styles.label,
                 { color: isFocused ? colors.accent : colors.textSecondary },
               ]}>
-              {isFocused ? '▶' : ' '}
               {TAB_TITLES[route.name] ?? route.name.toUpperCase()}
             </Text>
           </Pressable>

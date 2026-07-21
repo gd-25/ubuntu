@@ -1,7 +1,7 @@
 import { Modal, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 
-import { Text } from '@/components/text';
+import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -105,7 +105,8 @@ export function Chip({
   emojiSize,
   style,
 }: {
-  label: string;
+  /** Absent : bouton objet à emoji seul. */
+  label?: string;
   emoji?: string;
   selected: boolean;
   onPress: () => void;
@@ -134,12 +135,40 @@ export function Chip({
           {emoji}
         </Text>
       ) : null}
-      <Text
-        style={[styles.chipText, { color: selected ? colors.accentText : colors.text }]}
-        numberOfLines={2}>
-        {label}
-      </Text>
+      {label ? (
+        <Text
+          style={[styles.chipText, { color: selected ? colors.accentText : colors.text }]}
+          numberOfLines={2}>
+          {label}
+        </Text>
+      ) : null}
     </Pressable>
+  );
+}
+
+/** Champ texte libre commun aux modales (observations, détails…). */
+export function DialogNotes({
+  value,
+  onChangeText,
+  placeholder = 'Notes libres…',
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+}) {
+  const colors = useTheme();
+  return (
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      multiline
+      placeholder={placeholder}
+      placeholderTextColor={colors.textSecondary}
+      style={[
+        styles.notes,
+        { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+      ]}
+    />
   );
 }
 
@@ -204,5 +233,13 @@ const styles = StyleSheet.create({
     fontSize: 8,
     textAlign: 'center',
     lineHeight: 12,
+  },
+  notes: {
+    borderWidth: 2,
+    borderRadius: 2,
+    minHeight: 44,
+    padding: Spacing.sm,
+    fontSize: 8,
+    lineHeight: 13,
   },
 });

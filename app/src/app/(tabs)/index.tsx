@@ -17,9 +17,9 @@ import { OverallModal, type MatPlacement } from '@/components/home/overall-modal
 import { SoloPicker } from '@/components/home/solo-picker';
 import { SortieModal } from '@/components/home/sortie-modal';
 import { HouseMap } from '@/components/house-map';
+import { MapObject, type MapObjectKind } from '@/components/map-object';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
 import { Text } from '@/components/text';
-import { UbuntuMat } from '@/components/ubuntu-mat';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -30,18 +30,23 @@ import {
   secondsSince,
 } from '@/lib/format';
 import {
+  BASKET_HOME,
   computeTransition,
   DEFAULT_POSITIONS,
   departureTypeOf,
+  FURNITURE_SPOTS,
   isOnUbuntuMat,
   isUbuntuAlone,
+  MAGNET_SPOTS,
   MAP_H,
   MAP_W,
   SLOTS,
   solitudeTypeOf,
   spaceAt,
   SPACE_LABELS,
+  UBUNTU_MAT_SPOT,
   type Positions,
+  type Spot,
 } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type {
@@ -49,6 +54,7 @@ import type {
   AgentHeartbeat,
   AvatarPosition,
   DepartureState,
+  ObjectPosition,
   ObservedKind,
   Person,
   Session,
@@ -76,6 +82,13 @@ export default function HouseScreen() {
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
   const [draggingAvatar, setDraggingAvatar] = useState(false);
+  /** Positions des objets déplaçables (centre, unités carte). */
+  const [objectPos, setObjectPos] = useState<Record<MapObjectKind, Spot>>({
+    mat: UBUNTU_MAT_SPOT,
+    basket: BASKET_HOME,
+  });
+  /** Objet en cours de drag (les points extérieurs sont alors masqués). */
+  const [draggingObject, setDraggingObject] = useState<MapObjectKind | null>(null);
   // Positions au repos des trois avatars (partagées entre les sprites pour
   // qu'aucun lâcher ne retombe sur un point déjà occupé).
   const avatarSpots = useSharedValue<AvatarSpots>({
@@ -99,6 +112,10 @@ export default function HouseScreen() {
   const [feedOpen, setFeedOpen] = useState(false);
   const [sortieOpen, setSortieOpen] = useState(false);
   const [dodoOpen, setDodoOpen] = useState(false);
+  /** Incrémenté à chaque ouverture fraîche de Dodo (reset du formulaire). */
+  const [dodoOpenId, setDodoOpenId] = useState(0);
+  /** Repositionnement du panier depuis Dodo : la modale se rouvre au drop. */
+  const [basketPlacing, setBasketPlacing] = useState(false);
   const [cuesOpen, setCuesOpen] = useState(false);
   const [gardeOpen, setGardeOpen] = useState(false);
   /** Mode placement Overall : le tapis clignote et se laisse déplacer. */
@@ -117,13 +134,15 @@ export default function HouseScreen() {
 
   // Refs pour les callbacks async (évite les fermetures obsolètes).
   const positionsRef = useRef(positions);
+  const objectPosRef = useRef(objectPos);
   const activeSessionRef = useRef(activeSession);
   const activeWalkRef = useRef(activeWalk);
   useEffect(() => {
     positionsRef.current = positions;
+    objectPosRef.current = objectPos;
     activeSessionRef.current = activeSession;
     activeWalkRef.current = activeWalk;
-  }, [positions, activeSession, activeWalk]);
+  }, [positions, objectPos, activeSession, activeWalk]);
 
   // Délai de grâce avant de proposer la session (le temps de déplacer
   // les autres avatars de pièce en pièce sans déclencher le panneau).
@@ -153,8 +172,10 @@ export default function HouseScreen() {
     if (!dog) return null;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const [posRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes] = await Promise.all([
+    const [posRes, objectRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes] =
+      await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
+      supabase.from('object_positions').select('*').eq('dog_id', dog.id),
       supabase
         .from('agent_heartbeats')
         .select('*')
@@ -204,8 +225,16 @@ export default function HouseScreen() {
     const nextPositions = { ...DEFAULT_POSITIONS };
     for (const row of positionRows) nextPositions[row.person] = row.space;
 
+    const objectRows = (objectRes.data as ObjectPosition[] | null) ?? [];
+    const nextObjects: Record<MapObjectKind, Spot> = {
+      mat: UBUNTU_MAT_SPOT,
+      basket: BASKET_HOME,
+    };
+    for (const row of objectRows) nextObjects[row.object] = { x: Number(row.x), y: Number(row.y) };
+
     return {
       positions: nextPositions,
+      objects: nextObjects,
       heartbeat: (heartbeatRes.data?.[0] as AgentHeartbeat | undefined) ?? null,
       session,
       episodes,
@@ -221,6 +250,7 @@ export default function HouseScreen() {
       fetchAll().then((snapshot) => {
         if (ignore || !snapshot) return;
         setPositions(snapshot.positions);
+        setObjectPos(snapshot.objects);
         setLastHeartbeat(snapshot.heartbeat);
         setActiveSession(snapshot.session);
         if (snapshot.session) setAlonePrompt(false);
@@ -254,6 +284,15 @@ export default function HouseScreen() {
             if (row.person === 'ubuntu') ubuntuOnMatRef.current = false;
             return { ...prev, [row.person]: row.space };
           });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'object_positions', filter: `dog_id=eq.${dog.id}` },
+        (payload) => {
+          const row = payload.new as ObjectPosition;
+          if (!row?.object) return;
+          setObjectPos((prev) => ({ ...prev, [row.object]: { x: Number(row.x), y: Number(row.y) } }));
         }
       )
       .on(
@@ -490,9 +529,10 @@ export default function HouseScreen() {
   const handleDrop = useCallback(
     (person: Person, space: Space, x: number, y: number) => {
       // Tapis d'Ubuntu : chaque ARRIVÉE sur le tapis compte une visite
-      // (pas les re-lâchers dessus, ni les autres avatars).
+      // (pas les re-lâchers dessus, ni les autres avatars) — où que le
+      // tapis soit posé sur le plan.
       if (person === 'ubuntu') {
-        const onMat = isOnUbuntuMat(x, y);
+        const onMat = isOnUbuntuMat(x, y, objectPosRef.current.mat);
         if (onMat && !ubuntuOnMatRef.current) logMatVisit();
         ubuntuOnMatRef.current = onMat;
       }
@@ -544,6 +584,37 @@ export default function HouseScreen() {
     if (space) Haptics.selectionAsync();
   }, []);
 
+  // ------------------------------------------- Objets déplaçables du plan
+
+  /** Lâcher du tapis ou du panier : position persistée + suites de flux
+      (modale Overall après placement du tapis, réouverture de Dodo après
+      repositionnement du panier). */
+  const handleObjectDropped = useCallback(
+    (object: MapObjectKind, x: number, y: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setObjectPos((prev) => ({ ...prev, [object]: { x, y } }));
+      if (dog) {
+        supabase
+          .from('object_positions')
+          .upsert(
+            { dog_id: dog.id, object, x, y, updated_at: new Date().toISOString() },
+            { onConflict: 'dog_id,object' }
+          )
+          .then(({ error }) => {
+            if (error) console.warn("Sync de l'objet impossible :", error.message);
+          });
+      }
+      if (object === 'mat' && overallPlacing) {
+        setOverallPlacement({ x, y, space: spaceAt(x, y) });
+      }
+      if (object === 'basket' && basketPlacing) {
+        setBasketPlacing(false);
+        setDodoOpen(true);
+      }
+    },
+    [dog, overallPlacing, basketPlacing]
+  );
+
   // ------------------------------------------------- Placement Overall
 
   /** Bouton OVERALL : le tapis clignote, on le pose là où il sera. */
@@ -553,16 +624,31 @@ export default function HouseScreen() {
     showToast('🐾 POSEZ LE TAPIS LÀ OÙ VOUS LE METTEZ');
   }, [showToast]);
 
-  /** Tapis lâché : la modale de session s'ouvre sur cette position. */
-  const handleMatPlaced = useCallback((x: number, y: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setOverallPlacement({ x, y, space: spaceAt(x, y) });
-  }, []);
-
-  /** Fin (enregistrée ou annulée) : le tapis ressort vers sa place. */
+  /** Fin (enregistrée ou annulée) : le tapis reste où il a été posé. */
   const closeOverall = useCallback(() => {
     setOverallPlacement(null);
     setOverallPlacing(false);
+  }, []);
+
+  // ------------------------------------------- Repositionnement du panier
+
+  /** Depuis Dodo : fermer la modale, faire clignoter le panier ; elle se
+      rouvrira (état conservé) au lâcher. */
+  const startBasketPlacing = useCallback(() => {
+    Haptics.selectionAsync();
+    setDodoOpen(false);
+    setBasketPlacing(true);
+  }, []);
+
+  const cancelBasketPlacing = useCallback(() => {
+    setBasketPlacing(false);
+    setDodoOpen(true);
+  }, []);
+
+  /** Bouton DODO : ouverture fraîche (formulaire réinitialisé). */
+  const openDodo = useCallback(() => {
+    setDodoOpenId((n) => n + 1);
+    setDodoOpen(true);
   }, []);
 
   const logManualWhine = useCallback(async () => {
@@ -644,16 +730,36 @@ export default function HouseScreen() {
           <View style={{ width: MAP_W * scale, height: mapHeight, alignSelf: 'center' }}>
             <HouseMap night={scheme === 'dark'} />
 
-            {/* Points aimantés des cases utilisables, pendant le drag */}
-            {draggingAvatar ? <GridDots night={scheme === 'dark'} /> : null}
+            {/* Points aimantés pendant un drag : tous pour un avatar,
+                intérieur autorisé seulement pour le tapis et le panier */}
+            {draggingAvatar || draggingObject ? (
+              <GridDots
+                night={scheme === 'dark'}
+                spots={draggingAvatar ? MAGNET_SPOTS : FURNITURE_SPOTS}
+              />
+            ) : null}
 
-            {/* Tapis d'Ubuntu : à sa place au-dessus du canapé, déplaçable
-                pendant le placement d'une session Overall */}
-            <UbuntuMat
+            {/* Objets déplaçables (toujours sous les personnages) : le
+                tapis d'Ubuntu et son panier bleu */}
+            <MapObject
+              kind="mat"
+              pos={objectPos.mat}
+              otherPos={objectPos.basket}
               scale={scale}
               night={scheme === 'dark'}
-              placing={overallPlacing}
-              onPlaced={handleMatPlaced}
+              blinking={overallPlacing && !overallPlacement}
+              onDragChange={(dragging) => setDraggingObject(dragging ? 'mat' : null)}
+              onDropped={(x, y) => handleObjectDropped('mat', x, y)}
+            />
+            <MapObject
+              kind="basket"
+              pos={objectPos.basket}
+              otherPos={objectPos.mat}
+              scale={scale}
+              night={scheme === 'dark'}
+              blinking={basketPlacing}
+              onDragChange={(dragging) => setDraggingObject(dragging ? 'basket' : null)}
+              onDropped={(x, y) => handleObjectDropped('basket', x, y)}
             />
 
             {/* Avatars */}
@@ -698,28 +804,29 @@ export default function HouseScreen() {
         <StatusBadge status={agentStatus} />
       </View>
 
-      {/* Toast rétro */}
+      {/* Toast rétro — au niveau du badge caméra, au-dessus des panneaux
+          (le mini-picker d'état au départ vit juste en dessous) */}
       {toast ? (
         <Animated.View
           entering={SlideInUp.duration(220)}
           exiting={SlideOutUp.duration(160)}
           style={[
             styles.toast,
-            { top: insets.top + 44, backgroundColor: colors.card, borderColor: colors.border },
+            { top: insets.top + 6, backgroundColor: colors.card, borderColor: colors.border },
           ]}>
           <Text style={[styles.toastText, { color: colors.text }]}>{toast}</Text>
         </Animated.View>
       ) : null}
 
-      {/* L'outil de travail : SOLO + les 6 actions, dans l'espace vert
+      {/* L'outil de travail : les 7 actions, dans l'espace vert
           (masqué quand un panneau occupe le haut de l'écran) */}
-      {!activeSession && !alonePrompt && !soloPickerFor && !overallPlacing ? (
+      {!activeSession && !alonePrompt && !soloPickerFor && !overallPlacing && !basketPlacing ? (
         <View style={[styles.actionsWrap, { top: panelTop }]}>
           <ActionGrid
             onSolo={startSolo}
             onFeed={() => setFeedOpen(true)}
             onSortie={() => setSortieOpen(true)}
-            onDodo={() => setDodoOpen(true)}
+            onDodo={openDodo}
             onCues={() => setCuesOpen(true)}
             onOverall={startOverallPlacing}
             onGarde={() => setGardeOpen(true)}
@@ -727,6 +834,29 @@ export default function HouseScreen() {
             todayOveralls={todayOveralls}
           />
         </View>
+      ) : null}
+
+      {/* Repositionnement du panier (depuis Dodo) : consigne + annulation */}
+      {basketPlacing ? (
+        <Animated.View
+          entering={SlideInUp.duration(240)}
+          exiting={SlideOutUp.duration(160)}
+          style={[
+            styles.placingBanner,
+            {
+              top: panelTop,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              boxShadow: `4px 4px 0px 0px ${colors.border}`,
+            },
+          ]}>
+          <Text style={[styles.placingText, { color: colors.text }]}>
+            🧺 GLISSEZ LE PANIER LÀ OÙ IL A DORMI — LA MODALE REVIENDRA
+          </Text>
+          <Pressable onPress={cancelBasketPlacing} hitSlop={8}>
+            <Text style={[styles.placingCancel, { color: colors.textSecondary }]}>ANNULER</Text>
+          </Pressable>
+        </Animated.View>
       ) : null}
 
       {/* Placement Overall en cours : consigne + annulation */}
@@ -752,10 +882,11 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Mini-picker d'état au départ (un seul tap, juste après SOLO) */}
+      {/* Mini-picker d'état au départ (un seul tap, juste après SOLO) —
+          descendu pour laisser la place au toast au niveau du badge */}
       {soloPickerFor ? (
         <SoloPicker
-          top={panelTop}
+          top={panelTop + 22}
           onPick={pickDepartureState}
           onDismiss={() => setSoloPickerFor(null)}
         />
@@ -907,8 +1038,11 @@ export default function HouseScreen() {
       />
       <DodoModal
         visible={dodoOpen}
+        openId={dodoOpenId}
         topOffset={panelTop}
         dogId={dog?.id ?? null}
+        basketPos={objectPos.basket}
+        onRepositionBasket={startBasketPlacing}
         onClose={() => setDodoOpen(false)}
         onSaved={showToast}
       />

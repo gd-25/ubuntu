@@ -3,10 +3,12 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import { MapFocus } from '@/components/home/map-focus';
+import { DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { spaceAt, SPACE_LABELS, type Spot } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type { NightLocation } from '@/lib/types';
 
@@ -24,37 +26,49 @@ const LOCATIONS: { value: NightLocation; emoji: string; label: string }[] = [
  */
 export function DodoModal({
   visible,
+  openId,
   topOffset,
   dogId,
+  basketPos,
+  onRepositionBasket,
   onClose,
   onSaved,
 }: {
   visible: boolean;
+  /** Incrémenté à chaque OUVERTURE depuis le bouton : reset du formulaire.
+      Une réouverture après repositionnement du panier garde le même id
+      (l'état saisi est conservé). */
+  openId: number;
   topOffset: number;
   dogId: string | null;
+  /** Position actuelle du panier (centre, unités carte). */
+  basketPos: Spot;
+  /** Ferme la modale pour replacer le panier sur le plan. */
+  onRepositionBasket: () => void;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
   const colors = useTheme();
   const scheme = useColorScheme();
   const [location, setLocation] = useState<NightLocation | null>(null);
+  const [notes, setNotes] = useState('');
   const [bedTime, setBedTime] = useState<Date>(new Date());
   const [wakeTime, setWakeTime] = useState<Date>(new Date());
 
-  // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
-  // rendu — pas de setState dans un effet).
-  const [wasVisible, setWasVisible] = useState(visible);
-  if (visible !== wasVisible) {
-    setWasVisible(visible);
-    if (visible) {
-      setLocation(null);
-      const bed = new Date();
-      bed.setHours(23, 0, 0, 0);
-      const wake = new Date();
-      wake.setHours(8, 0, 0, 0);
-      setBedTime(bed);
-      setWakeTime(wake);
-    }
+  // Réinitialise le formulaire à chaque NOUVELLE ouverture (openId), pas
+  // à la réouverture après repositionnement du panier (ajustement pendant
+  // le rendu — pas de setState dans un effet).
+  const [lastOpenId, setLastOpenId] = useState(openId);
+  if (openId !== lastOpenId) {
+    setLastOpenId(openId);
+    setLocation(null);
+    setNotes('');
+    const bed = new Date();
+    bed.setHours(23, 0, 0, 0);
+    const wake = new Date();
+    wake.setHours(8, 0, 0, 0);
+    setBedTime(bed);
+    setWakeTime(wake);
   }
 
   const save = async () => {
@@ -70,6 +84,10 @@ export function DodoModal({
       started_at: started.toISOString(),
       ended_at: ended.toISOString(),
       location,
+      notes: notes.trim() || null,
+      basket_x: Math.round(basketPos.x),
+      basket_y: Math.round(basketPos.y),
+      basket_space: spaceAt(basketPos.x, basketPos.y),
     });
     if (error) {
       Alert.alert('Erreur', `Nuit non enregistrée : ${error.message}`);
@@ -119,6 +137,14 @@ export function DodoModal({
           </Text>
         </Pressable>
       ))}
+      <View style={styles.basketHeader}>
+        <DialogLabel>POSITION DU PANIER · {SPACE_LABELS[spaceAt(basketPos.x, basketPos.y)]}</DialogLabel>
+        <Pressable onPress={onRepositionBasket} hitSlop={6}>
+          <Text style={[styles.modify, { color: colors.accent }]}>MODIFIER</Text>
+        </Pressable>
+      </View>
+      <MapFocus center={basketPos} night={scheme === 'dark'} />
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Détails de la nuit…" />
       <View style={styles.timeRow}>
         <View style={styles.timeCol}>
           <DialogLabel>COUCHER</DialogLabel>
@@ -167,6 +193,16 @@ const styles = StyleSheet.create({
     fontSize: 8,
     lineHeight: 12,
     flexShrink: 1,
+  },
+  basketHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  modify: {
+    fontSize: 8,
   },
   timeRow: {
     flexDirection: 'row',

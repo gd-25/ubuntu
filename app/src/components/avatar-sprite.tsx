@@ -17,15 +17,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import {
-  FLAT_BOTTOM,
-  MAGNET_SPOTS,
-  MAP_H,
-  MAP_W,
-  OUTSIDE_BOTTOM,
-  SLOTS,
-  ZONE_RECTS,
-} from '@/lib/house';
+import { MAGNET_SPOTS, MAP_H, MAP_W, SLOTS, ZONE_RECTS } from '@/lib/house';
 import type { Person, Space } from '@/lib/types';
 
 /** Aimant très sec : ~150 ms, quasi aucun dépassement de la cible. */
@@ -197,21 +189,20 @@ export function AvatarSprite({
       }
     })
     .onEnd(() => {
-      // Lâcher sur la grille : l'avatar reste sur le point LIBRE le plus
-      // proche (jamais deux avatars sur le même point).
-      if (y.value >= OUTSIDE_BOTTOM && y.value < FLAT_BOTTOM) {
-        const spot = nearestFreeSpot(spots.value, person, x.value, y.value);
-        if (spot) {
-          x.value = withSpring(spot.x, SPRING);
-          y.value = withSpring(spot.y, SPRING);
-          spots.value = { ...spots.value, [person]: { x: spot.x, y: spot.y } };
-          const zone = zoneAt(spot.x, spot.y);
-          keepCellFor.value = zone;
-          runOnJS(onDropped)(person, zone, spot.x, spot.y);
-          return;
-        }
+      // L'avatar reste sur le point LIBRE le plus proche (jamais deux
+      // avatars sur le même point) — les points couvrent tout le plan,
+      // forêt et palier compris.
+      const spot = nearestFreeSpot(spots.value, person, x.value, y.value);
+      if (spot) {
+        x.value = withSpring(spot.x, SPRING);
+        y.value = withSpring(spot.y, SPRING);
+        spots.value = { ...spots.value, [person]: { x: spot.x, y: spot.y } };
+        const zone = zoneAt(spot.x, spot.y);
+        keepCellFor.value = zone;
+        runOnJS(onDropped)(person, zone, spot.x, spot.y);
+        return;
       }
-      // Hors grille (dehors, palier) : aimant vers l'ancrage de la zone.
+      // Improbable (tous les points occupés) : ancrage de la zone.
       const zone = zoneAt(x.value, y.value);
       const slot = SLOTS[zone][person];
       x.value = withSpring(slot.x, SPRING);

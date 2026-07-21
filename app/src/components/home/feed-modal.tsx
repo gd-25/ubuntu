@@ -3,10 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Spacing } from '@/constants/theme';
 import { formatTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+import type { MealKind } from '@/lib/types';
 
 const MEAL_FRACTIONS = [
   { value: 0.25, label: '¼' },
@@ -14,6 +15,12 @@ const MEAL_FRACTIONS = [
   { value: 0.75, label: '¾' },
   { value: 1, label: 'TOUT' },
 ] as const;
+
+const MEAL_KINDS: { value: MealKind; emoji: string; label: string }[] = [
+  { value: 'kibble', emoji: '🦴', label: 'CROQS' },
+  { value: 'pate', emoji: '🥫', label: 'PÂTÉ' },
+  { value: 'other', emoji: '🍗', label: 'AUTRE' },
+];
 
 /** Repas : fraction de la ration + heure (spinner rétro). */
 export function FeedModal({
@@ -31,6 +38,8 @@ export function FeedModal({
 }) {
   const scheme = useColorScheme();
   const [fraction, setFraction] = useState<number>(0.5);
+  const [kind, setKind] = useState<MealKind>('kibble');
+  const [notes, setNotes] = useState('');
   const [time, setTime] = useState<Date>(new Date());
 
   // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
@@ -40,6 +49,8 @@ export function FeedModal({
     setWasVisible(visible);
     if (visible) {
       setFraction(0.5);
+      setKind('kibble');
+      setNotes('');
       setTime(new Date());
     }
   }
@@ -52,6 +63,8 @@ export function FeedModal({
       kind: 'meal',
       at: at.toISOString(),
       meal_fraction: fraction,
+      meal_kind: kind,
+      notes: notes.trim() || null,
     });
     if (error) {
       Alert.alert('Erreur', `Repas non enregistré : ${error.message}`);
@@ -64,6 +77,18 @@ export function FeedModal({
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🍖 NOURRITURE" topOffset={topOffset}>
+      <DialogLabel>QUOI ?</DialogLabel>
+      <View style={styles.row}>
+        {MEAL_KINDS.map(({ value, emoji, label }) => (
+          <Chip
+            key={value}
+            emoji={emoji}
+            label={label}
+            selected={kind === value}
+            onPress={() => setKind(value)}
+          />
+        ))}
+      </View>
       <DialogLabel>QUELLE PART DE SA RATION ?</DialogLabel>
       <View style={styles.row}>
         {MEAL_FRACTIONS.map(({ value, label }) => (
@@ -75,6 +100,7 @@ export function FeedModal({
           />
         ))}
       </View>
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Détails (restes, appétit…)" />
       <DialogLabel>À QUELLE HEURE ?</DialogLabel>
       <DateTimePicker
         value={time}

@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -34,6 +34,7 @@ export function SortieModal({
   const [poopSmall, setPoopSmall] = useState(false);
   const [poopBig, setPoopBig] = useState(false);
   const [offLeash, setOffLeash] = useState(false);
+  const [notes, setNotes] = useState('');
 
   // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
   // rendu — pas de setState dans un effet).
@@ -47,6 +48,7 @@ export function SortieModal({
       setPoopSmall(false);
       setPoopBig(false);
       setOffLeash(false);
+      setNotes('');
     }
   }
 
@@ -64,6 +66,7 @@ export function SortieModal({
       poop_small: poopSmall,
       poop_big: poopBig,
       off_leash: offLeash,
+      notes: notes.trim() || null,
     });
     if (error) {
       Alert.alert('Erreur', `Sortie non enregistrée : ${error.message}`);
@@ -110,7 +113,6 @@ export function SortieModal({
           big
           emoji="💩"
           emojiSize={15}
-          label="PETIT CACA"
           selected={poopSmall}
           onPress={() => setPoopSmall((v) => !v)}
         />
@@ -118,23 +120,17 @@ export function SortieModal({
           big
           emoji="💩"
           emojiSize={26}
-          label="GROS CACA"
           selected={poopBig}
           onPress={() => setPoopBig((v) => !v)}
         />
-      </View>
-      <View style={styles.row}>
-        <Chip
-          big
-          emoji="🐕"
-          label="LÂCHÉ EN LIBERTÉ"
-          selected={offLeash}
-          onPress={() => setOffLeash((v) => !v)}
-        />
+        <Chip big emoji="🐕" selected={offLeash} onPress={() => setOffLeash((v) => !v)} />
       </View>
       {offLeash ? (
-        <Text style={[styles.hint, { color: colors.textSecondary }]}>GROSSE BALADE !</Text>
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>
+          🐕 LÂCHÉ EN LIBERTÉ — GROSSE BALADE !
+        </Text>
       ) : null}
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Détails (rencontres, reniflage…)" />
       <DialogButtons onCancel={onClose} onConfirm={save} />
     </PixelDialog>
   );

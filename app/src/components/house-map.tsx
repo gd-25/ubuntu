@@ -766,13 +766,6 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
         }}
       />
 
-      {/* Bande 8×1 gris foncé le long du mur d'entrée (ton du palier),
-          seul le coin haut-droit est arrondi */}
-      <Rect x={SDB_R} y={RY(9)} width={8 * COL} height={COL} rx={3} fill={p.carpet} />
-      <Rect x={SDB_R} y={RY(9)} width={4} height={4} fill={p.carpet} />
-      <Rect x={SDB_R} y={RY(9) + COL - 4} width={4} height={4} fill={p.carpet} />
-      <Rect x={SDB_R + 8 * COL - 4} y={RY(9) + COL - 4} width={4} height={4} fill={p.carpet} />
-
       {/* Faces dessinées APRÈS les meubles qu'elles masquent de 0,5 case :
           murs blancs de la sdb et des wc (sur l'armoire, le meuble cuisine
           et le bas de la colonne), mur bas de la chambre (sur le lit) */}

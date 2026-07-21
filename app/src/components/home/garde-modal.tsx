@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -34,6 +34,7 @@ export function GardeModal({
   const colors = useTheme();
   const [name, setName] = useState('');
   const [minutes, setMinutes] = useState<number>(120);
+  const [notes, setNotes] = useState('');
 
   // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
   // rendu — pas de setState dans un effet).
@@ -43,6 +44,7 @@ export function GardeModal({
     if (visible) {
       setName('');
       setMinutes(120);
+      setNotes('');
     }
   }
 
@@ -54,6 +56,7 @@ export function GardeModal({
       at: new Date().toISOString(),
       caregiver: name.trim(),
       duration_minutes: minutes,
+      notes: notes.trim() || null,
     });
     if (error) {
       Alert.alert('Erreur', `Garde non enregistrée : ${error.message}`);
@@ -89,6 +92,7 @@ export function GardeModal({
           <Chip key={m} label={label} selected={minutes === m} onPress={() => setMinutes(m)} />
         ))}
       </View>
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Détails (comment ça s'est passé…)" />
       <DialogButtons onCancel={onClose} onConfirm={save} confirmDisabled={!name.trim()} />
     </PixelDialog>
   );

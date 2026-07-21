@@ -33,28 +33,13 @@ export function ActionGrid({
   todayCues: number;
   todayOveralls: number;
 }) {
-  const colors = useTheme();
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.grid}>
-      <Pressable
-        onPress={onSolo}
-        style={({ pressed }) => [
-          styles.solo,
-          {
-            backgroundColor: colors.accent,
-            borderColor: colors.border,
-            boxShadow: pressed ? 'none' : `3px 3px 0px 0px ${colors.border}`,
-            transform: pressed ? [{ translateX: 2 }, { translateY: 2 }] : [],
-          },
-        ]}>
-        <Text style={styles.soloEmoji}>🚪</Text>
-        <Text style={[styles.soloText, { color: colors.accentText }]}>SOLO</Text>
-        <Text style={[styles.soloHint, { color: colors.accentText }]}>DÉMARRE DIRECT</Text>
-      </Pressable>
       <View style={styles.row}>
         <ActionButton emoji="🍖" label="NOURRITURE" onPress={onFeed} />
         <ActionButton emoji="🚶" label="SORTIE" onPress={onSortie} />
         <ActionButton emoji="🌙" label="DODO" onPress={onDodo} />
+        <ActionButton emoji="🤝" label="GARDE" onPress={onGarde} />
       </View>
       <View style={styles.row}>
         <ActionButton
@@ -71,7 +56,7 @@ export function ActionGrid({
           badgeDone={todayOveralls >= OVERALL_DAILY_GOAL}
           onPress={onOverall}
         />
-        <ActionButton emoji="🤝" label="GARDE" onPress={onGarde} />
+        <ActionButton emoji="🚪" label="SOLO" accent onPress={onSolo} />
       </View>
     </Animated.View>
   );
@@ -82,12 +67,15 @@ function ActionButton({
   label,
   badge,
   badgeDone,
+  accent = false,
   onPress,
 }: {
   emoji: string;
   label: string;
   badge?: string;
   badgeDone?: boolean;
+  /** Fond rouge (SOLO) : l'action phare, même taille que les autres. */
+  accent?: boolean;
   onPress: () => void;
 }) {
   const colors = useTheme();
@@ -97,14 +85,16 @@ function ActionButton({
       style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: colors.card,
+          backgroundColor: accent ? colors.accent : colors.card,
           borderColor: colors.border,
           boxShadow: pressed ? 'none' : `3px 3px 0px 0px ${colors.border}`,
           transform: pressed ? [{ translateX: 2 }, { translateY: 2 }] : [],
         },
       ]}>
       <Text style={styles.buttonEmoji}>{emoji}</Text>
-      <Text style={[styles.buttonText, { color: colors.text }]} numberOfLines={1}>
+      <Text
+        style={[styles.buttonText, { color: accent ? colors.accentText : colors.text }]}
+        numberOfLines={1}>
         {label}
       </Text>
       {badge ? (
@@ -119,26 +109,6 @@ function ActionButton({
 const styles = StyleSheet.create({
   grid: {
     gap: Spacing.sm,
-  },
-  solo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    borderWidth: 3,
-    borderRadius: 2,
-    paddingVertical: 13,
-  },
-  soloEmoji: {
-    fontSize: 15,
-  },
-  soloText: {
-    fontSize: 13,
-  },
-  soloHint: {
-    fontSize: 7,
-    opacity: 0.85,
-    marginTop: 3,
   },
   row: {
     flexDirection: 'row',
