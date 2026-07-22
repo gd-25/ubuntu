@@ -2,8 +2,14 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
-import { Text, TextInput } from '@/components/text';
+import {
+  Chip,
+  DialogButtons,
+  DialogLabel,
+  DialogNotes,
+  PixelDialog,
+} from '@/components/home/pixel-dialog';
+import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { SPACE_LABELS } from '@/lib/house';
@@ -103,17 +109,7 @@ export function OverallModal({
         ))}
       </View>
       <DialogLabel>OBSERVATIONS</DialogLabel>
-      <TextInput
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-        placeholder="Il s'est posé direct, relevé 2x…"
-        placeholderTextColor={colors.textSecondary}
-        style={[
-          styles.notes,
-          { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
-        ]}
-      />
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Il s'est posé direct, relevé 2x…" />
       <DialogButtons onCancel={onClose} onConfirm={save} confirmLabel="ENREGISTRER" />
     </PixelDialog>
   );
@@ -135,13 +131,5 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 6,
-  },
-  notes: {
-    borderWidth: 2,
-    borderRadius: 2,
-    minHeight: 52,
-    padding: Spacing.sm,
-    fontSize: 8,
-    lineHeight: 13,
   },
 });

@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
-import Animated, { SlideInUp, SlideOutUp, useSharedValue, ZoomIn } from 'react-native-reanimated';
+import Animated, { SlideInUp, SlideOutUp, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarSprite, type AvatarSpots } from '@/components/avatar-sprite';
@@ -41,7 +41,6 @@ import {
   MAP_H,
   MAP_W,
   SLOTS,
-  solitudeTypeOf,
   spaceAt,
   SPACE_LABELS,
   UBUNTU_MAT_SPOT,
@@ -54,6 +53,7 @@ import type {
   AgentHeartbeat,
   AvatarPosition,
   DepartureState,
+  HumanLocation,
   ObjectPosition,
   ObservedKind,
   Person,
@@ -77,7 +77,7 @@ export default function HouseScreen() {
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { dog } = useDog();
+  const { dog, person } = useDog();
 
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
@@ -436,39 +436,34 @@ export default function HouseScreen() {
     showToast(`🏠 RETOUR DE BALADE (${formatDuration(secondsSince(walk.at))})`);
   }, [dog, showToast]);
 
-  const startSession = useCallback(
-    async (solitudeType: 'away' | 'in_home') => {
-      if (!dog || activeSessionRef.current) return;
-      const { data, error } = await supabase
-        .from('sessions')
-        .insert({
-          dog_id: dog.id,
-          trigger: 'manual',
-          started_at: new Date().toISOString(),
-          solitude_type: solitudeType,
-          departure_type: departureTypeOf(positionsRef.current),
-          is_exercise: true,
-        })
-        .select()
-        .single();
-      if (error) {
-        Alert.alert('Erreur', `Session non démarrée : ${error.message}`);
-        return;
-      }
-      const session = data as Session;
-      setActiveSession(session);
-      setSessionEpisodes([]);
-      setRecap(null);
-      // L'état d'Ubuntu au départ se capture au moment T, en un seul tap.
-      setSoloPickerFor(session.id);
-      showToast(
-        solitudeType === 'away'
-          ? '🔴 SESSION : UBUNTU SEUL À LA MAISON'
-          : '🔴 SESSION : UBUNTU SEMI-SEUL'
-      );
-    },
-    [dog, showToast]
-  );
+  // Une session lancée est TOUJOURS une vraie session « seul » : on ne
+  // déduit plus semi-seul/seul de la position des avatars.
+  const startSession = useCallback(async () => {
+    if (!dog || activeSessionRef.current) return;
+    const { data, error } = await supabase
+      .from('sessions')
+      .insert({
+        dog_id: dog.id,
+        trigger: 'manual',
+        started_at: new Date().toISOString(),
+        solitude_type: 'away',
+        departure_type: departureTypeOf(positionsRef.current),
+        is_exercise: true,
+      })
+      .select()
+      .single();
+    if (error) {
+      Alert.alert('Erreur', `Session non démarrée : ${error.message}`);
+      return;
+    }
+    const session = data as Session;
+    setActiveSession(session);
+    setSessionEpisodes([]);
+    setRecap(null);
+    // L'état d'Ubuntu au départ se capture au moment T, en un seul tap.
+    setSoloPickerFor(session.id);
+    showToast('🔴 SESSION : UBUNTU SEUL À LA MAISON');
+  }, [dog, showToast]);
 
   /** Bouton SOLO : lancement instantané, confirmation haptique immédiate. */
   const startSolo = useCallback(() => {
@@ -478,14 +473,14 @@ export default function HouseScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAlonePrompt(false);
-    startSession(solitudeTypeOf(positionsRef.current));
+    startSession();
   }, [startSession, showToast]);
 
-  /** Mini-picker post-SOLO : état d'Ubuntu au moment du départ. */
+  /** Mini-picker post-SOLO, question 1 : état d'Ubuntu au moment du départ.
+      Le panneau reste ouvert pour la question 2 (il se ferme tout seul). */
   const pickDepartureState = useCallback(
     async (state: DepartureState) => {
       const sessionId = soloPickerFor;
-      setSoloPickerFor(null);
       if (!sessionId) return;
       Haptics.selectionAsync();
       setActiveSession((prev) =>
@@ -498,6 +493,29 @@ export default function HouseScreen() {
       if (error) console.warn("État au départ non enregistré :", error.message);
     },
     [soloPickerFor]
+  );
+
+  /** Mini-picker post-SOLO, question 2 : où sera l'humain pendant la
+      session. Déplace aussi SON avatar sur le plan : couloir → palier (en
+      bas), en bas / dehors → sentier (en haut). */
+  const pickHumanLocation = useCallback(
+    async (location: HumanLocation) => {
+      const sessionId = soloPickerFor;
+      if (!sessionId) return;
+      Haptics.selectionAsync();
+      const targetSpace: Space = location === 'couloir' ? 'couloir_ext' : 'dehors';
+      setPositions((prev) => ({ ...prev, [person]: targetSpace }));
+      persistPosition(person, targetSpace);
+      setActiveSession((prev) =>
+        prev && prev.id === sessionId ? { ...prev, human_location: location } : prev
+      );
+      const { error } = await supabase
+        .from('sessions')
+        .update({ human_location: location })
+        .eq('id', sessionId);
+      if (error) console.warn('Position humaine non enregistrée :', error.message);
+    },
+    [soloPickerFor, person, persistPosition]
   );
 
   /**
@@ -601,7 +619,7 @@ export default function HouseScreen() {
     setAlonePrompt(false);
     const current = positionsRef.current;
     if (!isUbuntuAlone(current) || activeSessionRef.current) return;
-    startSession(solitudeTypeOf(current));
+    startSession();
   }, [startSession]);
 
   const handleHover = useCallback((space: Space | null) => {
@@ -739,7 +757,6 @@ export default function HouseScreen() {
   // Les panneaux et dialogues s'affichent tous en haut, dans l'espace vert
   // au-dessus des arbres (sous le badge caméra).
   const panelTop = insets.top + 40;
-  const pendingType = solitudeTypeOf(positions);
 
   // ------------------------------------------------------------- Rendu
 
@@ -912,7 +929,9 @@ export default function HouseScreen() {
       {soloPickerFor ? (
         <SoloPicker
           top={panelTop + 22}
-          onPick={pickDepartureState}
+          person={person}
+          onPickState={pickDepartureState}
+          onPickLocation={pickHumanLocation}
           onDismiss={() => setSoloPickerFor(null)}
         />
       ) : null}
@@ -933,13 +952,10 @@ export default function HouseScreen() {
             },
           ]}>
           <Text style={[styles.sessionTitle, { color: colors.accent }]}>
-            {pendingType === 'away' ? '● UBUNTU EST SEUL' : '● UBUNTU EST SEMI-SEUL'}
+            ● UBUNTU EST SEUL
           </Text>
           <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
-            {pendingType === 'away'
-              ? `Vous avez quitté l'appartement — Ubuntu est resté : ${SPACE_LABELS[positions.ubuntu]}.`
-              : `Vous êtes dans une autre pièce — Ubuntu est isolé : ${SPACE_LABELS[positions.ubuntu]}.`}{' '}
-            Lancer la session ?
+            Ubuntu est resté : {SPACE_LABELS[positions.ubuntu]}. Lancer la session ?
           </Text>
           <View style={styles.dialogButtons}>
             <Pressable
@@ -1106,8 +1122,9 @@ export default function HouseScreen() {
       <Modal visible={!!recap} transparent animationType="fade" onRequestClose={() => setRecap(null)}>
         <View style={[styles.modalBackdrop, { paddingTop: panelTop }]}>
           {recap ? (
-            <Animated.View
-              entering={ZoomIn.duration(200)}
+            // Pas d'entering Reanimated dans une Modal native (peut rester
+            // bloqué invisible) — le fade de la Modal suffit.
+            <View
               style={[
                 styles.dialog,
                 {
@@ -1147,7 +1164,7 @@ export default function HouseScreen() {
                   <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>OK !</Text>
                 </Pressable>
               </View>
-            </Animated.View>
+            </View>
           ) : null}
         </View>
       </Modal>

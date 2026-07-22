@@ -51,8 +51,9 @@ const CUE_LABELS: Record<FakeCue, string> = {
 };
 
 const NIGHT_LOCATION_LABELS = {
-  outside_room: 'hors de la chambre',
-  in_room: 'dans la chambre, pas sur le lit',
+  outside_room: 'en dehors de la chambre',
+  in_room: 'dans la chambre',
+  half_half: 'moitié dans la chambre',
   on_bed: 'sur le lit',
 } as const;
 

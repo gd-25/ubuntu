@@ -58,7 +58,15 @@ function RootNavigator() {
         }}>
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="session/[id]" options={{ title: 'Détail de la session' }} />
+          <Stack.Screen
+            name="session/[id]"
+            options={{
+              headerShown: false,
+              presentation: 'formSheet',
+              sheetGrabberVisible: true,
+              sheetAllowedDetents: [0.75, 1],
+            }}
+          />
           <Stack.Screen
             name="activity-log"
             options={{

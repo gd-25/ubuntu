@@ -2,15 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Dog } from '@/lib/types';
+import type { Dog, Person } from '@/lib/types';
 
 /**
- * Loads the current user's dog (first one — single-dog UX for now,
- * but the data model supports several).
+ * Loads the current user's dog: the first dog VISIBLE by RLS — owned OR
+ * shared via `dog_members` (Fiona's account is a member of Ubuntu, not
+ * its owner). Also resolves which family avatar this account is
+ * (`dog_members.person`, defaults to 'greg' for the owner).
  */
 export function useDog() {
   const { user } = useAuth();
   const [dog, setDog] = useState<Dog | null>(null);
+  const [person, setPerson] = useState<Exclude<Person, 'ubuntu'>>('greg');
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchDog = useCallback(async (): Promise<Dog | null> => {
@@ -18,7 +21,6 @@ export function useDog() {
     const { data, error } = await supabase
       .from('dogs')
       .select('*')
-      .eq('owner_id', user.id)
       .order('created_at', { ascending: true })
       .limit(1);
     if (error) {
@@ -28,22 +30,42 @@ export function useDog() {
     return (data?.[0] as Dog | undefined) ?? null;
   }, [user]);
 
+  const fetchPerson = useCallback(
+    async (dogId: string): Promise<Exclude<Person, 'ubuntu'>> => {
+      if (!user) return 'greg';
+      const { data } = await supabase
+        .from('dog_members')
+        .select('person')
+        .eq('dog_id', dogId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      const value = (data as { person: string } | null)?.person;
+      return value === 'fiona' ? 'fiona' : 'greg';
+    },
+    [user]
+  );
+
   useEffect(() => {
     let ignore = false;
-    fetchDog().then((next) => {
+    (async () => {
+      const next = await fetchDog();
+      const who = next ? await fetchPerson(next.id) : 'greg';
       if (ignore) return;
       setDog(next);
+      setPerson(who);
       setIsLoading(false);
-    });
+    })();
     return () => {
       ignore = true;
     };
-  }, [fetchDog]);
+  }, [fetchDog, fetchPerson]);
 
   const reload = useCallback(async () => {
-    setDog(await fetchDog());
+    const next = await fetchDog();
+    setDog(next);
+    setPerson(next ? await fetchPerson(next.id) : 'greg');
     setIsLoading(false);
-  }, [fetchDog]);
+  }, [fetchDog, fetchPerson]);
 
   const saveName = useCallback(
     async (name: string): Promise<Dog | null> => {
@@ -75,5 +97,5 @@ export function useDog() {
     [user, dog]
   );
 
-  return { dog, isLoading, reload, saveName };
+  return { dog, person, isLoading, reload, saveName };
 }

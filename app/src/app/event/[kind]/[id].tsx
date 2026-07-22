@@ -36,9 +36,9 @@ const CUES: { value: FakeCue; emoji: string; label: string }[] = [
 ];
 
 const LOCATIONS: { value: NightLocation; emoji: string; label: string }[] = [
-  { value: 'outside_room', emoji: '🚪', label: 'HORS DE LA CHAMBRE FERMÉE' },
-  { value: 'in_room', emoji: '🛋', label: 'DANS LA CHAMBRE, PAS SUR LE LIT' },
-  { value: 'on_bed', emoji: '🛏', label: 'SUR LE LIT' },
+  { value: 'in_room', emoji: '🛏', label: 'DANS LA CHAMBRE' },
+  { value: 'outside_room', emoji: '🚪', label: 'EN DEHORS' },
+  { value: 'half_half', emoji: '🌗', label: 'MOITIÉ MOITIÉ' },
 ];
 
 const DURATIONS = [2, 5, 10, 15, 20, 30] as const;
@@ -128,7 +128,8 @@ export default function EventDetailScreen() {
         setStartTime(new Date(row.started_at));
         setEndTime(new Date(row.ended_at));
         setNotes(row.notes ?? '');
-        setLocation(row.location);
+        // « Sur le lit » (ancien choix) se range dans « dans la chambre ».
+        setLocation(row.location === 'on_bed' ? 'in_room' : row.location);
       } else if (kind === 'overall') {
         const { data } = await supabase
           .from('overall_sessions')
@@ -138,6 +139,7 @@ export default function EventDetailScreen() {
         const row = data as OverallSession | null;
         if (!row) return;
         setOverall(row);
+        setStartTime(new Date(row.at));
         setNotes(row.notes ?? '');
         setDuration(row.duration_minutes);
       }
@@ -186,7 +188,11 @@ export default function EventDetailScreen() {
     } else if (kind === 'overall' && overall) {
       ({ error } = await supabase
         .from('overall_sessions')
-        .update({ duration_minutes: duration, notes: notes.trim() || null })
+        .update({
+          at: withTime(new Date(overall.at), startTime).toISOString(),
+          duration_minutes: duration,
+          notes: notes.trim() || null,
+        })
         .eq('id', overall.id));
     }
     if (error) {
@@ -237,8 +243,7 @@ export default function EventDetailScreen() {
       ) : (
         <>
           {/* ---------------------------------------------------- Horaires */}
-          {kind === 'overall' ? null : (
-            <View style={styles.timeRow}>
+          <View style={styles.timeRow}>
               <View style={styles.timeCol}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>
                   {kind === 'night' ? 'COUCHER' : hasEnd ? 'DÉPART' : 'HEURE'}
@@ -268,9 +273,8 @@ export default function EventDetailScreen() {
                     }}
                   />
                 </View>
-              ) : null}
-            </View>
-          )}
+            ) : null}
+          </View>
 
           {/* ------------------------------------------- Champs par type */}
           {activity?.kind === 'meal' ? (
@@ -385,28 +389,18 @@ export default function EventDetailScreen() {
 
           {kind === 'night' && night ? (
             <>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>OÙ A-T-IL DORMI ?</Text>
-              {LOCATIONS.map(({ value, emoji, label }) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setLocation(value)}
-                  style={[
-                    styles.option,
-                    {
-                      backgroundColor: location === value ? colors.accent : colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}>
-                  <Text style={styles.optionEmoji}>{emoji}</Text>
-                  <Text
-                    style={[
-                      styles.optionText,
-                      { color: location === value ? colors.accentText : colors.text },
-                    ]}>
-                    {label}
-                  </Text>
-                </Pressable>
-              ))}
+              <Text style={[styles.label, { color: colors.textSecondary }]}>OÙ ?</Text>
+              <View style={styles.row}>
+                {LOCATIONS.map(({ value, emoji, label }) => (
+                  <Chip
+                    key={value}
+                    emoji={emoji}
+                    label={label}
+                    selected={location === value}
+                    onPress={() => setLocation(value)}
+                  />
+                ))}
+              </View>
               {night.basket_x != null && night.basket_y != null ? (
                 <>
                   <Text style={[styles.label, { color: colors.textSecondary }]}>
@@ -499,23 +493,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     padding: Spacing.sm,
     fontSize: 9,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingVertical: 10,
-    paddingHorizontal: Spacing.sm,
-  },
-  optionEmoji: {
-    fontSize: 14,
-  },
-  optionText: {
-    fontSize: 8,
-    lineHeight: 12,
-    flexShrink: 1,
   },
   buttons: {
     flexDirection: 'row',

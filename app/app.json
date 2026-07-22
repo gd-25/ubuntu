@@ -2,7 +2,7 @@
   "expo": {
     "name": "UBUNTU",
     "slug": "ubuntu",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ubuntu",
@@ -10,7 +10,7 @@
     "ios": {
       "bundleIdentifier": "com.gregdeshusses.ubuntu",
       "supportsTablet": false,
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

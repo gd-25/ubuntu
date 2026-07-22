@@ -190,6 +190,8 @@ export default function ActivityLogScreen() {
         placeholder={mode === 'activity' ? 'Grande balade au parc…' : 'Courses, rendez-vous…'}
         placeholderTextColor={colors.textSecondary}
         multiline
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
         value={notes}
         onChangeText={setNotes}
       />

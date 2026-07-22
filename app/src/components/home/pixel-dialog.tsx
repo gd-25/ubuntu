@@ -1,5 +1,4 @@
 import { Modal, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
-import Animated, { ZoomIn } from 'react-native-reanimated';
 
 import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
@@ -28,8 +27,10 @@ export function PixelDialog({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRequestClose}>
       <View style={[styles.backdrop, { paddingTop: topOffset }]}>
-        <Animated.View
-          entering={ZoomIn.duration(200)}
+        {/* Pas d'animation Reanimated `entering` ici : dans une Modal
+            native elle peut rester bloquée à l'état initial (boîte
+            invisible, vu dans Expo Go) — le fade natif de la Modal suffit. */}
+        <View
           style={[
             styles.dialog,
             {
@@ -40,7 +41,7 @@ export function PixelDialog({
           ]}>
           <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
           {children}
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -146,7 +147,12 @@ export function Chip({
   );
 }
 
-/** Champ texte libre commun aux modales (observations, détails…). */
+/**
+ * Champ texte libre commun aux modales (observations, détails…). La touche
+ * retour du clavier (en bas à droite) devient « OK » et FERME le clavier :
+ * un champ multiligne garderait sinon le clavier bloqué ouvert (pas de
+ * retour à la ligne dans les notes, tant pis).
+ */
 export function DialogNotes({
   value,
   onChangeText,
@@ -162,6 +168,8 @@ export function DialogNotes({
       value={value}
       onChangeText={onChangeText}
       multiline
+      returnKeyType="done"
+      submitBehavior="blurAndSubmit"
       placeholder={placeholder}
       placeholderTextColor={colors.textSecondary}
       style={[

@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
     .from("vocal_episodes")
     .select("ended_at")
     .eq("session_id", session_id)
+    .eq("dismissed", false)
     .order("ended_at", { ascending: false })
     .limit(1)
     .maybeSingle();

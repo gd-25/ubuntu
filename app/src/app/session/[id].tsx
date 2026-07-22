@@ -1,35 +1,65 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
-import { Play, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Text, TextInput } from '@/components/text';
-import { openEpisodeClip } from '@/lib/clips';
 import { EpisodeTimeline } from '@/components/episode-timeline';
-import { StatCard } from '@/components/stat-card';
-import { Button, Card, EmptyState, SectionTitle } from '@/components/ui';
+import {
+  Chip,
+  DialogButtons,
+  DialogLabel,
+  DialogNotes,
+  PixelDialog,
+} from '@/components/home/pixel-dialog';
+import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { openEpisodeClip } from '@/lib/clips';
 import {
   episodeDurationSeconds,
   formatDateTime,
   formatDuration,
   formatTime,
   KIND_LABELS,
-  OBSERVED_LABELS,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type {
-  EpisodeKind,
-  ObservedEvent,
-  Session,
-  SessionSummary,
-  Tag,
-  VocalEpisode,
-} from '@/lib/types';
+import type { EpisodeKind, Session, SessionSummary, Tag, VocalEpisode } from '@/lib/types';
 
+const KINDS: { value: EpisodeKind; label: string }[] = [
+  { value: 'whine', label: 'GÉMISSEMENT' },
+  { value: 'bark', label: 'ABOIEMENT' },
+  { value: 'howl', label: 'HURLEMENT' },
+];
+
+const EPISODE_DURATIONS = [
+  { seconds: 5, label: '5 S' },
+  { seconds: 10, label: '10 S' },
+  { seconds: 20, label: '20 S' },
+  { seconds: 30, label: '30 S' },
+  { seconds: 60, label: '1 MIN' },
+  { seconds: 120, label: '2 MIN' },
+] as const;
+
+/**
+ * Détail d'une session de solitude, en bottom sheet (comme le détail des
+ * autres entrées du journal) : chronologie des vocalises, les deux stats
+ * utiles (+ la durée), particularités inline et notes. Un bouton discret
+ * ouvre la modale d'ajout d'un épisode raté par l'agent.
+ */
 export default function SessionDetailScreen() {
   const colors = useTheme();
+  const scheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [session, setSession] = useState<Session | null>(null);
@@ -37,76 +67,77 @@ export default function SessionDetailScreen() {
   const [episodes, setEpisodes] = useState<VocalEpisode[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
-  const [observedEvents, setObservedEvents] = useState<ObservedEvent[]>([]);
-  const [manualKind, setManualKind] = useState<EpisodeKind>('whine');
-  const [manualTime, setManualTime] = useState('');
-  const [manualDuration, setManualDuration] = useState('10');
-  const [isAddingEpisode, setIsAddingEpisode] = useState(false);
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   // Static "now" for the timeline right edge when viewing an ongoing session.
   const [nowMs] = useState(() => Date.now());
 
-  const fetchDetail = useCallback(async () => {
-    if (!id) return null;
-    const [sessionRes, summaryRes, episodesRes, sessionTagsRes, observedRes] = await Promise.all([
-      supabase.from('sessions').select('*').eq('id', id).maybeSingle(),
-      supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
+  // Modale « ajouter un épisode » (même UI que les modales de la Maison).
+  const [episodeOpen, setEpisodeOpen] = useState(false);
+  const [episodeKind, setEpisodeKind] = useState<EpisodeKind>('whine');
+  const [episodeTime, setEpisodeTime] = useState<Date>(new Date());
+  const [episodeSeconds, setEpisodeSeconds] = useState<number>(10);
+  const [isAddingEpisode, setIsAddingEpisode] = useState(false);
+
+  // Modale « nouvelle particularité » (liste éditable aussi dans Réglages).
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagLabel, setTagLabel] = useState('');
+
+  const fetchEpisodesAndSummary = useCallback(async () => {
+    if (!id) return;
+    const [episodesRes, summaryRes] = await Promise.all([
       supabase
         .from('vocal_episodes')
         .select('*')
         .eq('session_id', id)
         .order('started_at', { ascending: true }),
-      supabase.from('session_tags').select('tag_id').eq('session_id', id),
-      supabase
-        .from('observed_events')
-        .select('*')
-        .eq('session_id', id)
-        .order('at', { ascending: true }),
+      supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
     ]);
-    const firstError = sessionRes.error ?? summaryRes.error ?? episodesRes.error;
-    if (firstError) console.warn('Chargement de la session incomplet :', firstError.message);
-
-    const session = sessionRes.data as Session | null;
-    let tagRows: Tag[] = [];
-    if (session) {
-      const { data } = await supabase
-        .from('tags')
-        .select('*')
-        .eq('dog_id', session.dog_id)
-        .order('created_at', { ascending: true });
-      tagRows = (data as Tag[] | null) ?? [];
-    }
-    return {
-      session,
-      summary: summaryRes.data as SessionSummary | null,
-      episodes: (episodesRes.data as VocalEpisode[] | null) ?? [],
-      tags: tagRows,
-      selectedTagIds: new Set(
-        ((sessionTagsRes.data as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id)
-      ),
-      observedEvents: (observedRes.data as ObservedEvent[] | null) ?? [],
-    };
+    setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
+    setSummary(summaryRes.data as SessionSummary | null);
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
     let ignore = false;
-    fetchDetail().then((detail) => {
-      if (ignore || !detail) return;
-      setSession(detail.session);
-      setNotes(detail.session?.notes ?? '');
-      setSummary(detail.summary);
-      setEpisodes(detail.episodes);
-      setTags(detail.tags);
-      setSelectedTagIds(detail.selectedTagIds);
-      setObservedEvents(detail.observedEvents);
+    (async () => {
+      const [sessionRes, summaryRes, episodesRes, sessionTagsRes] = await Promise.all([
+        supabase.from('sessions').select('*').eq('id', id).maybeSingle(),
+        supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
+        supabase
+          .from('vocal_episodes')
+          .select('*')
+          .eq('session_id', id)
+          .order('started_at', { ascending: true }),
+        supabase.from('session_tags').select('tag_id').eq('session_id', id),
+      ]);
+      const row = sessionRes.data as Session | null;
+      let tagRows: Tag[] = [];
+      if (row) {
+        const { data } = await supabase
+          .from('tags')
+          .select('*')
+          .eq('dog_id', row.dog_id)
+          .order('created_at', { ascending: true });
+        tagRows = (data as Tag[] | null) ?? [];
+      }
+      if (ignore) return;
+      setSession(row);
+      setNotes(row?.notes ?? '');
+      setSummary(summaryRes.data as SessionSummary | null);
+      setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
+      setTags(tagRows);
+      setSelectedTagIds(
+        new Set(((sessionTagsRes.data as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id))
+      );
+      if (row) setEpisodeTime(new Date(row.started_at));
       setIsLoading(false);
-    });
+    })();
     return () => {
       ignore = true;
     };
-  }, [fetchDetail]);
+  }, [id]);
 
   const toggleTag = async (tag: Tag) => {
     if (!session) return;
@@ -136,55 +167,70 @@ export default function SessionDetailScreen() {
     }
   };
 
-  /** "14:30" → Date sur le jour (local) du début de la session. */
-  const parseSessionTime = (value: string): Date | null => {
-    if (!session) return null;
-    const match = value.trim().match(/^(\d{1,2})[h:](\d{2})$/i);
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (hours > 23 || minutes > 59) return null;
-    const date = new Date(session.started_at);
-    date.setHours(hours, minutes, 0, 0);
-    return date;
-  };
-
-  const addManualEpisode = async () => {
-    if (!session) return;
-    const start = parseSessionTime(manualTime);
-    const durationSecondsInput = Number(manualDuration);
-    if (!start) {
-      Alert.alert('Format invalide', 'Entrez l’heure au format 14:30.');
-      return;
-    }
-    if (!Number.isFinite(durationSecondsInput) || durationSecondsInput <= 0) {
-      Alert.alert('Durée invalide', 'Entrez une durée en secondes (ex. 10).');
-      return;
-    }
-    setIsAddingEpisode(true);
+  const addTag = async () => {
+    if (!session || !tagLabel.trim()) return;
     const { data, error } = await supabase
-      .from('vocal_episodes')
-      .insert({
-        dog_id: session.dog_id,
-        session_id: session.id,
-        started_at: start.toISOString(),
-        ended_at: new Date(start.getTime() + durationSecondsInput * 1000).toISOString(),
-        kind: manualKind,
-        source: 'manual',
-      })
+      .from('tags')
+      .insert({ dog_id: session.dog_id, label: tagLabel.trim() })
       .select()
       .single();
+    if (error) {
+      Alert.alert('Erreur', `Particularité non créée : ${error.message}`);
+      return;
+    }
+    const tag = data as Tag;
+    setTags((prev) => [...prev, tag]);
+    setTagOpen(false);
+    setTagLabel('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // La nouvelle particularité est cochée pour cette session dans la foulée.
+    toggleTag(tag);
+  };
+
+  const addEpisode = async () => {
+    if (!session) return;
+    // L'heure choisie s'applique sur le JOUR du début de la session.
+    const start = new Date(session.started_at);
+    start.setHours(episodeTime.getHours(), episodeTime.getMinutes(), 0, 0);
+    setIsAddingEpisode(true);
+    const { error } = await supabase.from('vocal_episodes').insert({
+      dog_id: session.dog_id,
+      session_id: session.id,
+      started_at: start.toISOString(),
+      ended_at: new Date(start.getTime() + episodeSeconds * 1000).toISOString(),
+      kind: episodeKind,
+      source: 'manual',
+    });
     setIsAddingEpisode(false);
     if (error) {
       Alert.alert('Erreur', `Ajout impossible : ${error.message}`);
       return;
     }
-    setEpisodes((prev) =>
-      [...prev, data as VocalEpisode].sort(
-        (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
-      )
-    );
-    setManualTime('');
+    setEpisodeOpen(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // La frise et les stats (vue session_summaries) se recalculent.
+    fetchEpisodesAndSummary();
+  };
+
+  /** Écarte (ou restaure) un faux positif de l'agent : gardé en base avec
+      son clip (futur jeu de données YAMNet), mais hors stats et frise. */
+  const toggleDismissed = async (episode: VocalEpisode) => {
+    const next = !episode.dismissed;
+    setEpisodes((prev) => prev.map((e) => (e.id === episode.id ? { ...e, dismissed: next } : e)));
+    const { error } = await supabase
+      .from('vocal_episodes')
+      .update({ dismissed: next })
+      .eq('id', episode.id);
+    if (error) {
+      setEpisodes((prev) =>
+        prev.map((e) => (e.id === episode.id ? { ...e, dismissed: !next } : e))
+      );
+      Alert.alert('Erreur', `Modification impossible : ${error.message}`);
+      return;
+    }
+    Haptics.selectionAsync();
+    // Les stats (vue session_summaries) excluent les épisodes écartés.
+    fetchEpisodesAndSummary();
   };
 
   const deleteManualEpisode = (episode: VocalEpisode) => {
@@ -199,19 +245,10 @@ export default function SessionDetailScreen() {
             Alert.alert('Erreur', `Suppression impossible : ${error.message}`);
             return;
           }
-          setEpisodes((prev) => prev.filter((e) => e.id !== episode.id));
+          fetchEpisodesAndSummary();
         },
       },
     ]);
-  };
-
-  const deleteObservation = async (event: ObservedEvent) => {
-    const { error } = await supabase.from('observed_events').delete().eq('id', event.id);
-    if (error) {
-      Alert.alert('Erreur', `Suppression impossible : ${error.message}`);
-      return;
-    }
-    setObservedEvents((prev) => prev.filter((e) => e.id !== event.id));
   };
 
   const saveNotes = async () => {
@@ -226,7 +263,7 @@ export default function SessionDetailScreen() {
       Alert.alert('Erreur', `Impossible d’enregistrer les notes : ${error.message}`);
       return;
     }
-    Alert.alert('Enregistré', 'Notes mises à jour.');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   if (isLoading) {
@@ -240,7 +277,7 @@ export default function SessionDetailScreen() {
   if (!session) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <EmptyState title="Session introuvable" />
+        <Text style={[styles.label, { color: colors.textSecondary }]}>SESSION INTROUVABLE</Text>
       </View>
     );
   }
@@ -251,220 +288,218 @@ export default function SessionDetailScreen() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: colors.background }}
+      style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}>
-      <View>
-        <Text style={[styles.title, { color: colors.text }]}>
-          {formatDateTime(session.started_at)}
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {session.trigger === 'manual' ? 'Départ manuel' : 'Départ géolocalisé'}
-          {session.ended_at ? ` · terminée à ${formatTime(session.ended_at)}` : ' · en cours'}
-        </Text>
+      <Text style={[styles.title, { color: colors.text }]}>
+        🔴 {formatDateTime(session.started_at).toUpperCase()}
+      </Text>
+      <Text style={[styles.label, { color: colors.textSecondary }]}>
+        {session.ended_at ? `TERMINÉE À ${formatTime(session.ended_at)}` : 'EN COURS'}
+        {session.is_exercise === false ? ' · SUBIE' : ''}
+      </Text>
+
+      {/* ------------------------------------------------------- Stats */}
+      <View style={styles.statRow}>
+        <StatBox
+          label="DURÉE TOTALE"
+          value={durationSeconds !== null ? formatDuration(durationSeconds) : '—'}
+        />
+        <StatBox
+          label="PLUS LONG ÉPISODE"
+          value={summary ? formatDuration(summary.longest_episode_seconds) : '—'}
+        />
+        <StatBox
+          label="% CALME"
+          value={summary ? `${Math.round(summary.calm_percent)}%` : '—'}
+          valueColor={
+            summary ? (summary.calm_percent >= 90 ? colors.success : colors.danger) : undefined
+          }
+        />
       </View>
 
-      <Card>
-        <SectionTitle>Chronologie des vocalises</SectionTitle>
-        <EpisodeTimeline
-          episodes={episodes}
-          sessionStart={session.started_at}
-          sessionEnd={session.ended_at}
-          nowMs={nowMs}
-        />
-      </Card>
+      {/* ------------------------------------------------------- Frise */}
+      <DialogLabel>CHRONOLOGIE DES VOCALISES</DialogLabel>
+      <EpisodeTimeline
+        episodes={episodes.filter((e) => !e.dismissed)}
+        sessionStart={session.started_at}
+        sessionEnd={session.ended_at}
+        nowMs={nowMs}
+        showLegend={false}
+      />
 
-      {summary ? (
-        <Card>
-          <SectionTitle>Statistiques</SectionTitle>
-          <View style={styles.statGrid}>
-            <StatCard
-              label="Durée totale"
-              value={durationSeconds !== null ? formatDuration(durationSeconds) : '—'}
-            />
-            <StatCard label="Temps vocalisé" value={formatDuration(summary.total_vocal_seconds)} />
-            <StatCard label="Épisodes" value={String(summary.episode_count)} />
-            <StatCard
-              label="Plus long épisode"
-              value={formatDuration(summary.longest_episode_seconds)}
-            />
-            <StatCard
-              label="Délai 1ʳᵉ vocalise"
-              value={
-                summary.time_to_first_vocalization_seconds !== null
-                  ? formatDuration(summary.time_to_first_vocalization_seconds)
-                  : 'Aucune'
-              }
-            />
-            <StatCard label="% calme" value={`${Math.round(summary.calm_percent)} %`} />
-          </View>
-        </Card>
-      ) : null}
-
-      <Card>
-        <SectionTitle>Épisodes ({episodes.length})</SectionTitle>
-        {episodes.length === 0 ? (
-          <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-            Aucune vocalise pendant cette session.
+      {/* ---------------- Détail des épisodes (clips, écarter, supprimer) */}
+      {episodes.map((episode) => (
+        <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
+          <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
+          <Text style={[styles.episodeText, { color: colors.text }]}>
+            {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind].toUpperCase()} ·{' '}
+            {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
+            {episode.source === 'manual' ? ' · MANUEL' : ''}
+            {episode.dismissed ? ' · ÉCARTÉ' : ''}
           </Text>
-        ) : (
-          episodes.map((episode) => (
-            <View key={episode.id} style={styles.episodeRow}>
-              <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
-              <Text style={[styles.episodeText, { color: colors.text }]}>
-                {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind]} ·{' '}
-                {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
-                {episode.avg_confidence !== null
-                  ? ` · conf. ${Math.round(episode.avg_confidence * 100)} %`
-                  : ' · manuel'}
+          {episode.clip_path ? <ClipButton clipPath={episode.clip_path} /> : null}
+          {episode.source === 'manual' ? (
+            <Pressable onPress={() => deleteManualEpisode(episode)} hitSlop={8}>
+              <Text style={[styles.episodeDelete, { color: colors.danger }]}>✕</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => toggleDismissed(episode)} hitSlop={8}>
+              <Text
+                style={[
+                  styles.episodeAction,
+                  { color: episode.dismissed ? colors.accent : colors.danger },
+                ]}>
+                {episode.dismissed ? 'RESTAURER' : 'ÉCARTER'}
               </Text>
-              {episode.clip_path ? (
-                <ClipButton clipPath={episode.clip_path} />
-              ) : null}
-              {episode.source === 'manual' ? (
-                <Pressable onPress={() => deleteManualEpisode(episode)} hitSlop={8}>
-                  <X size={16} color={colors.danger} />
-                </Pressable>
-              ) : null}
-            </View>
-          ))
-        )}
-
-        <Text style={[styles.addTitle, { color: colors.textSecondary }]}>
-          Ajouter un couinement raté par l&apos;agent :
+            </Pressable>
+          )}
+        </View>
+      ))}
+      {episodes.length === 0 ? (
+        <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
+          AUCUNE VOCALISE PENDANT CETTE SESSION 🎉
         </Text>
-        <View style={styles.addKindRow}>
-          {(['whine', 'bark', 'howl'] as EpisodeKind[]).map((kind) => (
+      ) : null}
+      <Pressable onPress={() => setEpisodeOpen(true)} hitSlop={6} style={styles.addEpisode}>
+        <Text style={[styles.addEpisodeText, { color: colors.accent }]}>
+          ＋ AJOUTER UN ÉPISODE
+        </Text>
+      </Pressable>
+
+      {/* ----------------------------------------------- Particularités */}
+      <DialogLabel>PARTICULARITÉS</DialogLabel>
+      <View style={styles.tagRow}>
+        {tags.map((tag) => {
+          const selected = selectedTagIds.has(tag.id);
+          return (
             <Pressable
-              key={kind}
-              onPress={() => setManualKind(kind)}
+              key={tag.id}
+              onPress={() => toggleTag(tag)}
               style={[
                 styles.tagChip,
                 {
-                  backgroundColor: manualKind === kind ? colors[kind] : colors.background,
-                  borderColor: manualKind === kind ? colors[kind] : colors.border,
+                  backgroundColor: selected ? colors.accent : colors.card,
+                  borderColor: colors.border,
                 },
               ]}>
               <Text
-                style={[
-                  styles.tagChipText,
-                  { color: manualKind === kind ? '#FFFFFF' : colors.text },
-                ]}>
-                {KIND_LABELS[kind]}
+                style={[styles.tagChipText, { color: selected ? colors.accentText : colors.text }]}>
+                {tag.label.toUpperCase()}
               </Text>
             </Pressable>
+          );
+        })}
+        <Pressable
+          onPress={() => setTagOpen(true)}
+          style={[styles.tagChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.tagChipText, { color: colors.accent }]}>＋</Text>
+        </Pressable>
+      </View>
+
+      {/* ------------------------------------------------------- Notes */}
+      <DialogLabel>NOTES</DialogLabel>
+      <DialogNotes
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Contexte, météo, promenade avant le départ…"
+      />
+      <Pressable
+        onPress={saveNotes}
+        disabled={isSaving}
+        style={[
+          styles.saveButton,
+          { backgroundColor: colors.accent, borderColor: colors.border, opacity: isSaving ? 0.5 : 1 },
+        ]}>
+        <Text style={[styles.saveButtonText, { color: colors.accentText }]}>ENREGISTRER</Text>
+      </Pressable>
+
+      {/* --------------------------- Modale « ajouter un épisode » ------- */}
+      <PixelDialog
+        visible={episodeOpen}
+        onRequestClose={() => setEpisodeOpen(false)}
+        title="🎤 AJOUTER UN ÉPISODE"
+        topOffset={insets.top + 40}>
+        <DialogLabel>UN ÉPISODE RATÉ PAR L&apos;AGENT…</DialogLabel>
+        <View style={styles.row}>
+          {KINDS.map(({ value, label }) => (
+            <Chip
+              key={value}
+              label={label}
+              selected={episodeKind === value}
+              onPress={() => setEpisodeKind(value)}
+            />
           ))}
         </View>
-        <View style={styles.addFormRow}>
-          <TextInput
-            style={[
-              styles.addInput,
-              { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-            ]}
-            placeholder="Heure (14:30)"
-            placeholderTextColor={colors.textSecondary}
-            value={manualTime}
-            onChangeText={setManualTime}
-            keyboardType="numbers-and-punctuation"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={[
-              styles.addInput,
-              styles.addInputSmall,
-              { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-            ]}
-            placeholder="Durée (s)"
-            placeholderTextColor={colors.textSecondary}
-            value={manualDuration}
-            onChangeText={setManualDuration}
-            keyboardType="number-pad"
-          />
-        </View>
-        <Button
-          label="Ajouter l'épisode"
-          variant="secondary"
-          onPress={addManualEpisode}
-          loading={isAddingEpisode}
-          disabled={!manualTime.trim()}
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle>Observations ({observedEvents.length})</SectionTitle>
-        {observedEvents.length === 0 ? (
-          <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-            Rien de noté pendant cette session (boutons 😌/😰 sur l&apos;écran Direct pendant une
-            session).
-          </Text>
-        ) : (
-          observedEvents.map((event) => (
-            <View key={event.id} style={styles.episodeRow}>
-              <Text style={[styles.episodeText, { color: colors.text }]}>
-                {formatTime(event.at)} · {OBSERVED_LABELS[event.kind]}
-              </Text>
-              <Pressable onPress={() => deleteObservation(event)} hitSlop={8}>
-                <X size={16} color={colors.danger} />
-              </Pressable>
-            </View>
-          ))
-        )}
-      </Card>
-
-      <Card>
-        <SectionTitle>Particularités</SectionTitle>
-        {tags.length === 0 ? (
-          <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-            Aucune particularité définie. Ajoutez-en dans l&apos;onglet Réglages.
-          </Text>
-        ) : (
-          <View style={styles.tagRow}>
-            {tags.map((tag) => {
-              const selected = selectedTagIds.has(tag.id);
-              return (
-                <Pressable
-                  key={tag.id}
-                  onPress={() => toggleTag(tag)}
-                  style={[
-                    styles.tagChip,
-                    {
-                      backgroundColor: selected ? colors.accent : colors.background,
-                      borderColor: selected ? colors.accent : colors.border,
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.tagChipText,
-                      { color: selected ? colors.accentText : colors.text },
-                    ]}>
-                    {tag.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        <View style={styles.timeRow}>
+          <View style={styles.timeCol}>
+            <DialogLabel>HEURE</DialogLabel>
+            <DateTimePicker
+              value={episodeTime}
+              mode="time"
+              display="compact"
+              themeVariant={scheme === 'dark' ? 'dark' : 'light'}
+              onChange={(_, date) => {
+                if (date) setEpisodeTime(date);
+              }}
+            />
           </View>
-        )}
-      </Card>
-
-      <Card>
-        <SectionTitle>Notes</SectionTitle>
-        <TextInput
-          style={[
-            styles.notesInput,
-            { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-          ]}
-          multiline
-          placeholder="Ajoutez vos observations (contexte, météo, promenade avant le départ…)"
-          placeholderTextColor={colors.textSecondary}
-          value={notes}
-          onChangeText={setNotes}
+        </View>
+        <DialogLabel>DURÉE</DialogLabel>
+        {[0, 3].map((i) => (
+          <View key={i} style={styles.row}>
+            {EPISODE_DURATIONS.slice(i, i + 3).map(({ seconds, label }) => (
+              <Chip
+                key={seconds}
+                label={label}
+                selected={episodeSeconds === seconds}
+                onPress={() => setEpisodeSeconds(seconds)}
+              />
+            ))}
+          </View>
+        ))}
+        <DialogButtons
+          onCancel={() => setEpisodeOpen(false)}
+          onConfirm={addEpisode}
+          confirmLabel="AJOUTER"
+          confirmDisabled={isAddingEpisode}
         />
-        <Button label="Enregistrer les notes" onPress={saveNotes} loading={isSaving} />
-      </Card>
+      </PixelDialog>
+
+      {/* ------------------------ Modale « nouvelle particularité » ------ */}
+      <PixelDialog
+        visible={tagOpen}
+        onRequestClose={() => setTagOpen(false)}
+        title="🏷 NOUVELLE PARTICULARITÉ"
+        topOffset={insets.top + 40}>
+        <DialogLabel>ELLE SERA COCHABLE SUR TOUTES LES SESSIONS</DialogLabel>
+        <TextInput
+          value={tagLabel}
+          onChangeText={setTagLabel}
+          placeholder="Ex. Tapis de léchage"
+          placeholderTextColor={colors.textSecondary}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={addTag}
+          style={[
+            styles.tagInput,
+            { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+          ]}
+        />
+        <DialogButtons
+          onCancel={() => {
+            setTagOpen(false);
+            setTagLabel('');
+          }}
+          onConfirm={addTag}
+          confirmLabel="CRÉER"
+          confirmDisabled={!tagLabel.trim()}
+        />
+      </PixelDialog>
     </ScrollView>
   );
 }
 
-/** Bouton « voir le clip vidéo » d'un épisode. */
+/** Bouton pixel « voir le clip vidéo » d'un épisode (URL signée 1 h). */
 function ClipButton({ clipPath }: { clipPath: string }) {
   const colors = useTheme();
   const [isOpening, setIsOpening] = useState(false);
@@ -485,43 +520,80 @@ function ClipButton({ clipPath }: { clipPath: string }) {
       onPress={open}
       disabled={isOpening}
       hitSlop={8}
-      style={({ pressed }) => [
+      style={[
         styles.clipButton,
-        { backgroundColor: colors.accent, opacity: pressed || isOpening ? 0.6 : 1 },
+        { backgroundColor: colors.accent, borderColor: colors.border, opacity: isOpening ? 0.5 : 1 },
       ]}>
       {isOpening ? (
         <ActivityIndicator size="small" color={colors.accentText} />
       ) : (
-        <Play size={12} color={colors.accentText} fill={colors.accentText} />
+        <Text style={[styles.clipButtonText, { color: colors.accentText }]}>▶ CLIP</Text>
       )}
-      <Text style={[styles.clipButtonText, { color: colors.accentText }]}>Clip</Text>
     </Pressable>
   );
 }
 
+/** Petite carte de stat pixel (valeur + libellé). */
+function StatBox({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  const colors = useTheme();
+  return (
+    <View style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.statValue, { color: valueColor ?? colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   content: {
-    padding: Spacing.md,
-    gap: Spacing.md,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    paddingBottom: 48,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-  },
-  subtitle: {
     fontSize: 13,
+    lineHeight: 20,
+  },
+  label: {
+    fontSize: 8,
+    marginBottom: 4,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
     marginTop: 2,
   },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
+  statBox: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    gap: 6,
+  },
+  statValue: {
+    fontSize: 12,
+  },
+  statLabel: {
+    fontSize: 6,
+    textAlign: 'center',
   },
   episodeRow: {
     flexDirection: 'row',
@@ -529,26 +601,41 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   episodeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 2,
   },
   episodeText: {
-    fontSize: 14,
-    flexShrink: 1,
+    fontSize: 7,
+    lineHeight: 11,
     flex: 1,
+    flexShrink: 1,
+  },
+  episodeDelete: {
+    fontSize: 10,
+  },
+  episodeAction: {
+    fontSize: 7,
+  },
+  // Épisode écarté : visible mais grisé (il reste consultable, clip inclus).
+  dismissed: {
+    opacity: 0.45,
   },
   clipButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 14,
-    paddingHorizontal: 10,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
     paddingVertical: 5,
   },
   clipButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 7,
+  },
+  addEpisode: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+  },
+  addEpisodeText: {
+    fontSize: 8,
   },
   tagRow: {
     flexDirection: 'row',
@@ -556,45 +643,41 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tagChip: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   tagChipText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 8,
   },
-  addTitle: {
-    fontSize: 13,
-    marginTop: 6,
-  },
-  addKindRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  addFormRow: {
+  row: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  addInput: {
+  timeRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+  },
+  timeCol: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    alignItems: 'flex-start',
+    gap: 6,
   },
-  addInputSmall: {
-    flex: 0.6,
+  tagInput: {
+    borderWidth: 2,
+    borderRadius: 2,
+    padding: Spacing.sm,
+    fontSize: 9,
   },
-  notesInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    minHeight: 100,
-    fontSize: 15,
-    textAlignVertical: 'top',
+  saveButton: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  saveButtonText: {
+    fontSize: 9,
   },
 });

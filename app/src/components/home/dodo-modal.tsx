@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
 
 import { MapFocus } from '@/components/home/map-focus';
-import { DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import {
+  Chip,
+  DialogButtons,
+  DialogLabel,
+  DialogNotes,
+  PixelDialog,
+} from '@/components/home/pixel-dialog';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -12,17 +18,28 @@ import { spaceAt, SPACE_LABELS, type Spot } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type { NightLocation } from '@/lib/types';
 
+/** Où a-t-il dormi, relativement à la chambre (le panier donne le reste). */
 const LOCATIONS: { value: NightLocation; emoji: string; label: string }[] = [
-  { value: 'outside_room', emoji: '🚪', label: 'HORS DE LA CHAMBRE FERMÉE' },
-  { value: 'in_room', emoji: '🛋', label: 'DANS LA CHAMBRE, PAS SUR LE LIT' },
-  { value: 'on_bed', emoji: '🛏', label: 'SUR LE LIT' },
+  { value: 'in_room', emoji: '🛏', label: 'DANS LA CHAMBRE' },
+  { value: 'outside_room', emoji: '🚪', label: 'EN DEHORS' },
+  { value: 'half_half', emoji: '🌗', label: 'MOITIÉ MOITIÉ' },
 ];
 
+/** On peut noter la nuit dernière ou remonter jusqu'à 2 nuits en arrière. */
+const NIGHT_OFFSETS = [0, 1, 2] as const;
+
+/** « NUIT DU 20 » : jour du coucher pour la nuit à `offset`. */
+function nightLabel(offset: number): string {
+  const start = new Date();
+  start.setDate(start.getDate() - offset - 1);
+  return `NUIT DU ${start.getDate()}`;
+}
+
 /**
- * Nuit de dodo : où a-t-il dormi + plage horaire. Les couinements de la
- * nuit détectés par YAMNet sont des épisodes orphelins (sans session ni
- * vidéo) : on les lie par plage horaire — le compte est annoncé à la
- * sauvegarde, la timeline se lit dans le détail de la nuit.
+ * Nuit de dodo : quelle nuit + où (relativement à la chambre) + plage
+ * horaire. Les couinements de la nuit détectés par YAMNet sont des épisodes
+ * orphelins (sans session ni vidéo) : on les lie par plage horaire — le
+ * compte est annoncé à la sauvegarde, la timeline se lit dans le détail.
  */
 export function DodoModal({
   visible,
@@ -51,6 +68,7 @@ export function DodoModal({
   const colors = useTheme();
   const scheme = useColorScheme();
   const [location, setLocation] = useState<NightLocation | null>(null);
+  const [nightOffset, setNightOffset] = useState<number>(0);
   const [notes, setNotes] = useState('');
   const [bedTime, setBedTime] = useState<Date>(new Date());
   const [wakeTime, setWakeTime] = useState<Date>(new Date());
@@ -62,6 +80,7 @@ export function DodoModal({
   if (openId !== lastOpenId) {
     setLastOpenId(openId);
     setLocation(null);
+    setNightOffset(0);
     setNotes('');
     const bed = new Date();
     bed.setHours(23, 0, 0, 0);
@@ -73,10 +92,13 @@ export function DodoModal({
 
   const save = async () => {
     if (!dogId || !location) return;
-    // Le coucher est la veille dès qu'il est plus tard que le lever
-    // (23 h 00 → 08 h 00) ; les deux heures sont éditables.
+    // La nuit choisie recule lever ET coucher de `nightOffset` jours ; le
+    // coucher est la veille dès qu'il est plus tard que le lever
+    // (23 h 00 → 08 h 00). Les deux heures sont éditables.
     const started = new Date(bedTime);
     const ended = new Date(wakeTime);
+    started.setDate(started.getDate() - nightOffset);
+    ended.setDate(ended.getDate() - nightOffset);
     if (started.getTime() >= ended.getTime()) started.setDate(started.getDate() - 1);
 
     const { error } = await supabase.from('nights').insert({
@@ -115,28 +137,29 @@ export function DodoModal({
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🌙 DODO" topOffset={topOffset}>
-      <DialogLabel>OÙ A-T-IL DORMI ?</DialogLabel>
-      {LOCATIONS.map(({ value, emoji, label }) => (
-        <Pressable
-          key={value}
-          onPress={() => setLocation(value)}
-          style={[
-            styles.option,
-            {
-              backgroundColor: location === value ? colors.accent : colors.background,
-              borderColor: colors.border,
-            },
-          ]}>
-          <Text style={styles.optionEmoji}>{emoji}</Text>
-          <Text
-            style={[
-              styles.optionText,
-              { color: location === value ? colors.accentText : colors.text },
-            ]}>
-            {label}
-          </Text>
-        </Pressable>
-      ))}
+      <DialogLabel>QUELLE NUIT ?</DialogLabel>
+      <View style={styles.row}>
+        {NIGHT_OFFSETS.map((offset) => (
+          <Chip
+            key={offset}
+            label={nightLabel(offset)}
+            selected={nightOffset === offset}
+            onPress={() => setNightOffset(offset)}
+          />
+        ))}
+      </View>
+      <DialogLabel>OÙ ?</DialogLabel>
+      <View style={styles.row}>
+        {LOCATIONS.map(({ value, emoji, label }) => (
+          <Chip
+            key={value}
+            emoji={emoji}
+            label={label}
+            selected={location === value}
+            onPress={() => setLocation(value)}
+          />
+        ))}
+      </View>
       <View style={styles.basketHeader}>
         <DialogLabel>POSITION DU PANIER · {SPACE_LABELS[spaceAt(basketPos.x, basketPos.y)]}</DialogLabel>
         <Pressable onPress={onRepositionBasket} hitSlop={6}>
@@ -177,22 +200,9 @@ export function DodoModal({
 }
 
 const styles = StyleSheet.create({
-  option: {
+  row: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: Spacing.sm,
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingVertical: 10,
-    paddingHorizontal: Spacing.sm,
-  },
-  optionEmoji: {
-    fontSize: 14,
-  },
-  optionText: {
-    fontSize: 8,
-    lineHeight: 12,
-    flexShrink: 1,
   },
   basketHeader: {
     flexDirection: 'row',

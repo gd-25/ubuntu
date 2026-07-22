@@ -2,7 +2,13 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import {
+  Chip,
+  DialogButtons,
+  DialogLabel,
+  DialogNotes,
+  PixelDialog,
+} from '@/components/home/pixel-dialog';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -43,13 +49,17 @@ export function CuesModal({
 }) {
   const colors = useTheme();
   const [selected, setSelected] = useState<FakeCue[]>(['keys', 'shoes']);
+  const [notes, setNotes] = useState('');
 
   // Clés + chaussures re-sélectionnés à chaque ouverture (ajustement
   // pendant le rendu — pas de setState dans un effet).
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {
     setWasVisible(visible);
-    if (visible) setSelected(['keys', 'shoes']);
+    if (visible) {
+      setSelected(['keys', 'shoes']);
+      setNotes('');
+    }
   }
 
   const toggle = (cue: FakeCue) => {
@@ -66,6 +76,7 @@ export function CuesModal({
       kind: 'fake_cue',
       at: new Date().toISOString(),
       cues: selected,
+      notes: notes.trim() || null,
     });
     if (error) {
       Alert.alert('Erreur', `Faux signal non enregistré : ${error.message}`);
@@ -88,10 +99,11 @@ export function CuesModal({
           {todayCount}/{CUES_DAILY_GOAL} AUJOURD&apos;HUI
         </Text>
       </View>
+      {/* Grille 2 colonnes × 3 lignes (la modale s'allonge, tant mieux). */}
       <View style={styles.grid}>
-        {[0, 3].map((i) => (
+        {[0, 2, 4].map((i) => (
           <View key={i} style={styles.gridRow}>
-            {CUES.slice(i, i + 3).map(({ value, emoji, label }) => (
+            {CUES.slice(i, i + 2).map(({ value, emoji, label }) => (
               <Chip
                 key={value}
                 big
@@ -104,6 +116,8 @@ export function CuesModal({
           </View>
         ))}
       </View>
+      <DialogLabel>COMMENTAIRE</DialogLabel>
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Réaction d'Ubuntu, contexte…" />
       <DialogButtons
         onCancel={onClose}
         onConfirm={save}

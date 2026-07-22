@@ -7,6 +7,10 @@ import {
   MAGNET_SPOTS,
   solitudeTypeOf,
   spaceAt,
+  TRAIL_H,
+  TRAIL_STUB_W,
+  TRAIL_STUB_X,
+  TRAIL_Y,
   UBUNTU_MAT_SPOT,
   type Positions,
 } from '../house';
@@ -87,9 +91,15 @@ describe('points aimantés (MAGNET_SPOTS)', () => {
     }
   });
 
-  it('le dehors est quadrillé à peu près comme l’intérieur', () => {
+  it('dehors, tous les points sont sur le sentier, centrés sur sa largeur', () => {
     const outdoor = MAGNET_SPOTS.filter((s) => spaceAt(s.x, s.y) === 'dehors');
-    expect(outdoor.length).toBeGreaterThan(50);
+    expect(outdoor.length).toBeGreaterThan(5);
+    for (const s of outdoor) {
+      const onHorizontal = s.y === TRAIL_Y + TRAIL_H / 2;
+      const onStub =
+        s.x === TRAIL_STUB_X + TRAIL_STUB_W / 2 && s.y > TRAIL_Y && s.y < 401;
+      expect(onHorizontal || onStub).toBe(true);
+    }
   });
 
   it('le centre du tapis d’Ubuntu est un point aimanté', () => {

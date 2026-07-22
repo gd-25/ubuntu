@@ -1,7 +1,17 @@
 import { memo, type ReactElement } from 'react';
 import Svg, { Defs, G, Image as SvgImage, Line, Pattern, Polygon, Rect } from 'react-native-svg';
 
-import { COL, FLAT_BOTTOM, MAP_H, MAP_W, OUTSIDE_BOTTOM } from '@/lib/house';
+import {
+  COL,
+  FLAT_BOTTOM,
+  MAP_H,
+  MAP_W,
+  OUTSIDE_BOTTOM,
+  TRAIL_H,
+  TRAIL_STUB_W,
+  TRAIL_STUB_X,
+  TRAIL_Y,
+} from '@/lib/house';
 
 /**
  * Le plan de l'appartement en pixel-art SVG, standardisé sur une grille de
@@ -443,11 +453,7 @@ function CheckerTiles({
   return <G>{cells}</G>;
 }
 
-/** Sentier en L : sortie de l'immeuble à droite, puis parallèle au balcon. */
-const TRAIL_Y = 309;
-const TRAIL_H = 30;
-const TRAIL_STUB_X = 288;
-const TRAIL_STUB_W = 30;
+// Sentier en L : géométrie partagée avec les points aimantés (house.ts).
 
 export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
   const p = night ? NIGHT : DAY;
@@ -474,9 +480,11 @@ export const HouseMap = memo(function HouseMap({ night }: { night: boolean }) {
       <Rect x={0} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W} height={TRAIL_H} fill={p.path} />
       <Rect x={0} y={TRAIL_Y} width={TRAIL_STUB_X + TRAIL_STUB_W} height={3} fill={p.pathEdge} />
       <Rect x={0} y={TRAIL_Y + TRAIL_H - 3} width={TRAIL_STUB_X} height={3} fill={p.pathEdge} />
-      {/* Branche verticale : sortie de l'immeuble, à droite */}
+      {/* Branche verticale : sortie de l'immeuble, à droite. Son bord gauche
+          remonte jusqu'au bord bas de la branche horizontale pour fermer
+          l'angle droit intérieur (sinon il manque un pixel dans le coin). */}
       <Rect x={TRAIL_STUB_X} y={TRAIL_Y + 3} width={TRAIL_STUB_W} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.path} />
-      <Rect x={TRAIL_STUB_X} y={TRAIL_Y + TRAIL_H} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - TRAIL_H} fill={p.pathEdge} />
+      <Rect x={TRAIL_STUB_X} y={TRAIL_Y + TRAIL_H - 3} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - TRAIL_H + 3} fill={p.pathEdge} />
       <Rect x={TRAIL_STUB_X + TRAIL_STUB_W - 3} y={TRAIL_Y + 3} width={3} height={OUTSIDE_BOTTOM - TRAIL_Y - 3} fill={p.pathEdge} />
       {/* Une rangée d'arbres au-dessus du sentier, une en dessous — que de
           l'herbe au-dessus */}

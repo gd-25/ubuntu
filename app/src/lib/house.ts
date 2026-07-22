@@ -116,6 +116,14 @@ export const BASKET_H = 18;
 /** Position par défaut du panier : le salon, près de la table blanche. */
 export const BASKET_HOME: Spot = { x: 296, y: 489 };
 
+// ------------------------------------------------------- Sentier extérieur
+
+/** Sentier en L : branche horizontale le long du balcon + sortie d'immeuble. */
+export const TRAIL_Y = 309;
+export const TRAIL_H = 30;
+export const TRAIL_STUB_X = 288;
+export const TRAIL_STUB_W = 30;
+
 // ------------------------------------------------------- Points aimantés
 
 /**
@@ -156,23 +164,19 @@ const FURNITURE_SURFACE_SPOTS: Spot[] = [
 ];
 
 /**
- * Points extérieurs (forêt hors arbres, chemin compris) et palier : même
- * densité que l'intérieur, pour poser les avatars partout dehors aussi.
+ * Points extérieurs : UNIQUEMENT sur le sentier (pas dans l'herbe), chacun
+ * centré sur la largeur du sentier, plus la rangée du palier.
  */
-const TREES: [number, number][] = [
-  [4, 265], [64, 265], [124, 265], [184, 265], [244, 265], [306, 265],
-  [4, 341], [64, 341], [124, 341], [184, 341], [244, 341], [320, 341],
-];
-function isOnTree(x: number, y: number): boolean {
-  return TREES.some(([tx, ty]) => x >= tx - 6 && x <= tx + 34 && y >= ty - 6 && y <= ty + 46);
-}
+const TRAIL_CENTER_Y = TRAIL_Y + TRAIL_H / 2; // 324
+const TRAIL_STUB_CENTER_X = TRAIL_STUB_X + TRAIL_STUB_W / 2; // 303
 const OUTDOOR_SPOTS: Spot[] = [];
-for (let y = 9; y <= 361; y += 2 * COL) {
-  for (let x = 8; x <= 328; x += 2 * COL) {
-    if (isOnTree(x, y)) continue;
-    OUTDOOR_SPOTS.push({ x, y });
-  }
+// Branche horizontale : points au milieu du sentier, jusqu'à la sortie.
+for (let x = 16; x < TRAIL_STUB_X; x += 2 * COL) {
+  OUTDOOR_SPOTS.push({ x, y: TRAIL_CENTER_Y });
 }
+// Branche verticale (sortie de l'immeuble) : l'angle + un point en dessous.
+OUTDOOR_SPOTS.push({ x: TRAIL_STUB_CENTER_X, y: TRAIL_CENTER_Y });
+OUTDOOR_SPOTS.push({ x: TRAIL_STUB_CENTER_X, y: TRAIL_CENTER_Y + 2 * COL });
 // Palier (moquette noire, en bas) : une rangée de points au milieu.
 for (let x = 8; x <= 328; x += 2 * COL) {
   OUTDOOR_SPOTS.push({ x, y: 633 });
@@ -242,10 +246,11 @@ export const SPACE_LABELS: Record<Space, string> = {
  * son emplacement fixe pour que les avatars ne se recouvrent jamais.
  */
 export const SLOTS: Record<Space, Record<Person, { x: number; y: number }>> = {
+  // Dehors : tout le monde sur le sentier (les points aimantés y sont).
   dehors: {
-    greg: { x: 84, y: 319 },
-    fiona: { x: 170, y: 315 },
-    ubuntu: { x: 250, y: 323 },
+    greg: { x: 80, y: 324 },
+    fiona: { x: 176, y: 324 },
+    ubuntu: { x: 240, y: 324 },
   },
   balcon: {
     greg: { x: 60, y: 409 },

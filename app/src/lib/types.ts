@@ -20,6 +20,9 @@ export type DepartureState = 'asleep' | 'settled' | 'active' | 'following';
 /** Qui est parti, déduit de la position des avatars au moment du tap. */
 export type DepartureType = 'solo_greg' | 'solo_fiona' | 'duo';
 
+/** Où l'humain sera pendant la session (choisi juste après le départ). */
+export type HumanLocation = 'couloir' | 'en_bas' | 'dehors';
+
 export interface Session {
   id: string;
   dog_id: string;
@@ -34,6 +37,8 @@ export interface Session {
   is_exercise: boolean;
   /** Calculé à la clôture : dernier épisode < 30 s avant la fin de session. */
   returned_during_vocalization: boolean | null;
+  /** Où l'humain est pendant la session (couloir / en bas / dehors). */
+  human_location: HumanLocation | null;
 }
 
 export interface VocalEpisode {
@@ -48,6 +53,9 @@ export interface VocalEpisode {
   clip_path: string | null;
   /** 'agent' = détecté par YAMNet ; 'manual' = saisi par l'utilisateur. */
   source: 'agent' | 'manual';
+  /** Faux positif écarté : gardé en base (avec son clip, pour affiner
+      YAMNet plus tard) mais exclu des stats et de la frise. */
+  dismissed: boolean;
 }
 
 /** Observation comportementale pendant une session (pas une vocalise). */
@@ -119,8 +127,12 @@ export interface Activity {
   created_at: string;
 }
 
-/** Où Ubuntu a dormi cette nuit. */
-export type NightLocation = 'outside_room' | 'in_room' | 'on_bed';
+/**
+ * Où Ubuntu a dormi cette nuit, relativement à la chambre (sa position
+ * exacte est donnée par le panier). `on_bed` est un ancien choix conservé
+ * pour les nuits déjà enregistrées.
+ */
+export type NightLocation = 'outside_room' | 'in_room' | 'half_half' | 'on_bed';
 
 /**
  * Une nuit de dodo. Les vocalises de la nuit restent des épisodes orphelins
