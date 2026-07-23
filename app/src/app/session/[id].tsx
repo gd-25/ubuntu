@@ -64,6 +64,9 @@ export default function SessionDetailScreen() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  // Part de la session réellement couverte par la caméra (0..1), d'après les
+  // heartbeats « listening » de l'agent. null = inconnu (requête échouée).
+  const [coverage, setCoverage] = useState<number | null>(null);
   const [episodes, setEpisodes] = useState<VocalEpisode[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
@@ -114,16 +117,43 @@ export default function SessionDetailScreen() {
       ]);
       const row = sessionRes.data as Session | null;
       let tagRows: Tag[] = [];
+      // Couverture caméra : heartbeats « listening » de l'agent pendant la
+      // session (marge de 75 s après la fin — un heartbeat résume la minute
+      // écoulée). null si la requête échoue : on n'affiche pas de fausse alerte.
+      let cov: number | null = null;
       if (row) {
-        const { data } = await supabase
-          .from('tags')
-          .select('*')
-          .eq('dog_id', row.dog_id)
-          .order('created_at', { ascending: true });
-        tagRows = (data as Tag[] | null) ?? [];
+        const [tagsRes, beatsRes] = await Promise.all([
+          supabase
+            .from('tags')
+            .select('*')
+            .eq('dog_id', row.dog_id)
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('agent_heartbeats')
+            .select('status')
+            .eq('dog_id', row.dog_id)
+            .gte('at', row.started_at)
+            .lte(
+              'at',
+              new Date(
+                (row.ended_at ? new Date(row.ended_at).getTime() : nowMs) + 75_000
+              ).toISOString()
+            ),
+        ]);
+        tagRows = (tagsRes.data as Tag[] | null) ?? [];
+        if (!beatsRes.error && beatsRes.data) {
+          const endMs = row.ended_at ? new Date(row.ended_at).getTime() : nowMs;
+          const minutes = Math.max(
+            1,
+            Math.round((endMs - new Date(row.started_at).getTime()) / 60_000)
+          );
+          const listening = beatsRes.data.filter((b) => b.status === 'listening').length;
+          cov = Math.min(1, listening / minutes);
+        }
       }
       if (ignore) return;
       setSession(row);
+      setCoverage(cov);
       setNotes(row?.notes ?? '');
       setSummary(summaryRes.data as SessionSummary | null);
       setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
@@ -137,7 +167,7 @@ export default function SessionDetailScreen() {
     return () => {
       ignore = true;
     };
-  }, [id]);
+  }, [id, nowMs]);
 
   const toggleTag = async (tag: Tag) => {
     if (!session) return;
@@ -310,12 +340,32 @@ export default function SessionDetailScreen() {
         />
         <StatBox
           label="% CALME"
-          value={summary ? `${Math.round(summary.calm_percent)}%` : '—'}
+          value={coverage === 0 || !summary ? '—' : `${Math.round(summary.calm_percent)}%`}
           valueColor={
-            summary ? (summary.calm_percent >= 90 ? colors.success : colors.danger) : undefined
+            coverage !== 0 && summary
+              ? summary.calm_percent >= 90
+                ? colors.success
+                : colors.danger
+              : undefined
           }
         />
       </View>
+
+      {/* Caméra muette ou partiellement à l'écoute : on le dit plutôt que
+          d'afficher un « 100 % calme » qui ne repose sur rien. */}
+      {coverage !== null && coverage < 0.8 ? (
+        <View
+          style={[
+            styles.cameraWarning,
+            { borderColor: colors.danger, backgroundColor: colors.card },
+          ]}>
+          <Text style={[styles.cameraWarningText, { color: colors.danger }]}>
+            {coverage === 0
+              ? '📵 CAMÉRA MUETTE PENDANT CETTE SESSION — VOCALISES NON SURVEILLÉES'
+              : `⚠️ CAMÉRA À L'ÉCOUTE SEULEMENT ${Math.round(coverage * 100)}% DE LA SESSION`}
+          </Text>
+        </View>
+      ) : null}
 
       {/* ------------------------------------------------------- Frise */}
       <DialogLabel>CHRONOLOGIE DES VOCALISES</DialogLabel>
@@ -357,7 +407,9 @@ export default function SessionDetailScreen() {
       ))}
       {episodes.length === 0 ? (
         <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
-          AUCUNE VOCALISE PENDANT CETTE SESSION 🎉
+          {coverage === 0
+            ? 'CAMÉRA MUETTE — IMPOSSIBLE DE SAVOIR S’IL Y A EU DES VOCALISES'
+            : 'AUCUNE VOCALISE PENDANT CETTE SESSION 🎉'}
         </Text>
       ) : null}
       <Pressable onPress={() => setEpisodeOpen(true)} hitSlop={6} style={styles.addEpisode}>
@@ -594,6 +646,16 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 6,
     textAlign: 'center',
+  },
+  cameraWarning: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  cameraWarningText: {
+    fontSize: 7,
+    lineHeight: 11,
   },
   episodeRow: {
     flexDirection: 'row',
