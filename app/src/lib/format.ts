@@ -86,6 +86,16 @@ export function parisHour(iso: string): number {
   return parseInt(hour, 10);
 }
 
+/** Sortable day key like "2026-07-23" on the Paris-local date. */
+export function parisDayKey(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: PARIS_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+}
+
 /** ISO week key like "2026-S28" computed on the Paris-local date. */
 export function parisWeekKey(iso: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {

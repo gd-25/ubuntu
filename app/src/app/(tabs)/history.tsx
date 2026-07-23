@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Link, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -15,27 +16,38 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatDuration, formatTime } from '@/lib/format';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
-import type { Activity, FakeCue, Night, OverallSession, SessionSummary } from '@/lib/types';
+import type {
+  Activity,
+  FakeCue,
+  Night,
+  OverallSession,
+  SemiSoloSession,
+  SessionSummary,
+} from '@/lib/types';
 
 /** Types d'événements du journal (filtrables). */
 type EventType =
   | 'session'
+  | 'semi_solo'
   | 'walk'
   | 'meal'
   | 'mat'
   | 'fake_cue'
   | 'care'
+  | 'velcro'
   | 'night'
   | 'overall';
 
 const EVENT_DEFS: { type: EventType; emoji: string; label: string }[] = [
   { type: 'session', emoji: '🔴', label: 'SESSIONS' },
+  { type: 'semi_solo', emoji: '🧍', label: 'SEMI SOLO' },
   { type: 'night', emoji: '🌙', label: 'NUITS' },
   { type: 'walk', emoji: '🚶', label: 'SORTIES' },
   { type: 'meal', emoji: '🍖', label: 'REPAS' },
   { type: 'mat', emoji: '🐾', label: 'TAPIS' },
   { type: 'fake_cue', emoji: '🔑', label: 'FAUX SIGNAUX' },
   { type: 'overall', emoji: '🎯', label: 'OVERALL' },
+  { type: 'velcro', emoji: '🍯', label: 'VELCRO' },
   { type: 'care', emoji: '🤝', label: 'GARDES' },
 ];
 
@@ -84,7 +96,7 @@ interface FeedItem {
   /** Route du détail (éditable pour tout sauf les sessions). */
   href: Href;
   /** Table + id pour la suppression par swipe. */
-  table: 'sessions' | 'activities' | 'nights' | 'overall_sessions';
+  table: 'sessions' | 'activities' | 'nights' | 'overall_sessions' | 'semi_solo_sessions';
   id: string;
 }
 
@@ -100,13 +112,14 @@ export default function HistoryScreen() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [nights, setNights] = useState<Night[]>([]);
   const [overalls, setOveralls] = useState<OverallSession[]>([]);
+  const [semiSolos, setSemiSolos] = useState<SemiSoloSession[]>([]);
   const [enabled, setEnabled] = useState<EventType[]>(ALL_TYPES);
   const [filterOpen, setFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [sessionsRes, activitiesRes, nightsRes, overallsRes] = await Promise.all([
+    const [sessionsRes, activitiesRes, nightsRes, overallsRes, semiSolosRes] = await Promise.all([
       supabase
         .from('session_summaries')
         .select('*')
@@ -116,6 +129,11 @@ export default function HistoryScreen() {
       supabase.from('activities').select('*').order('at', { ascending: false }).limit(200),
       supabase.from('nights').select('*').order('started_at', { ascending: false }).limit(60),
       supabase.from('overall_sessions').select('*').order('at', { ascending: false }).limit(60),
+      supabase
+        .from('semi_solo_sessions')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(100),
     ]);
     if (sessionsRes.error)
       console.warn('Chargement de l’historique impossible :', sessionsRes.error.message);
@@ -123,6 +141,7 @@ export default function HistoryScreen() {
     setActivities((activitiesRes.data as Activity[] | null) ?? []);
     setNights((nightsRes.data as Night[] | null) ?? []);
     setOveralls((overallsRes.data as OverallSession[] | null) ?? []);
+    setSemiSolos((semiSolosRes.data as SemiSoloSession[] | null) ?? []);
     setIsLoading(false);
   }, []);
 
@@ -227,6 +246,36 @@ export default function HistoryScreen() {
             a.notes,
           ]),
         });
+      } else if (a.kind === 'velcro' && enabled.includes('velcro')) {
+        const seconds = a.ended_at
+          ? (new Date(a.ended_at).getTime() - new Date(a.at).getTime()) / 1000
+          : null;
+        items.push({
+          ...base,
+          type: 'velcro',
+          title: `🍯 ${formatTime(a.at)}${a.ended_at ? ` → ${formatTime(a.ended_at)}` : ''}`,
+          detail: info([
+            'pot de colle',
+            seconds != null ? formatDuration(seconds) : null,
+            a.notes,
+          ]),
+        });
+      }
+    }
+    if (enabled.includes('semi_solo')) {
+      for (const s of semiSolos) {
+        const seconds =
+          (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
+        items.push({
+          key: `ss-${s.id}`,
+          type: 'semi_solo',
+          at: s.started_at,
+          title: `🧍 ${formatTime(s.started_at)} → ${formatTime(s.ended_at)}`,
+          detail: info(['semi solo', formatDuration(seconds), s.notes]),
+          href: { pathname: '/event/[kind]/[id]', params: { kind: 'semi_solo', id: s.id } },
+          table: 'semi_solo_sessions',
+          id: s.id,
+        });
       }
     }
     if (enabled.includes('night')) {
@@ -278,7 +327,7 @@ export default function HistoryScreen() {
       else byDay.push({ title, data: [item] });
     }
     return byDay;
-  }, [summaries, activities, nights, overalls, enabled]);
+  }, [summaries, activities, nights, overalls, semiSolos, enabled]);
 
   const toggleType = useCallback((type: EventType) => {
     Haptics.selectionAsync();
@@ -316,6 +365,159 @@ export default function HistoryScreen() {
     [load]
   );
 
+  /**
+   * COPIER : l'historique du dernier mois en texte brut, pensé pour être
+   * collé dans un LLM (légende en tête, événements groupés par jour, du
+   * plus ancien au plus récent, durées et commentaires inclus).
+   */
+  const copyMonth = useCallback(async () => {
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const sinceIso = since.toISOString();
+    const dur = (startIso: string, endIso: string | null) =>
+      endIso
+        ? formatDuration((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+        : 'en cours';
+
+    // Les notes des sessions ne sont pas dans la vue session_summaries.
+    const { data: notesRows } = await supabase
+      .from('sessions')
+      .select('id, notes')
+      .gte('started_at', sinceIso)
+      .not('notes', 'is', null);
+    const sessionNotes = new Map(
+      ((notesRows as { id: string; notes: string }[] | null) ?? []).map((r) => [r.id, r.notes])
+    );
+
+    const info = (parts: (string | null | undefined | false)[]) =>
+      parts.filter(Boolean).join(', ');
+    const lines: { at: string; text: string }[] = [];
+
+    for (const s of summaries) {
+      if (s.started_at < sinceIso) continue;
+      lines.push({
+        at: s.started_at,
+        text:
+          `${formatTime(s.started_at)}–${s.ended_at ? formatTime(s.ended_at) : '?'} SESSION SOLO ` +
+          `(${dur(s.started_at, s.ended_at)}) — ${info([
+            `${s.episode_count} épisode${s.episode_count > 1 ? 's' : ''} de vocalises`,
+            `${formatDuration(s.total_vocal_seconds)} vocalisées`,
+            `${Math.round(s.calm_percent)} % calme`,
+            s.is_exercise === false && 'absence subie (pas un exercice)',
+            sessionNotes.get(s.session_id) ? `notes : ${sessionNotes.get(s.session_id)}` : null,
+          ])}`,
+      });
+    }
+    for (const s of semiSolos) {
+      if (s.started_at < sinceIso) continue;
+      lines.push({
+        at: s.started_at,
+        text:
+          `${formatTime(s.started_at)}–${formatTime(s.ended_at)} SEMI SOLO ` +
+          `(${dur(s.started_at, s.ended_at)})${s.notes ? ` — notes : ${s.notes}` : ''}`,
+      });
+    }
+    for (const a of activities) {
+      if (a.at < sinceIso) continue;
+      if (a.kind === 'walk') {
+        lines.push({
+          at: a.at,
+          text: `${formatTime(a.at)}${a.ended_at ? `–${formatTime(a.ended_at)}` : ''} SORTIE (${dur(a.at, a.ended_at)}) — ${info([
+            a.poop_small && 'petit caca',
+            a.poop_big && 'gros caca',
+            a.off_leash && 'lâché en liberté',
+            a.notes ? `notes : ${a.notes}` : null,
+          ]) || 'rien à signaler'}`,
+        });
+      } else if (a.kind === 'meal') {
+        lines.push({
+          at: a.at,
+          text: `${formatTime(a.at)} REPAS — ${info([
+            a.meal_fraction != null ? `${FRACTION_LABELS[a.meal_fraction] ?? a.meal_fraction} de la ration` : null,
+            a.meal_kind ? MEAL_KIND_LABELS[a.meal_kind] : null,
+            a.notes ? `notes : ${a.notes}` : null,
+          ])}`,
+        });
+      } else if (a.kind === 'mat') {
+        lines.push({ at: a.at, text: `${formatTime(a.at)} VISITE DU TAPIS (Ubuntu est allé de lui-même sur son tapis)` });
+      } else if (a.kind === 'fake_cue') {
+        lines.push({
+          at: a.at,
+          text: `${formatTime(a.at)} FAUX SIGNAL DE DÉPART — ${info([
+            (a.cues ?? []).map((c) => CUE_LABELS[c] ?? c).join(' + ') || null,
+            a.notes ? `notes : ${a.notes}` : null,
+          ])}`,
+        });
+      } else if (a.kind === 'care') {
+        lines.push({
+          at: a.at,
+          text: `${formatTime(a.at)} GARDE — ${info([
+            a.caregiver ? `gardé par ${a.caregiver}` : null,
+            a.duration_minutes ? formatDuration(a.duration_minutes * 60) : null,
+            a.notes ? `notes : ${a.notes}` : null,
+          ])}`,
+        });
+      } else if (a.kind === 'velcro') {
+        lines.push({
+          at: a.at,
+          text: `${formatTime(a.at)}${a.ended_at ? `–${formatTime(a.ended_at)}` : ''} VELCRO (pot de colle, ${dur(a.at, a.ended_at)})${a.notes ? ` — notes : ${a.notes}` : ''}`,
+        });
+      }
+    }
+    for (const n of nights) {
+      if (n.ended_at < sinceIso) continue;
+      lines.push({
+        at: n.ended_at,
+        text: `${formatTime(n.started_at)}–${formatTime(n.ended_at)} NUIT — ${info([
+          NIGHT_LOCATION_LABELS[n.location],
+          n.basket_space ? `panier : ${SPACE_LABELS[n.basket_space].toLowerCase()}` : null,
+          n.notes ? `notes : ${n.notes}` : null,
+        ])}`,
+      });
+    }
+    for (const o of overalls) {
+      if (o.at < sinceIso) continue;
+      lines.push({
+        at: o.at,
+        text: `${formatTime(o.at)} PROTOCOLE OVERALL — ${info([
+          `${o.duration_minutes} min`,
+          `tapis dans ${SPACE_LABELS[o.mat_space].toLowerCase()}`,
+          o.notes ? `notes : ${o.notes}` : null,
+        ])}`,
+      });
+    }
+
+    lines.sort((a, b) => (a.at < b.at ? -1 : 1));
+
+    const byDay: string[] = [];
+    let currentDay = '';
+    for (const line of lines) {
+      const day = formatDate(line.at);
+      if (day !== currentDay) {
+        currentDay = day;
+        byDay.push(`\n=== ${day} ===`);
+      }
+      byDay.push(`- ${line.text}`);
+    }
+
+    const header = [
+      `HISTORIQUE D'UBUNTU (chien) — 30 derniers jours, du ${formatDate(sinceIso)} au ${formatDate(new Date().toISOString())}.`,
+      `Contexte : Ubuntu est un chien qu'on entraîne à rester seul (anxiété de séparation). Ses vocalises sont surveillées par caméra pendant les sessions.`,
+      `Types d'événements :`,
+      `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise.`,
+      `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif 1 h/jour).`,
+      `- NUIT : où Ubuntu a dormi.`,
+      `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
+      `- FAUX SIGNAL DE DÉPART : désensibilisation (on joue avec clés/chaussures… sans partir, objectif 10/jour).`,
+      `- PROTOCOLE OVERALL : exercice de relaxation sur son tapis (objectif 1/jour).`,
+      `- VELCRO : il est « pot de colle », nous suit partout.`,
+      `- GARDE : gardé par quelqu'un d'autre.`,
+    ].join('\n');
+
+    await Clipboard.setStringAsync(`${header}\n${byDay.join('\n')}\n`);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copié !', `L'historique du dernier mois (${lines.length} événements) est dans le presse-papier.`);
+  }, [summaries, activities, nights, overalls, semiSolos]);
+
   const filterCount = enabled.length;
 
   return (
@@ -325,16 +527,26 @@ export default function HistoryScreen() {
         <ScreenTitle
           title="JOURNAL"
           right={
-            <Pressable
-              onPress={() => setFilterOpen(true)}
-              style={[
-                styles.filterButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}>
-              <Text style={[styles.filterButtonText, { color: colors.text }]}>
-                ⚙ FILTRER{filterCount < ALL_TYPES.length ? ` (${filterCount})` : ''}
-              </Text>
-            </Pressable>
+            <View style={styles.headerButtons}>
+              <Pressable
+                onPress={copyMonth}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}>
+                <Text style={[styles.filterButtonText, { color: colors.text }]}>⧉ COPIER</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setFilterOpen(true)}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}>
+                <Text style={[styles.filterButtonText, { color: colors.text }]}>
+                  ⚙ FILTRER{filterCount < ALL_TYPES.length ? ` (${filterCount})` : ''}
+                </Text>
+              </Pressable>
+            </View>
           }
         />
       </View>
@@ -374,7 +586,7 @@ export default function HistoryScreen() {
         title="⚙ FILTRER LE JOURNAL"
         topOffset={insets.top + 40}>
         <DialogLabel>AFFICHER…</DialogLabel>
-        {[0, 2, 4, 6].map((i) => (
+        {[0, 2, 4, 6, 8].map((i) => (
           <View key={i} style={styles.filterRow}>
             {EVENT_DEFS.slice(i, i + 2).map(({ type, emoji, label }) => (
               <Chip
@@ -501,6 +713,10 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     paddingHorizontal: Spacing.md,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 6,
   },
   filterButton: {
     borderWidth: 2,

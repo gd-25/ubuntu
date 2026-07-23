@@ -156,8 +156,8 @@ const SDB_WC_SPOTS: Spot[] = [
 /** Places sur les meubles praticables : réservées aux avatars. */
 const FURNITURE_SURFACE_SPOTS: Spot[] = [
   { x: 1.5 * COL, y: GRID_TOP + 1.5 * COL }, // centre du tapis du bureau
-  { x: 152, y: 505 }, // lit, côté oreiller
-  { x: 152, y: 528 }, // lit, pied du lit
+  { x: 140, y: 516 }, // lit, côté gauche
+  { x: 164, y: 516 }, // lit, côté droit
   { x: 330, y: 552 }, // canapé, place haute
   { x: 330, y: 565 }, // canapé, place du milieu
   { x: 330, y: 578 }, // canapé, place basse

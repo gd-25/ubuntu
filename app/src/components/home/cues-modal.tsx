@@ -15,7 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 import type { FakeCue } from '@/lib/types';
 
-export const CUES_DAILY_GOAL = 15;
+export const CUES_DAILY_GOAL = 10;
 
 const CUES: { value: FakeCue; emoji: string; label: string }[] = [
   { value: 'keys', emoji: '🔑', label: 'CLÉS' },
@@ -29,7 +29,7 @@ const CUES: { value: FakeCue; emoji: string; label: string }[] = [
 /**
  * Faux signal de départ : on joue avec les objets déclencheurs sans partir
  * (désensibilisation). Clés + chaussures pré-sélectionnés, objectif
- * 15 par jour.
+ * 10 par jour.
  */
 export function CuesModal({
   visible,
@@ -42,7 +42,7 @@ export function CuesModal({
   visible: boolean;
   topOffset: number;
   dogId: string | null;
-  /** Faux signaux déjà notés aujourd'hui (pour l'objectif 15/jour). */
+  /** Faux signaux déjà notés aujourd'hui (pour l'objectif 10/jour). */
   todayCount: number;
   onClose: () => void;
   onSaved: (message: string) => void;

@@ -59,7 +59,7 @@ export function BarChart({
               key={'v' + point.label + i}
               x={i * slot + slot / 2}
               y={PADDING_TOP + PLOT_HEIGHT - (point.value / max) * PLOT_HEIGHT - 5}
-              fontSize={10}
+              fontSize={7}
               fontFamily={APP_FONT}
               fill={colors.textSecondary}
               textAnchor="middle">
@@ -71,7 +71,7 @@ export function BarChart({
               key={'l' + point.label + i}
               x={i * slot + slot / 2}
               y={CHART_HEIGHT - 8}
-              fontSize={10}
+              fontSize={7}
               fontFamily={APP_FONT}
               fill={colors.textSecondary}
               textAnchor="middle">
@@ -130,7 +130,7 @@ export function LineChart({
                 key={'l' + i}
                 x={xOf(i)}
                 y={CHART_HEIGHT - 8}
-                fontSize={10}
+                fontSize={7}
               fontFamily={APP_FONT}
                 fill={colors.textSecondary}
                 textAnchor="middle">
@@ -141,7 +141,7 @@ export function LineChart({
           <SvgText
             x={4}
             y={PADDING_TOP - 4}
-            fontSize={10}
+            fontSize={7}
               fontFamily={APP_FONT}
             fill={colors.textSecondary}
             textAnchor="start">
@@ -160,6 +160,7 @@ export function ChartCaption({ children }: { children: string }) {
 
 const styles = StyleSheet.create({
   caption: {
-    fontSize: 12,
+    fontSize: 8,
+    lineHeight: 13,
   },
 });

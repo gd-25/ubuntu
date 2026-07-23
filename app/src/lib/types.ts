@@ -94,9 +94,10 @@ export interface SessionTag {
 
 /**
  * 'mat' = Ubuntu est allé sur son tapis (comportement qu'on encourage).
- * 'fake_cue' = faux signaux de départ (objectif 15/jour). 'care' = garde.
+ * 'fake_cue' = faux signaux de départ (objectif 10/jour). 'care' = garde.
+ * 'velcro' = pot de colle (il nous suit partout, début/fin + notes).
  */
-export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'fake_cue' | 'care' | 'other';
+export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'fake_cue' | 'care' | 'velcro' | 'other';
 
 /** Objets joués pendant un faux signal de départ. */
 export type FakeCue = 'keys' | 'shoes' | 'socks' | 'elevator' | 'stairs' | 'gate';
@@ -175,6 +176,27 @@ export interface OverallSession {
   mat_x: number;
   mat_y: number;
   mat_space: Space;
+  created_at: string;
+}
+
+/**
+ * Session semi solo saisie a posteriori : Ubuntu seul dans une pièce
+ * pendant qu'un humain est dans une autre. Juste début, fin et notes.
+ */
+export interface SemiSoloSession {
+  id: string;
+  dog_id: string;
+  started_at: string;
+  ended_at: string;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Idée d'amélioration de l'app, saisie dans Réglages (simple stockage). */
+export interface AppImprovement {
+  id: string;
+  dog_id: string;
+  content: string;
   created_at: string;
 }
 

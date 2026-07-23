@@ -11,7 +11,15 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
-import type { Activity, FakeCue, MealKind, Night, NightLocation, OverallSession } from '@/lib/types';
+import type {
+  Activity,
+  FakeCue,
+  MealKind,
+  Night,
+  NightLocation,
+  OverallSession,
+  SemiSoloSession,
+} from '@/lib/types';
 
 const MEAL_FRACTIONS = [
   { value: 0.25, label: '¼' },
@@ -58,6 +66,7 @@ const ACTIVITY_TITLES: Record<string, string> = {
   mat: '🐾 VISITE DU TAPIS',
   fake_cue: '🔑 FAUX SIGNAL',
   care: '🤝 GARDE',
+  velcro: '🍯 VELCRO',
   play: '🎾 JEU',
   other: '📝 ACTIVITÉ',
 };
@@ -83,6 +92,7 @@ export default function EventDetailScreen() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [night, setNight] = useState<Night | null>(null);
   const [overall, setOverall] = useState<OverallSession | null>(null);
+  const [semiSolo, setSemiSolo] = useState<SemiSoloSession | null>(null);
 
   // Champs éditables (initialisés au chargement de la ligne).
   const [startTime, setStartTime] = useState<Date>(new Date());
@@ -142,6 +152,18 @@ export default function EventDetailScreen() {
         setStartTime(new Date(row.at));
         setNotes(row.notes ?? '');
         setDuration(row.duration_minutes);
+      } else if (kind === 'semi_solo') {
+        const { data } = await supabase
+          .from('semi_solo_sessions')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        const row = data as SemiSoloSession | null;
+        if (!row) return;
+        setSemiSolo(row);
+        setStartTime(new Date(row.started_at));
+        setEndTime(new Date(row.ended_at));
+        setNotes(row.notes ?? '');
       }
     })();
   }, [kind, id]);
@@ -194,6 +216,18 @@ export default function EventDetailScreen() {
           notes: notes.trim() || null,
         })
         .eq('id', overall.id));
+    } else if (kind === 'semi_solo' && semiSolo) {
+      const started = withTime(new Date(semiSolo.started_at), startTime);
+      const ended = withTime(new Date(semiSolo.ended_at), endTime);
+      if (started.getTime() >= ended.getTime()) started.setDate(started.getDate() - 1);
+      ({ error } = await supabase
+        .from('semi_solo_sessions')
+        .update({
+          started_at: started.toISOString(),
+          ended_at: ended.toISOString(),
+          notes: notes.trim() || null,
+        })
+        .eq('id', semiSolo.id));
     }
     if (error) {
       Alert.alert('Erreur', `Modification impossible : ${error.message}`);
@@ -205,7 +239,13 @@ export default function EventDetailScreen() {
 
   const remove = () => {
     const table =
-      kind === 'activity' ? 'activities' : kind === 'night' ? 'nights' : 'overall_sessions';
+      kind === 'activity'
+        ? 'activities'
+        : kind === 'night'
+          ? 'nights'
+          : kind === 'semi_solo'
+            ? 'semi_solo_sessions'
+            : 'overall_sessions';
     Alert.alert('Supprimer cette entrée ?', 'Cette action est définitive.', [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -229,14 +269,20 @@ export default function EventDetailScreen() {
       ? '🌙 NUIT'
       : kind === 'overall'
         ? '🎯 SESSION OVERALL'
-        : ACTIVITY_TITLES[activity?.kind ?? ''] ?? '…';
+        : kind === 'semi_solo'
+          ? '🧍 SEMI SOLO'
+          : ACTIVITY_TITLES[activity?.kind ?? ''] ?? '…';
 
-  const loaded = activity || night || overall;
+  const loaded = activity || night || overall || semiSolo;
 
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.content}>
+      contentContainerStyle={styles.content}
+      // Les notes vivent en bas de la sheet : la ScrollView se rehausse
+      // avec le clavier pour garder le champ (et son curseur) visible.
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled">
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
       {!loaded ? (
         <Text style={[styles.label, { color: colors.textSecondary }]}>CHARGEMENT…</Text>
@@ -246,7 +292,13 @@ export default function EventDetailScreen() {
           <View style={styles.timeRow}>
               <View style={styles.timeCol}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  {kind === 'night' ? 'COUCHER' : hasEnd ? 'DÉPART' : 'HEURE'}
+                  {kind === 'night'
+                    ? 'COUCHER'
+                    : kind === 'semi_solo'
+                      ? 'DÉBUT'
+                      : hasEnd
+                        ? 'DÉPART'
+                        : 'HEURE'}
                 </Text>
                 <DateTimePicker
                   value={startTime}
@@ -258,10 +310,10 @@ export default function EventDetailScreen() {
                   }}
                 />
               </View>
-              {kind === 'night' || hasEnd ? (
+              {kind === 'night' || kind === 'semi_solo' || hasEnd ? (
                 <View style={styles.timeCol}>
                   <Text style={[styles.label, { color: colors.textSecondary }]}>
-                    {kind === 'night' ? 'LEVER' : 'ARRIVÉE'}
+                    {kind === 'night' ? 'LEVER' : kind === 'semi_solo' ? 'FIN' : 'ARRIVÉE'}
                   </Text>
                   <DateTimePicker
                     value={endTime}

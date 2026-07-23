@@ -1,13 +1,13 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BarChart, ChartCaption, LineChart, type ChartPoint } from '@/components/charts';
 import { ScreenTitle } from '@/components/screen-title';
 import { Card, EmptyState, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDuration, parisHour, parisWeekKey, PARIS_TZ } from '@/lib/format';
+import { formatDuration, parisDayKey, parisHour, parisWeekKey, PARIS_TZ } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { SessionSummary } from '@/lib/types';
 
@@ -40,6 +40,27 @@ export default function TrendsScreen() {
     await load();
     setIsRefreshing(false);
   }, [load]);
+
+  // Minutes de solitude (sessions SOLO, pas semi solo) par jour — objectif
+  // 15 min/j, les 14 derniers jours avec au moins une session.
+  const dailySoloMinutes: ChartPoint[] = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const s of summaries) {
+      if (!s.ended_at) continue;
+      const key = parisDayKey(s.started_at);
+      const minutes =
+        (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60_000;
+      byDay.set(key, (byDay.get(key) ?? 0) + minutes);
+    }
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-14)
+      .map(([key, minutes]) => ({
+        // key = AAAA-MM-JJ → libellé JJ/MM.
+        label: `${key.slice(8, 10)}/${key.slice(5, 7)}`,
+        value: Math.round(minutes),
+      }));
+  }, [summaries]);
 
   // Weekly average of vocal seconds per session (last 8 weeks with data).
   const weeklyVocal: ChartPoint[] = useMemo(() => {
@@ -94,11 +115,15 @@ export default function TrendsScreen() {
   const hasData = summaries.length > 0;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}>
-      <ScreenTitle title="Tendances" />
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* Titre fixe, même composant que le Journal. */}
+      <View style={styles.titleWrap}>
+        <ScreenTitle title="STATS" />
+      </View>
+      <ScrollView
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}>
       {!hasData && !isLoading ? (
         <EmptyState
           title="Pas encore de tendances"
@@ -106,6 +131,25 @@ export default function TrendsScreen() {
         />
       ) : (
         <>
+          <Card>
+            <SectionTitle>Minutes solo par jour</SectionTitle>
+            {dailySoloMinutes.length > 0 ? (
+              <>
+                <BarChart
+                  data={dailySoloMinutes}
+                  formatValue={(v) => `${v}`}
+                  color={colors.success}
+                />
+                <ChartCaption>
+                  Minutes passées seul (sessions SOLO, pas semi solo) par jour — objectif
+                  15 min par jour.
+                </ChartCaption>
+              </>
+            ) : (
+              <ChartCaption>Pas encore de session terminée.</ChartCaption>
+            )}
+          </Card>
+
           <Card>
             <SectionTitle>Vocalises par session — moyenne hebdo</SectionTitle>
             {weeklyVocal.length > 0 ? (
@@ -149,13 +193,21 @@ export default function TrendsScreen() {
           </Card>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  titleWrap: {
+    paddingHorizontal: Spacing.md,
+  },
   content: {
     padding: Spacing.md,
+    paddingTop: Spacing.xs,
     gap: Spacing.md,
     flexGrow: 1,
     paddingBottom: 112,

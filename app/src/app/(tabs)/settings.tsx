@@ -9,10 +9,10 @@ import { Button, Card, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
-import { formatDateTime, secondsSince } from '@/lib/format';
+import { formatDate, formatDateTime, formatTime, secondsSince } from '@/lib/format';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
-import type { AgentHeartbeat, Tag } from '@/lib/types';
+import type { AgentHeartbeat, AppImprovement, Tag } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
@@ -30,6 +30,9 @@ export default function SettingsScreen() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [newTagLabel, setNewTagLabel] = useState('');
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [improvements, setImprovements] = useState<AppImprovement[]>([]);
+  const [improvementText, setImprovementText] = useState('');
+  const [isSavingImprovement, setIsSavingImprovement] = useState(false);
 
   // Sync the input with the loaded dog name (state adjusted during render,
   // see https://react.dev/learn/you-might-not-need-an-effect).
@@ -82,6 +85,62 @@ export default function SettingsScreen() {
       ignore = true;
     };
   }, [dog]);
+
+  // Idées d'amélioration de l'app (simple stockage en base).
+  useEffect(() => {
+    if (!dog) return;
+    let ignore = false;
+    supabase
+      .from('app_improvements')
+      .select('*')
+      .eq('dog_id', dog.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data, error }) => {
+        if (error) console.warn('Chargement des améliorations impossible :', error.message);
+        if (!ignore) setImprovements((data as AppImprovement[] | null) ?? []);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [dog]);
+
+  const addImprovement = async () => {
+    if (!dog) return;
+    const content = improvementText.trim();
+    if (!content) return;
+    setIsSavingImprovement(true);
+    const { data, error } = await supabase
+      .from('app_improvements')
+      .insert({ dog_id: dog.id, content })
+      .select()
+      .single();
+    setIsSavingImprovement(false);
+    if (error) {
+      Alert.alert('Erreur', `Note non enregistrée : ${error.message}`);
+      return;
+    }
+    setImprovements((prev) => [data as AppImprovement, ...prev]);
+    setImprovementText('');
+  };
+
+  const removeImprovement = (item: AppImprovement) => {
+    Alert.alert('Supprimer cette note ?', item.content, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('app_improvements').delete().eq('id', item.id);
+          if (error) {
+            Alert.alert('Erreur', `Suppression impossible : ${error.message}`);
+            return;
+          }
+          setImprovements((prev) => prev.filter((i) => i.id !== item.id));
+        },
+      },
+    ]);
+  };
 
   const addTag = async () => {
     if (!dog) return;
@@ -157,10 +216,16 @@ export default function SettingsScreen() {
       : lastHeartbeat.status;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}>
-      <ScreenTitle title="Réglages" />
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* Titre fixe, même composant que le Journal. */}
+      <View style={styles.titleWrap}>
+        <ScreenTitle title="RÉGLAGES" />
+      </View>
+      <ScrollView
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled">
       <Card>
         <SectionTitle>Mon chien</SectionTitle>
         <TextInput
@@ -259,6 +324,49 @@ export default function SettingsScreen() {
         <Button label="Actualiser" variant="secondary" onPress={loadHeartbeat} />
       </Card>
 
+      {dog ? (
+        <Card>
+          <SectionTitle>Améliorations de l&apos;app</SectionTitle>
+          <Text style={[styles.body, { color: colors.textSecondary }]}>
+            Une idée, un truc qui agace ? Notez-la ici — elle est juste stockée pour les
+            prochaines évolutions.
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              styles.improvementInput,
+              { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+            ]}
+            placeholder="Ex. Le bouton SOLO est trop petit…"
+            placeholderTextColor={colors.textSecondary}
+            value={improvementText}
+            onChangeText={setImprovementText}
+            multiline
+            returnKeyType="done"
+            submitBehavior="blurAndSubmit"
+          />
+          <Button
+            label="Enregistrer la note"
+            onPress={addImprovement}
+            loading={isSavingImprovement}
+            disabled={!improvementText.trim()}
+          />
+          {improvements.map((item) => (
+            <View key={item.id} style={styles.tagRow}>
+              <Text style={[styles.body, { color: colors.text, flex: 1 }]}>
+                {item.content}
+                <Text style={[styles.improvementDate, { color: colors.textSecondary }]}>
+                  {'  '}· {formatDate(item.created_at)} {formatTime(item.created_at)}
+                </Text>
+              </Text>
+              <Pressable onPress={() => removeImprovement(item)} hitSlop={8}>
+                <X size={14} color={colors.danger} />
+              </Pressable>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       <Card>
         <SectionTitle>Compte</SectionTitle>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
@@ -266,7 +374,8 @@ export default function SettingsScreen() {
         </Text>
         <Button label="Se déconnecter" variant="danger" onPress={signOut} />
       </Card>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -281,21 +390,36 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  titleWrap: {
+    paddingHorizontal: Spacing.md,
+  },
   content: {
     padding: Spacing.md,
+    paddingTop: Spacing.xs,
     gap: Spacing.md,
     paddingBottom: 112,
   },
+  // Typo alignée sur le Journal et les bottom sheets (police pixel : 8-9).
   input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 9,
+  },
+  improvementInput: {
+    minHeight: 52,
+    lineHeight: 14,
+  },
+  improvementDate: {
+    fontSize: 6.5,
   },
   body: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 8,
+    lineHeight: 13,
   },
   agentInfo: {
     gap: 6,
@@ -324,8 +448,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   addTagButton: {
-    borderRadius: 10,
-    padding: 11,
+    borderRadius: 2,
+    padding: 9,
     alignItems: 'center',
     justifyContent: 'center',
   },

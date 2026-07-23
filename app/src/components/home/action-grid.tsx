@@ -3,14 +3,15 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { CUES_DAILY_GOAL } from '@/components/home/cues-modal';
 import { OVERALL_DAILY_GOAL } from '@/components/home/overall-modal';
+import { SEMI_SOLO_DAILY_GOAL_MINUTES } from '@/components/home/semi-solo-modal';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * L'écran d'accueil comme outil de travail : le bouton SOLO (lancement
- * instantané d'une session de solitude) et les six actions du quotidien,
- * dans l'espace vert au-dessus de la forêt.
+ * instantané d'une session de solitude) et les actions du quotidien,
+ * dans l'espace vert au-dessus de la forêt (5 + 4 boutons).
  */
 /** Objectif quotidien de solitude (minutes) — codé en dur pour l'instant. */
 export const SOLO_DAILY_GOAL_MINUTES = 15;
@@ -20,37 +21,45 @@ export function ActionGrid({
   onFeed,
   onSortie,
   onDodo,
+  onVelcro,
   onCues,
   onOverall,
+  onSemiSolo,
   onGarde,
   todayCues,
   todayOveralls,
+  todaySemiSoloMinutes,
   todaySoloMinutes,
 }: {
   onSolo: () => void;
   onFeed: () => void;
   onSortie: () => void;
   onDodo: () => void;
+  onVelcro: () => void;
   onCues: () => void;
   onOverall: () => void;
+  onSemiSolo: () => void;
   onGarde: () => void;
   todayCues: number;
   todayOveralls: number;
+  /** Minutes de semi solo cumulées aujourd'hui (objectif 1 h/j). */
+  todaySemiSoloMinutes: number;
   /** Minutes de solitude cumulées aujourd'hui (objectif 15 min/j). */
   todaySoloMinutes: number;
 }) {
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.grid}>
       <View style={styles.row}>
-        <ActionButton emoji="🍖" label="NOURRITURE" onPress={onFeed} />
+        <ActionButton emoji="🍖" label="MANGER" onPress={onFeed} />
         <ActionButton emoji="🚶" label="SORTIE" onPress={onSortie} />
         <ActionButton emoji="🌙" label="DODO" onPress={onDodo} />
+        <ActionButton emoji="🍯" label="VELCRO" onPress={onVelcro} />
         <ActionButton emoji="🤝" label="GARDE" onPress={onGarde} />
       </View>
       <View style={styles.row}>
         <ActionButton
           emoji="🔑"
-          label="FAUX SIGNAUX"
+          label="FAUX SIGN."
           badge={`${todayCues}/${CUES_DAILY_GOAL}`}
           badgeDone={todayCues >= CUES_DAILY_GOAL}
           onPress={onCues}
@@ -61,6 +70,13 @@ export function ActionGrid({
           badge={`${todayOveralls}/${OVERALL_DAILY_GOAL}`}
           badgeDone={todayOveralls >= OVERALL_DAILY_GOAL}
           onPress={onOverall}
+        />
+        <ActionButton
+          emoji="🧍"
+          label="SEMI SOLO"
+          badge={`${todaySemiSoloMinutes}/${SEMI_SOLO_DAILY_GOAL_MINUTES} MIN`}
+          badgeDone={todaySemiSoloMinutes >= SEMI_SOLO_DAILY_GOAL_MINUTES}
+          onPress={onSemiSolo}
         />
         <ActionButton
           emoji="🚪"
@@ -101,7 +117,13 @@ function ActionButton({
         },
       ]}>
       <Text style={styles.buttonEmoji}>{emoji}</Text>
-      <Text style={[styles.buttonText, { color: colors.text }]} numberOfLines={1}>
+      {/* La police rétrécit un peu si le libellé déborde (FAUX SIGNAUX à
+          4 boutons par ligne). */}
+      <Text
+        style={[styles.buttonText, { color: colors.text }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}>
         {label}
       </Text>
       {badge ? (

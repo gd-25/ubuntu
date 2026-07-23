@@ -14,8 +14,10 @@ import { DodoModal } from '@/components/home/dodo-modal';
 import { FeedModal } from '@/components/home/feed-modal';
 import { GardeModal } from '@/components/home/garde-modal';
 import { OverallModal, type MatPlacement } from '@/components/home/overall-modal';
+import { SemiSoloModal } from '@/components/home/semi-solo-modal';
 import { SoloPicker } from '@/components/home/solo-picker';
 import { SortieModal } from '@/components/home/sortie-modal';
+import { VelcroModal } from '@/components/home/velcro-modal';
 import { HouseMap } from '@/components/house-map';
 import { MapObject, type MapObjectKind } from '@/components/map-object';
 import { StatusBadge, type AgentDisplayStatus } from '@/components/status-badge';
@@ -118,16 +120,19 @@ export default function HouseScreen() {
   const [basketPlacing, setBasketPlacing] = useState(false);
   const [cuesOpen, setCuesOpen] = useState(false);
   const [gardeOpen, setGardeOpen] = useState(false);
+  const [velcroOpen, setVelcroOpen] = useState(false);
+  const [semiSoloOpen, setSemiSoloOpen] = useState(false);
   /** Mode placement Overall : le tapis clignote et se laisse déplacer. */
   const [overallPlacing, setOverallPlacing] = useState(false);
   /** Tapis posé : la modale de session Overall s'ouvre sur cette position. */
   const [overallPlacement, setOverallPlacement] = useState<MatPlacement | null>(null);
   /** Mini-picker d'état au départ, affiché juste après le lancement SOLO. */
   const [soloPickerFor, setSoloPickerFor] = useState<string | null>(null);
-  /** Compteurs du jour pour les objectifs (faux signaux 15/j, Overall 2/j,
-      minutes de solitude 15 min/j). */
+  /** Compteurs du jour pour les objectifs (faux signaux 10/j, Overall 1/j,
+      semi solo 60 min/j, minutes de solitude 15 min/j). */
   const [todayCues, setTodayCues] = useState(0);
   const [todayOveralls, setTodayOveralls] = useState(0);
+  const [todaySemiSoloMinutes, setTodaySemiSoloMinutes] = useState(0);
   const [todaySoloMinutes, setTodaySoloMinutes] = useState(0);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
@@ -174,8 +179,17 @@ export default function HouseScreen() {
     if (!dog) return null;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const [posRes, objectRes, heartbeatRes, sessionRes, walkRes, cuesRes, overallRes, soloRes] =
-      await Promise.all([
+    const [
+      posRes,
+      objectRes,
+      heartbeatRes,
+      sessionRes,
+      walkRes,
+      cuesRes,
+      overallRes,
+      semiSoloRes,
+      soloRes,
+    ] = await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase.from('object_positions').select('*').eq('dog_id', dog.id),
       supabase
@@ -210,6 +224,11 @@ export default function HouseScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('dog_id', dog.id)
         .gte('at', todayStart.toISOString()),
+      supabase
+        .from('semi_solo_sessions')
+        .select('started_at, ended_at')
+        .eq('dog_id', dog.id)
+        .gte('started_at', todayStart.toISOString()),
       supabase
         .from('sessions')
         .select('started_at, ended_at')
@@ -251,6 +270,14 @@ export default function HouseScreen() {
         return sum + Math.max(0, end - new Date(s.started_at).getTime()) / 1000;
       }, 0);
 
+    // Minutes de semi solo cumulées aujourd'hui (objectif 1 h/jour).
+    const semiSoloSeconds = ((semiSoloRes.data as { started_at: string; ended_at: string }[] | null) ?? [])
+      .reduce(
+        (sum, s) =>
+          sum + Math.max(0, new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000,
+        0
+      );
+
     return {
       positions: nextPositions,
       objects: nextObjects,
@@ -260,6 +287,7 @@ export default function HouseScreen() {
       walk: (walkRes.data?.[0] as Activity | undefined) ?? null,
       todayCues: cuesRes.count ?? 0,
       todayOveralls: overallRes.count ?? 0,
+      todaySemiSoloMinutes: Math.round(semiSoloSeconds / 60),
       todaySoloMinutes: Math.round(soloSeconds / 60),
     };
   }, [dog]);
@@ -278,6 +306,7 @@ export default function HouseScreen() {
         setActiveWalk(snapshot.walk);
         setTodayCues(snapshot.todayCues);
         setTodayOveralls(snapshot.todayOveralls);
+        setTodaySemiSoloMinutes(snapshot.todaySemiSoloMinutes);
         setTodaySoloMinutes(snapshot.todaySoloMinutes);
       });
       return () => {
@@ -570,6 +599,8 @@ export default function HouseScreen() {
   /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
   const handleDrop = useCallback(
     (person: Person, space: Space, x: number, y: number) => {
+      // Gros haptique à CHAQUE lâcher (les petits accompagnent le drag).
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       // Tapis d'Ubuntu : chaque ARRIVÉE sur le tapis compte une visite
       // (pas les re-lâchers dessus, ni les autres avatars) — où que le
       // tapis soit posé sur le plan.
@@ -582,7 +613,6 @@ export default function HouseScreen() {
       if (prev[person] === space) return;
       const next = { ...prev, [person]: space };
       setPositions(next);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       persistPosition(person, space);
 
       const transition = computeTransition(prev, next);
@@ -868,11 +898,14 @@ export default function HouseScreen() {
             onFeed={() => setFeedOpen(true)}
             onSortie={() => setSortieOpen(true)}
             onDodo={openDodo}
+            onVelcro={() => setVelcroOpen(true)}
             onCues={() => setCuesOpen(true)}
             onOverall={startOverallPlacing}
+            onSemiSolo={() => setSemiSoloOpen(true)}
             onGarde={() => setGardeOpen(true)}
             todayCues={todayCues}
             todayOveralls={todayOveralls}
+            todaySemiSoloMinutes={todaySemiSoloMinutes}
             todaySoloMinutes={todaySoloMinutes}
           />
         </View>
@@ -1116,6 +1149,24 @@ export default function HouseScreen() {
         dogId={dog?.id ?? null}
         onClose={() => setGardeOpen(false)}
         onSaved={showToast}
+      />
+      <VelcroModal
+        visible={velcroOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        onClose={() => setVelcroOpen(false)}
+        onSaved={showToast}
+      />
+      <SemiSoloModal
+        visible={semiSoloOpen}
+        topOffset={panelTop}
+        dogId={dog?.id ?? null}
+        todayMinutes={todaySemiSoloMinutes}
+        onClose={() => setSemiSoloOpen(false)}
+        onSaved={(message, minutes) => {
+          setTodaySemiSoloMinutes((n) => n + minutes);
+          showToast(message);
+        }}
       />
 
       {/* Récap de fin de session */}

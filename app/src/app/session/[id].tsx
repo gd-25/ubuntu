@@ -319,7 +319,11 @@ export default function SessionDetailScreen() {
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.content}>
+      contentContainerStyle={styles.content}
+      // L'input des notes vit tout en bas de la sheet : quand le clavier
+      // s'ouvre, la ScrollView se rehausse pour garder le champ visible.
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled">
       <Text style={[styles.title, { color: colors.text }]}>
         🔴 {formatDateTime(session.started_at).toUpperCase()}
       </Text>

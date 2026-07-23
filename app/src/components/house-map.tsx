@@ -197,7 +197,8 @@ const NIGHT: Palette = {
   blanket: '#32508A',
   sofa: '#324E80',
   sofaDark: '#263A60',
-  window: '#F0D878',
+  // Fenêtres bleu nuit (pas de lumière jaune allumée derrière les vitres).
+  window: '#2A3C64',
   flower1: '#A8A050',
   flower2: '#986068',
 };

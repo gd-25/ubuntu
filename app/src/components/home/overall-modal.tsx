@@ -16,7 +16,7 @@ import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type { Space } from '@/lib/types';
 
-export const OVERALL_DAILY_GOAL = 2;
+export const OVERALL_DAILY_GOAL = 1;
 
 const DURATIONS = [2, 5, 10, 15, 20, 30] as const;
 
@@ -31,7 +31,7 @@ export interface MatPlacement {
  * Session du protocole Overall, ouverte une fois le tapis posé sur le
  * plan : durée, friandises données, observations. La position du tapis
  * est la variable de généralisation (réussit-il partout ?). Objectif
- * 2 par jour.
+ * 1 par jour.
  */
 export function OverallModal({
   visible,
@@ -46,7 +46,7 @@ export function OverallModal({
   topOffset: number;
   dogId: string | null;
   placement: MatPlacement | null;
-  /** Sessions Overall déjà notées aujourd'hui (objectif 2/jour). */
+  /** Sessions Overall déjà notées aujourd'hui (objectif 1/jour). */
   todayCount: number;
   onClose: () => void;
   onSaved: (message: string) => void;

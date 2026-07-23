@@ -76,7 +76,7 @@ export function FeedModal({
   };
 
   return (
-    <PixelDialog visible={visible} onRequestClose={onClose} title="🍖 NOURRITURE" topOffset={topOffset}>
+    <PixelDialog visible={visible} onRequestClose={onClose} title="🍖 MANGER" topOffset={topOffset}>
       <DialogLabel>QUOI ?</DialogLabel>
       <View style={styles.row}>
         {MEAL_KINDS.map(({ value, emoji, label }) => (
