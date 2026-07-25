@@ -3,6 +3,13 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=ecggmoualhaafcdbthke"
+    },
+    "supabase-db": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a; [ -f .env ] && . ./.env; [ -f app/.env ] && . ./app/.env; set +a; exec npx -y @supabase/mcp-server-postgrest@latest --apiUrl https://ecggmoualhaafcdbthke.supabase.co/rest/v1 --apiKey \"$SUPABASE_SERVICE_ROLE_KEY\" --schema public"
+      ]
     }
   }
 }
