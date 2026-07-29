@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { formatDate, formatDateTime, formatTime, secondsSince } from '@/lib/format';
+import { DEFAULT_GOALS, fetchGoals, saveGoals } from '@/lib/goals';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import type { AgentHeartbeat, AppImprovement, Tag } from '@/lib/types';
@@ -33,6 +34,14 @@ export default function SettingsScreen() {
   const [improvements, setImprovements] = useState<AppImprovement[]>([]);
   const [improvementText, setImprovementText] = useState('');
   const [isSavingImprovement, setIsSavingImprovement] = useState(false);
+  /** Objectifs quotidiens, édités en texte (validés à l'enregistrement). */
+  const [goalInputs, setGoalInputs] = useState({
+    cues: String(DEFAULT_GOALS.cues),
+    overalls: String(DEFAULT_GOALS.overalls),
+    semiSoloMinutes: String(DEFAULT_GOALS.semiSoloMinutes),
+    soloMinutes: String(DEFAULT_GOALS.soloMinutes),
+  });
+  const [isSavingGoals, setIsSavingGoals] = useState(false);
 
   // Sync the input with the loaded dog name (state adjusted during render,
   // see https://react.dev/learn/you-might-not-need-an-effect).
@@ -85,6 +94,52 @@ export default function SettingsScreen() {
       ignore = true;
     };
   }, [dog]);
+
+  // Objectifs quotidiens (table dog_goals, valeurs par défaut sinon).
+  useEffect(() => {
+    if (!dog) return;
+    let ignore = false;
+    fetchGoals(dog.id).then((goals) => {
+      if (ignore) return;
+      setGoalInputs({
+        cues: String(goals.cues),
+        overalls: String(goals.overalls),
+        semiSoloMinutes: String(goals.semiSoloMinutes),
+        soloMinutes: String(goals.soloMinutes),
+      });
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [dog]);
+
+  const onSaveGoals = async () => {
+    if (!dog) return;
+    const parse = (raw: string, fallback: number) => {
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    const goals = {
+      cues: parse(goalInputs.cues, DEFAULT_GOALS.cues),
+      overalls: parse(goalInputs.overalls, DEFAULT_GOALS.overalls),
+      semiSoloMinutes: parse(goalInputs.semiSoloMinutes, DEFAULT_GOALS.semiSoloMinutes),
+      soloMinutes: parse(goalInputs.soloMinutes, DEFAULT_GOALS.soloMinutes),
+    };
+    setIsSavingGoals(true);
+    const errorMessage = await saveGoals(dog.id, goals);
+    setIsSavingGoals(false);
+    if (errorMessage) {
+      Alert.alert('Erreur', `Objectifs non enregistrés : ${errorMessage}`);
+      return;
+    }
+    setGoalInputs({
+      cues: String(goals.cues),
+      overalls: String(goals.overalls),
+      semiSoloMinutes: String(goals.semiSoloMinutes),
+      soloMinutes: String(goals.soloMinutes),
+    });
+    Alert.alert('Enregistré', 'Les objectifs quotidiens sont à jour.');
+  };
 
   // Idées d'amélioration de l'app (simple stockage en base).
   useEffect(() => {
@@ -288,6 +343,36 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
 
+      {dog ? (
+        <Card>
+          <SectionTitle>Objectifs quotidiens</SectionTitle>
+          <Text style={[styles.body, { color: colors.textSecondary }]}>
+            Les objectifs affichés sur les boutons de l&apos;accueil.
+          </Text>
+          <GoalRow
+            label="Faux signaux (par jour)"
+            value={goalInputs.cues}
+            onChange={(v) => setGoalInputs((prev) => ({ ...prev, cues: v }))}
+          />
+          <GoalRow
+            label="Overall (par jour)"
+            value={goalInputs.overalls}
+            onChange={(v) => setGoalInputs((prev) => ({ ...prev, overalls: v }))}
+          />
+          <GoalRow
+            label="Semi solo (min par jour)"
+            value={goalInputs.semiSoloMinutes}
+            onChange={(v) => setGoalInputs((prev) => ({ ...prev, semiSoloMinutes: v }))}
+          />
+          <GoalRow
+            label="Solo (min par jour)"
+            value={goalInputs.soloMinutes}
+            onChange={(v) => setGoalInputs((prev) => ({ ...prev, soloMinutes: v }))}
+          />
+          <Button label="Enregistrer les objectifs" onPress={onSaveGoals} loading={isSavingGoals} />
+        </Card>
+      ) : null}
+
       <Card>
         <SectionTitle>Notifications push</SectionTitle>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
@@ -389,6 +474,34 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Ligne objectif : libellé à gauche, petit champ numérique à droite. */
+function GoalRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const colors = useTheme();
+  return (
+    <View style={styles.infoRow}>
+      <Text style={[styles.body, { color: colors.text, flex: 1 }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        style={[
+          styles.goalInput,
+          { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+        ]}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -432,7 +545,17 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     gap: Spacing.sm,
+  },
+  goalInput: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    fontSize: 9,
+    minWidth: 56,
+    textAlign: 'center',
   },
   tagRow: {
     flexDirection: 'row',

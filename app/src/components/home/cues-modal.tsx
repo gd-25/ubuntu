@@ -17,8 +17,6 @@ import { combineDayTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { FakeCue } from '@/lib/types';
 
-export const CUES_DAILY_GOAL = 10;
-
 const CUES: { value: FakeCue; emoji: string; label: string }[] = [
   { value: 'keys', emoji: '🔑', label: 'CLÉS' },
   { value: 'shoes', emoji: '👟', label: 'CHAUSSURES' },
@@ -30,22 +28,24 @@ const CUES: { value: FakeCue; emoji: string; label: string }[] = [
 
 /**
  * Faux signal de départ : on joue avec les objets déclencheurs sans partir
- * (désensibilisation). Clés + chaussures pré-sélectionnés, objectif
- * 10 par jour.
+ * (désensibilisation). Clés + chaussures pré-sélectionnés.
  */
 export function CuesModal({
   visible,
   topOffset,
   dogId,
   todayCount,
+  goal,
   onClose,
   onSaved,
 }: {
   visible: boolean;
   topOffset: number;
   dogId: string | null;
-  /** Faux signaux déjà notés aujourd'hui (pour l'objectif 10/jour). */
+  /** Faux signaux déjà notés aujourd'hui. */
   todayCount: number;
+  /** Objectif quotidien (paramétrable dans Réglages). */
+  goal: number;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -88,7 +88,7 @@ export function CuesModal({
     }
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onSaved(`🔑 FAUX SIGNAL NOTÉ · ${todayCount + 1}/${CUES_DAILY_GOAL} AUJOURD'HUI`);
+    onSaved(`🔑 FAUX SIGNAL NOTÉ · ${todayCount + 1}/${goal} AUJOURD'HUI`);
   };
 
   return (
@@ -101,7 +101,7 @@ export function CuesModal({
       <View style={styles.header}>
         <DialogLabel>ON A JOUÉ AVEC QUOI ?</DialogLabel>
         <Text style={[styles.goal, { color: colors.textSecondary }]}>
-          {todayCount}/{CUES_DAILY_GOAL} AUJOURD&apos;HUI
+          {todayCount}/{goal} AUJOURD&apos;HUI
         </Text>
       </View>
       {/* Grille 2 colonnes × 3 lignes (la modale s'allonge, tant mieux). */}

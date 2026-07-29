@@ -31,6 +31,7 @@ import {
   OBSERVED_LABELS,
   secondsSince,
 } from '@/lib/format';
+import { DEFAULT_GOALS, fetchGoals, type Goals } from '@/lib/goals';
 import {
   BASKET_HOME,
   computeTransition,
@@ -134,6 +135,8 @@ export default function HouseScreen() {
   const [todayOveralls, setTodayOveralls] = useState(0);
   const [todaySemiSoloMinutes, setTodaySemiSoloMinutes] = useState(0);
   const [todaySoloMinutes, setTodaySoloMinutes] = useState(0);
+  /** Objectifs quotidiens (paramétrables dans Réglages). */
+  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
@@ -189,6 +192,7 @@ export default function HouseScreen() {
       overallRes,
       semiSoloRes,
       soloRes,
+      dogGoals,
     ] = await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase.from('object_positions').select('*').eq('dog_id', dog.id),
@@ -234,6 +238,7 @@ export default function HouseScreen() {
         .select('started_at, ended_at')
         .eq('dog_id', dog.id)
         .gte('started_at', todayStart.toISOString()),
+      fetchGoals(dog.id),
     ]);
 
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
@@ -289,6 +294,7 @@ export default function HouseScreen() {
       todayOveralls: overallRes.count ?? 0,
       todaySemiSoloMinutes: Math.round(semiSoloSeconds / 60),
       todaySoloMinutes: Math.round(soloSeconds / 60),
+      goals: dogGoals,
     };
   }, [dog]);
 
@@ -308,6 +314,7 @@ export default function HouseScreen() {
         setTodayOveralls(snapshot.todayOveralls);
         setTodaySemiSoloMinutes(snapshot.todaySemiSoloMinutes);
         setTodaySoloMinutes(snapshot.todaySoloMinutes);
+        setGoals(snapshot.goals);
       });
       return () => {
         ignore = true;
@@ -520,6 +527,25 @@ export default function HouseScreen() {
         .update({ departure_state: state })
         .eq('id', sessionId);
       if (error) console.warn("État au départ non enregistré :", error.message);
+    },
+    [soloPickerFor]
+  );
+
+  /** Mini-picker post-SOLO, question 3 : qui participe à l'exercice
+      (un décoché n'était pas dans l'appartement du tout). */
+  const pickParticipants = useCallback(
+    async (participants: ('greg' | 'fiona')[]) => {
+      const sessionId = soloPickerFor;
+      if (!sessionId) return;
+      Haptics.selectionAsync();
+      setActiveSession((prev) =>
+        prev && prev.id === sessionId ? { ...prev, participants } : prev
+      );
+      const { error } = await supabase
+        .from('sessions')
+        .update({ participants })
+        .eq('id', sessionId);
+      if (error) console.warn('Participants non enregistrés :', error.message);
     },
     [soloPickerFor]
   );
@@ -907,6 +933,7 @@ export default function HouseScreen() {
             todayOveralls={todayOveralls}
             todaySemiSoloMinutes={todaySemiSoloMinutes}
             todaySoloMinutes={todaySoloMinutes}
+            goals={goals}
           />
         </View>
       ) : null}
@@ -965,6 +992,7 @@ export default function HouseScreen() {
           person={person}
           onPickState={pickDepartureState}
           onPickLocation={pickHumanLocation}
+          onPickParticipants={pickParticipants}
           onDismiss={() => setSoloPickerFor(null)}
         />
       ) : null}
@@ -1079,7 +1107,9 @@ export default function HouseScreen() {
           </View>
           <View style={styles.quickRow}>
             <QuickChip label="😢" onPress={logManualWhine} />
-            <QuickChip label="😌" onPress={() => logObservation('relief')} />
+            {/* Les deux marques de soulagement : assis et couché. */}
+            <QuickChip label="🐩" onPress={() => logObservation('sit')} />
+            <QuickChip label="🛏" onPress={() => logObservation('down')} />
             <QuickChip label="😰" onPress={() => logObservation('panic')} />
             <Pressable
               onPress={stopSession}
@@ -1125,6 +1155,7 @@ export default function HouseScreen() {
         topOffset={panelTop}
         dogId={dog?.id ?? null}
         todayCount={todayCues}
+        goal={goals.cues}
         onClose={() => setCuesOpen(false)}
         onSaved={(message) => {
           setTodayCues((n) => n + 1);
@@ -1137,6 +1168,7 @@ export default function HouseScreen() {
         dogId={dog?.id ?? null}
         placement={overallPlacement}
         todayCount={todayOveralls}
+        goal={goals.overalls}
         onClose={closeOverall}
         onSaved={(message) => {
           setTodayOveralls((n) => n + 1);
@@ -1162,6 +1194,7 @@ export default function HouseScreen() {
         topOffset={panelTop}
         dogId={dog?.id ?? null}
         todayMinutes={todaySemiSoloMinutes}
+        goal={goals.semiSoloMinutes}
         onClose={() => setSemiSoloOpen(false)}
         onSaved={(message, minutes) => {
           setTodaySemiSoloMinutes((n) => n + minutes);

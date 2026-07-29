@@ -29,6 +29,13 @@ const AVATARS: Record<Exclude<Person, 'ubuntu'>, { source: number; w: number; h:
   fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32 },
 };
 
+type Participant = Exclude<Person, 'ubuntu'>;
+
+const PARTICIPANTS: { value: Participant; label: string }[] = [
+  { value: 'fiona', label: 'FIONA' },
+  { value: 'greg', label: 'GREG' },
+];
+
 /** Fond « en bas de l'immeuble » : herbe, sentier, deux sapins pixel sur
  * les côtés (l'avatar occupe le centre). `none` : rien n'est rogné, et les
  * aplats (herbe, sentier) supportent l'étirement sans se déformer. */
@@ -57,16 +64,19 @@ function DownstairsBackground() {
 
 /**
  * Mini-picker affiché juste après le tap SOLO : (1) l'état d'Ubuntu au
- * moment du départ (la variable la plus prédictive) et (2) où sera
+ * moment du départ (la variable la plus prédictive), (2) où sera
  * l'humain pendant la session — l'avatar du compte sur trois fonds :
- * couloir gris, en bas (sentier et sapins), dehors (arc-en-ciel).
- * Le panneau se ferme tout seul quand les deux réponses sont données.
+ * couloir gris, en bas (sentier et sapins), dehors (arc-en-ciel) — et
+ * (3) qui participe à l'exercice (les deux par défaut ; décocher
+ * quelqu'un = il n'était pas dans l'appartement du tout).
+ * Le panneau se ferme tout seul quand les questions 1 et 2 sont répondues.
  */
 export function SoloPicker({
   top,
   person,
   onPickState,
   onPickLocation,
+  onPickParticipants,
   onDismiss,
 }: {
   top: number;
@@ -74,11 +84,13 @@ export function SoloPicker({
   person: Exclude<Person, 'ubuntu'>;
   onPickState: (state: DepartureState) => void;
   onPickLocation: (location: HumanLocation) => void;
+  onPickParticipants: (participants: Participant[]) => void;
   onDismiss: () => void;
 }) {
   const colors = useTheme();
   const [pickedState, setPickedState] = useState<DepartureState | null>(null);
   const [pickedLocation, setPickedLocation] = useState<HumanLocation | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>(['fiona', 'greg']);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatar = AVATARS[person];
 
@@ -98,6 +110,16 @@ export function SoloPicker({
     setPickedLocation(location);
     onPickLocation(location);
     maybeClose(pickedState, location);
+  };
+
+  /** Coche/décoche un participant (au moins un doit rester). */
+  const toggleParticipant = (who: Participant) => {
+    const next = participants.includes(who)
+      ? participants.filter((p) => p !== who)
+      : [...participants, who];
+    if (next.length === 0) return;
+    setParticipants(next);
+    onPickParticipants(next);
   };
 
   return (
@@ -143,6 +165,41 @@ export function SoloPicker({
             </Text>
           </Pressable>
         ))}
+      </View>
+
+      {/* Qui participe à l'exercice ? (décoché = pas dans l'appartement) */}
+      <View style={styles.participantsRow}>
+        <Text style={[styles.title, { color: colors.accent }]}>QUI PARTICIPE ?</Text>
+        {PARTICIPANTS.map(({ value, label }) => {
+          const selected = participants.includes(value);
+          const sprite = AVATARS[value];
+          return (
+            <Pressable
+              key={value}
+              onPress={() => toggleParticipant(value)}
+              style={({ pressed }) => [
+                styles.participant,
+                {
+                  backgroundColor: selected ? colors.accent : colors.background,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}>
+              <Image
+                source={sprite.source}
+                style={{ width: sprite.w * 0.8, height: sprite.h * 0.8, opacity: selected ? 1 : 0.35 }}
+                contentFit="contain"
+              />
+              <Text
+                style={[
+                  styles.optionText,
+                  { color: selected ? colors.accentText : colors.text },
+                ]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       <Text style={[styles.title, { color: colors.accent }]}>ET TOI, TU SERAS OÙ ?</Text>
@@ -232,6 +289,22 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 5.5,
+  },
+  participantsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  participant: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 4,
   },
   locationOption: {
     flex: 1,

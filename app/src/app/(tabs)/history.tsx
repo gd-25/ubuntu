@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatDuration, formatTime, parisDayKey } from '@/lib/format';
+import { DEFAULT_GOALS, fetchGoals, type Goals } from '@/lib/goals';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type {
@@ -123,6 +124,8 @@ export default function HistoryScreen() {
   /** Jour en cours d'édition dans la modale note (clé + libellé). */
   const [noteEditor, setNoteEditor] = useState<{ dayKey: string; title: string } | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
+  /** Objectifs quotidiens (pour la légende de l'export COPIER). */
+  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [enabled, setEnabled] = useState<EventType[]>(ALL_TYPES);
   const [filterOpen, setFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -163,7 +166,9 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      // Objectifs quotidiens (paramétrables dans Réglages).
+      if (dog) fetchGoals(dog.id).then(setGoals);
+    }, [load, dog])
   );
 
   const onRefresh = useCallback(async () => {
@@ -563,11 +568,11 @@ export default function HistoryScreen() {
       `Contexte : Ubuntu est un chien qu'on entraîne à rester seul (anxiété de séparation). Ses vocalises sont surveillées par caméra pendant les sessions.`,
       `Types d'événements :`,
       `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise.`,
-      `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif 1 h/jour).`,
+      `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif ${goals.semiSoloMinutes} min/jour).`,
       `- NUIT : où Ubuntu a dormi.`,
       `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
-      `- FAUX SIGNAL DE DÉPART : désensibilisation (on joue avec clés/chaussures… sans partir, objectif 10/jour).`,
-      `- PROTOCOLE OVERALL : exercice de relaxation sur son tapis (objectif 1/jour).`,
+      `- FAUX SIGNAL DE DÉPART : désensibilisation (on joue avec clés/chaussures… sans partir, objectif ${goals.cues}/jour).`,
+      `- PROTOCOLE OVERALL : exercice de relaxation sur son tapis (objectif ${goals.overalls}/jour).`,
       `- VELCRO : il est « pot de colle », nous suit partout.`,
       `- GARDE : gardé par quelqu'un d'autre.`,
       `- « Note du jour » : note libre sur la journée (ex. où était Ubuntu s'il n'était pas à la maison).`,
@@ -576,7 +581,7 @@ export default function HistoryScreen() {
     await Clipboard.setStringAsync(`${header}\n${byDay.join('\n')}\n`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Copié !', `L'historique du dernier mois (${lines.length} événements) est dans le presse-papier.`);
-  }, [summaries, activities, nights, overalls, semiSolos, dayNotes]);
+  }, [summaries, activities, nights, overalls, semiSolos, dayNotes, goals]);
 
   const filterCount = enabled.length;
 
@@ -628,26 +633,23 @@ export default function HistoryScreen() {
         }
         renderSectionHeader={({ section }) => (
           <View style={[styles.dayHeader, { backgroundColor: colors.background }]}>
-            <View style={styles.dayHeaderRow}>
-              <View
-                style={[styles.dayChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.dayChipText, { color: colors.text }]}>
-                  {section.title.toUpperCase()}
-                </Text>
-              </View>
-              {/* Crayon : note libre de la journée (ex. où était Boubou). */}
-              <Pressable
-                onPress={() => {
-                  setNoteEditor({ dayKey: section.dayKey, title: section.title });
-                  setNoteDraft(dayNotes[section.dayKey]?.content ?? '');
-                }}
-                hitSlop={10}
-                style={styles.dayNoteButton}>
-                <Text style={styles.dayNotePencil}>✏️</Text>
-              </Pressable>
-            </View>
+            {/* Tap sur la date → note libre de la journée, affichée juste
+                à côté (une ligne max, ellipsée). */}
+            <Pressable
+              onPress={() => {
+                setNoteEditor({ dayKey: section.dayKey, title: section.title });
+                setNoteDraft(dayNotes[section.dayKey]?.content ?? '');
+              }}
+              hitSlop={6}
+              style={[styles.dayChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.dayChipText, { color: colors.text }]}>
+                {section.title.toUpperCase()}
+              </Text>
+            </Pressable>
             {dayNotes[section.dayKey] ? (
-              <Text style={[styles.dayNoteText, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.dayNoteText, { color: colors.textSecondary }]}
+                numberOfLines={1}>
                 📍 {dayNotes[section.dayKey].content}
               </Text>
             ) : null}
@@ -833,27 +835,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 24,
   },
+  // Date + note de la journée côte à côte (la note s'ellipse sur 1 ligne).
   dayHeader: {
-    paddingVertical: 6,
-    gap: 5,
-  },
-  dayHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  dayNoteButton: {
-    paddingVertical: 2,
-  },
-  dayNotePencil: {
-    fontSize: 11,
+    paddingVertical: 6,
   },
   dayNoteText: {
+    flex: 1,
     fontSize: 7,
     lineHeight: 12,
   },
   dayChip: {
-    alignSelf: 'flex-start',
     borderWidth: 2,
     borderRadius: 2,
     paddingHorizontal: 8,

@@ -150,5 +150,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
 
 export const OBSERVED_LABELS: Record<string, string> = {
   relief: '😌 Soulagement',
+  sit: '🐩 Assis',
+  down: '🛏 Couché',
   panic: '😰 Panique',
 };

@@ -39,6 +39,8 @@ export interface Session {
   returned_during_vocalization: boolean | null;
   /** Où l'humain est pendant la session (couloir / en bas / dehors). */
   human_location: HumanLocation | null;
+  /** Qui participe à l'exercice (un absent n'était pas dans l'appart). */
+  participants: ('greg' | 'fiona')[];
 }
 
 export interface VocalEpisode {
@@ -58,8 +60,12 @@ export interface VocalEpisode {
   dismissed: boolean;
 }
 
-/** Observation comportementale pendant une session (pas une vocalise). */
-export type ObservedKind = 'relief' | 'panic';
+/**
+ * Observation comportementale pendant une session (pas une vocalise).
+ * 'sit' (assis) et 'down' (couché) sont les deux marques de soulagement ;
+ * 'relief' est l'ancien marqueur générique, conservé pour l'historique.
+ */
+export type ObservedKind = 'relief' | 'panic' | 'sit' | 'down';
 
 export interface ObservedEvent {
   id: string;

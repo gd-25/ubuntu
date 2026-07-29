@@ -18,8 +18,6 @@ import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type { Space } from '@/lib/types';
 
-export const OVERALL_DAILY_GOAL = 1;
-
 const DURATIONS = [2, 5, 10, 15, 20, 30] as const;
 
 /** Position finale du tapis pendant la session (unités carte + zone). */
@@ -32,8 +30,7 @@ export interface MatPlacement {
 /**
  * Session du protocole Overall, ouverte une fois le tapis posé sur le
  * plan : durée, friandises données, observations. La position du tapis
- * est la variable de généralisation (réussit-il partout ?). Objectif
- * 1 par jour.
+ * est la variable de généralisation (réussit-il partout ?).
  */
 export function OverallModal({
   visible,
@@ -41,6 +38,7 @@ export function OverallModal({
   dogId,
   placement,
   todayCount,
+  goal,
   onClose,
   onSaved,
 }: {
@@ -48,8 +46,10 @@ export function OverallModal({
   topOffset: number;
   dogId: string | null;
   placement: MatPlacement | null;
-  /** Sessions Overall déjà notées aujourd'hui (objectif 1/jour). */
+  /** Sessions Overall déjà notées aujourd'hui. */
   todayCount: number;
+  /** Objectif quotidien (paramétrable dans Réglages). */
+  goal: number;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -88,7 +88,7 @@ export function OverallModal({
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSaved(
-      `🐾 OVERALL NOTÉ (${SPACE_LABELS[placement.space]}) · ${todayCount + 1}/${OVERALL_DAILY_GOAL} AUJOURD'HUI`
+      `🐾 OVERALL NOTÉ (${SPACE_LABELS[placement.space]}) · ${todayCount + 1}/${goal} AUJOURD'HUI`
     );
   };
 
@@ -103,7 +103,7 @@ export function OverallModal({
           TAPIS : {placement ? SPACE_LABELS[placement.space] : '…'}
         </Text>
         <Text style={[styles.goal, { color: colors.textSecondary }]}>
-          {todayCount}/{OVERALL_DAILY_GOAL} AUJOURD&apos;HUI
+          {todayCount}/{goal} AUJOURD&apos;HUI
         </Text>
       </View>
       <DialogDate value={day} onChange={setDay} />

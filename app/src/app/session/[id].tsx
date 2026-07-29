@@ -31,14 +31,51 @@ import {
   formatDuration,
   formatTime,
   KIND_LABELS,
+  OBSERVED_LABELS,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type { EpisodeKind, Session, SessionSummary, Tag, VocalEpisode } from '@/lib/types';
+import type {
+  DepartureState,
+  EpisodeKind,
+  HumanLocation,
+  ObservedEvent,
+  Session,
+  SessionSummary,
+  Tag,
+  VocalEpisode,
+} from '@/lib/types';
 
-const KINDS: { value: EpisodeKind; label: string }[] = [
+/** Ce qu'on peut ajouter a posteriori : une vocalise ou une observation. */
+type AddKind = EpisodeKind | 'sit' | 'down';
+
+const KINDS: { value: AddKind; label: string }[] = [
   { value: 'whine', label: 'GÉMISSEMENT' },
   { value: 'bark', label: 'ABOIEMENT' },
   { value: 'howl', label: 'HURLEMENT' },
+];
+
+const OBS_KINDS: { value: AddKind; label: string }[] = [
+  { value: 'sit', label: '🐩 ASSIS' },
+  { value: 'down', label: '🛏 COUCHÉ' },
+];
+
+/** Mêmes options que le mini-picker post-SOLO (modifiables a posteriori). */
+const DEPARTURE_STATES: { value: DepartureState; emoji: string; label: string }[] = [
+  { value: 'asleep', emoji: '😴', label: 'ENDORMI' },
+  { value: 'settled', emoji: '😌', label: 'POSÉ' },
+  { value: 'active', emoji: '⚡', label: 'ACTIF' },
+  { value: 'following', emoji: '👀', label: 'NOUS SUIVAIT' },
+];
+
+const HUMAN_LOCATIONS: { value: HumanLocation; label: string }[] = [
+  { value: 'couloir', label: 'COULOIR' },
+  { value: 'en_bas', label: 'EN BAS' },
+  { value: 'dehors', label: 'DEHORS' },
+];
+
+const PARTICIPANT_OPTIONS: { value: 'fiona' | 'greg'; label: string }[] = [
+  { value: 'fiona', label: 'FIONA' },
+  { value: 'greg', label: 'GREG' },
 ];
 
 const EPISODE_DURATIONS = [
@@ -68,6 +105,8 @@ export default function SessionDetailScreen() {
   // heartbeats « listening » de l'agent. null = inconnu (requête échouée).
   const [coverage, setCoverage] = useState<number | null>(null);
   const [episodes, setEpisodes] = useState<VocalEpisode[]>([]);
+  /** Observations (assis, couché, soulagement, panique) de la session. */
+  const [observations, setObservations] = useState<ObservedEvent[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('');
@@ -78,7 +117,7 @@ export default function SessionDetailScreen() {
 
   // Modale « ajouter un épisode » (même UI que les modales de la Maison).
   const [episodeOpen, setEpisodeOpen] = useState(false);
-  const [episodeKind, setEpisodeKind] = useState<EpisodeKind>('whine');
+  const [episodeKind, setEpisodeKind] = useState<AddKind>('whine');
   const [episodeTime, setEpisodeTime] = useState<Date>(new Date());
   const [episodeSeconds, setEpisodeSeconds] = useState<number>(10);
   const [isAddingEpisode, setIsAddingEpisode] = useState(false);
@@ -89,23 +128,29 @@ export default function SessionDetailScreen() {
 
   const fetchEpisodesAndSummary = useCallback(async () => {
     if (!id) return;
-    const [episodesRes, summaryRes] = await Promise.all([
+    const [episodesRes, summaryRes, obsRes] = await Promise.all([
       supabase
         .from('vocal_episodes')
         .select('*')
         .eq('session_id', id)
         .order('started_at', { ascending: true }),
       supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
+      supabase
+        .from('observed_events')
+        .select('*')
+        .eq('session_id', id)
+        .order('at', { ascending: true }),
     ]);
     setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
     setSummary(summaryRes.data as SessionSummary | null);
+    setObservations((obsRes.data as ObservedEvent[] | null) ?? []);
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     let ignore = false;
     (async () => {
-      const [sessionRes, summaryRes, episodesRes, sessionTagsRes] = await Promise.all([
+      const [sessionRes, summaryRes, episodesRes, sessionTagsRes, obsRes] = await Promise.all([
         supabase.from('sessions').select('*').eq('id', id).maybeSingle(),
         supabase.from('session_summaries').select('*').eq('session_id', id).maybeSingle(),
         supabase
@@ -114,6 +159,11 @@ export default function SessionDetailScreen() {
           .eq('session_id', id)
           .order('started_at', { ascending: true }),
         supabase.from('session_tags').select('tag_id').eq('session_id', id),
+        supabase
+          .from('observed_events')
+          .select('*')
+          .eq('session_id', id)
+          .order('at', { ascending: true }),
       ]);
       const row = sessionRes.data as Session | null;
       let tagRows: Tag[] = [];
@@ -157,6 +207,7 @@ export default function SessionDetailScreen() {
       setNotes(row?.notes ?? '');
       setSummary(summaryRes.data as SessionSummary | null);
       setEpisodes((episodesRes.data as VocalEpisode[] | null) ?? []);
+      setObservations((obsRes.data as ObservedEvent[] | null) ?? []);
       setTags(tagRows);
       setSelectedTagIds(
         new Set(((sessionTagsRes.data as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id))
@@ -223,14 +274,23 @@ export default function SessionDetailScreen() {
     const start = new Date(session.started_at);
     start.setHours(episodeTime.getHours(), episodeTime.getMinutes(), 0, 0);
     setIsAddingEpisode(true);
-    const { error } = await supabase.from('vocal_episodes').insert({
-      dog_id: session.dog_id,
-      session_id: session.id,
-      started_at: start.toISOString(),
-      ended_at: new Date(start.getTime() + episodeSeconds * 1000).toISOString(),
-      kind: episodeKind,
-      source: 'manual',
-    });
+    // Assis / couché : une observation ponctuelle, pas une vocalise.
+    const { error } =
+      episodeKind === 'sit' || episodeKind === 'down'
+        ? await supabase.from('observed_events').insert({
+            dog_id: session.dog_id,
+            session_id: session.id,
+            kind: episodeKind,
+            at: start.toISOString(),
+          })
+        : await supabase.from('vocal_episodes').insert({
+            dog_id: session.dog_id,
+            session_id: session.id,
+            started_at: start.toISOString(),
+            ended_at: new Date(start.getTime() + episodeSeconds * 1000).toISOString(),
+            kind: episodeKind,
+            source: 'manual',
+          });
     setIsAddingEpisode(false);
     if (error) {
       Alert.alert('Erreur', `Ajout impossible : ${error.message}`);
@@ -240,6 +300,75 @@ export default function SessionDetailScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // La frise et les stats (vue session_summaries) se recalculent.
     fetchEpisodesAndSummary();
+  };
+
+  const deleteObservation = (obs: ObservedEvent) => {
+    Alert.alert('Supprimer ?', 'Cette observation sera retirée de la session.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('observed_events').delete().eq('id', obs.id);
+          if (error) {
+            Alert.alert('Erreur', `Suppression impossible : ${error.message}`);
+            return;
+          }
+          setObservations((prev) => prev.filter((o) => o.id !== obs.id));
+        },
+      },
+    ]);
+  };
+
+  // ------------- Infos du départ (état, où, qui) éditables a posteriori
+
+  const pickDepartureState = async (state: DepartureState) => {
+    if (!session) return;
+    Haptics.selectionAsync();
+    const previous = session.departure_state;
+    setSession({ ...session, departure_state: state });
+    const { error } = await supabase
+      .from('sessions')
+      .update({ departure_state: state })
+      .eq('id', session.id);
+    if (error) {
+      setSession((prev) => (prev ? { ...prev, departure_state: previous } : prev));
+      Alert.alert('Erreur', `Modification impossible : ${error.message}`);
+    }
+  };
+
+  const pickHumanLocation = async (location: HumanLocation) => {
+    if (!session) return;
+    Haptics.selectionAsync();
+    const previous = session.human_location;
+    setSession({ ...session, human_location: location });
+    const { error } = await supabase
+      .from('sessions')
+      .update({ human_location: location })
+      .eq('id', session.id);
+    if (error) {
+      setSession((prev) => (prev ? { ...prev, human_location: previous } : prev));
+      Alert.alert('Erreur', `Modification impossible : ${error.message}`);
+    }
+  };
+
+  const toggleParticipant = async (who: 'greg' | 'fiona') => {
+    if (!session) return;
+    const current = session.participants ?? ['greg', 'fiona'];
+    const next = current.includes(who)
+      ? current.filter((p) => p !== who)
+      : [...current, who];
+    if (next.length === 0) return;
+    Haptics.selectionAsync();
+    setSession({ ...session, participants: next });
+    const { error } = await supabase
+      .from('sessions')
+      .update({ participants: next })
+      .eq('id', session.id);
+    if (error) {
+      setSession((prev) => (prev ? { ...prev, participants: current } : prev));
+      Alert.alert('Erreur', `Modification impossible : ${error.message}`);
+    }
   };
 
   /** Écarte (ou restaure) un faux positif de l'agent : gardé en base avec
@@ -320,6 +449,14 @@ export default function SessionDetailScreen() {
   // → pastille verte, sinon rouge.
   const titleDot = summary && summary.calm_percent >= 90 ? '🟢' : '🔴';
 
+  // Épisodes et observations fusionnés, en ordre chronologique.
+  const timeline: { at: string; episode?: VocalEpisode; obs?: ObservedEvent }[] = [
+    ...episodes.map((episode) => ({ at: episode.started_at, episode })),
+    ...observations.map((obs) => ({ at: obs.at, obs })),
+  ].sort((a, b) => (a.at < b.at ? -1 : 1));
+
+  const participants = session.participants ?? ['greg', 'fiona'];
+
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
@@ -375,8 +512,44 @@ export default function SessionDetailScreen() {
         </View>
       ) : null}
 
+      {/* ------------------- Infos du départ (mêmes choix que le picker) */}
+      <DialogLabel>IL ÉTAIT COMMENT AU DÉPART ?</DialogLabel>
+      <View style={styles.row}>
+        {DEPARTURE_STATES.map(({ value, emoji, label }) => (
+          <Chip
+            key={value}
+            emoji={emoji}
+            label={label}
+            selected={session.departure_state === value}
+            onPress={() => pickDepartureState(value)}
+          />
+        ))}
+      </View>
+      <DialogLabel>OÙ ÉTAIT L&apos;HUMAIN ?</DialogLabel>
+      <View style={styles.row}>
+        {HUMAN_LOCATIONS.map(({ value, label }) => (
+          <Chip
+            key={value}
+            label={label}
+            selected={session.human_location === value}
+            onPress={() => pickHumanLocation(value)}
+          />
+        ))}
+      </View>
+      <DialogLabel>QUI PARTICIPAIT ? (DÉCOCHÉ = PAS DANS L&apos;APPART)</DialogLabel>
+      <View style={styles.row}>
+        {PARTICIPANT_OPTIONS.map(({ value, label }) => (
+          <Chip
+            key={value}
+            label={label}
+            selected={participants.includes(value)}
+            onPress={() => toggleParticipant(value)}
+          />
+        ))}
+      </View>
+
       {/* ------------------------------------------------------- Frise */}
-      <DialogLabel>CHRONOLOGIE DES VOCALISES</DialogLabel>
+      <DialogLabel>CHRONOLOGIE</DialogLabel>
       <EpisodeTimeline
         episodes={episodes.filter((e) => !e.dismissed)}
         sessionStart={session.started_at}
@@ -385,34 +558,45 @@ export default function SessionDetailScreen() {
         showLegend={false}
       />
 
-      {/* ---------------- Détail des épisodes (clips, écarter, supprimer) */}
-      {episodes.map((episode) => (
-        <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
-          <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
-          <Text style={[styles.episodeText, { color: colors.text }]}>
-            {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind].toUpperCase()} ·{' '}
-            {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
-            {episode.source === 'manual' ? ' · MANUEL' : ''}
-            {episode.dismissed ? ' · ÉCARTÉ' : ''}
-          </Text>
-          {episode.clip_path ? <ClipButton clipPath={episode.clip_path} /> : null}
-          {episode.source === 'manual' ? (
-            <Pressable onPress={() => deleteManualEpisode(episode)} hitSlop={8}>
+      {/* ------ Détail des épisodes ET observations, en ordre chrono */}
+      {timeline.map(({ episode, obs }) =>
+        episode ? (
+          <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
+            <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
+            <Text style={[styles.episodeText, { color: colors.text }]}>
+              {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind].toUpperCase()} ·{' '}
+              {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
+              {episode.source === 'manual' ? ' · MANUEL' : ''}
+              {episode.dismissed ? ' · ÉCARTÉ' : ''}
+            </Text>
+            {episode.clip_path ? <ClipButton clipPath={episode.clip_path} /> : null}
+            {episode.source === 'manual' ? (
+              <Pressable onPress={() => deleteManualEpisode(episode)} hitSlop={8}>
+                <Text style={[styles.episodeDelete, { color: colors.danger }]}>✕</Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => toggleDismissed(episode)} hitSlop={8}>
+                <Text
+                  style={[
+                    styles.episodeAction,
+                    { color: episode.dismissed ? colors.accent : colors.danger },
+                  ]}>
+                  {episode.dismissed ? 'RESTAURER' : 'ÉCARTER'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        ) : obs ? (
+          <View key={obs.id} style={styles.episodeRow}>
+            <Text style={[styles.episodeText, { color: colors.text }]}>
+              {formatTime(obs.at)} · {(OBSERVED_LABELS[obs.kind] ?? obs.kind).toUpperCase()}
+            </Text>
+            <Pressable onPress={() => deleteObservation(obs)} hitSlop={8}>
               <Text style={[styles.episodeDelete, { color: colors.danger }]}>✕</Text>
             </Pressable>
-          ) : (
-            <Pressable onPress={() => toggleDismissed(episode)} hitSlop={8}>
-              <Text
-                style={[
-                  styles.episodeAction,
-                  { color: episode.dismissed ? colors.accent : colors.danger },
-                ]}>
-                {episode.dismissed ? 'RESTAURER' : 'ÉCARTER'}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      ))}
+          </View>
+        ) : null
+      )}
       {episodes.length === 0 ? (
         <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
           {coverage === 0
@@ -479,9 +663,19 @@ export default function SessionDetailScreen() {
         onRequestClose={() => setEpisodeOpen(false)}
         title="🎤 AJOUTER UN ÉPISODE"
         topOffset={insets.top + 40}>
-        <DialogLabel>UN ÉPISODE RATÉ PAR L&apos;AGENT…</DialogLabel>
+        <DialogLabel>UNE VOCALISE RATÉE PAR L&apos;AGENT, OU UNE OBSERVATION…</DialogLabel>
         <View style={styles.row}>
           {KINDS.map(({ value, label }) => (
+            <Chip
+              key={value}
+              label={label}
+              selected={episodeKind === value}
+              onPress={() => setEpisodeKind(value)}
+            />
+          ))}
+        </View>
+        <View style={styles.row}>
+          {OBS_KINDS.map(({ value, label }) => (
             <Chip
               key={value}
               label={label}
@@ -504,19 +698,24 @@ export default function SessionDetailScreen() {
             />
           </View>
         </View>
-        <DialogLabel>DURÉE</DialogLabel>
-        {[0, 3].map((i) => (
-          <View key={i} style={styles.row}>
-            {EPISODE_DURATIONS.slice(i, i + 3).map(({ seconds, label }) => (
-              <Chip
-                key={seconds}
-                label={label}
-                selected={episodeSeconds === seconds}
-                onPress={() => setEpisodeSeconds(seconds)}
-              />
+        {/* Une observation (assis/couché) est ponctuelle : pas de durée. */}
+        {episodeKind !== 'sit' && episodeKind !== 'down' ? (
+          <>
+            <DialogLabel>DURÉE</DialogLabel>
+            {[0, 3].map((i) => (
+              <View key={i} style={styles.row}>
+                {EPISODE_DURATIONS.slice(i, i + 3).map(({ seconds, label }) => (
+                  <Chip
+                    key={seconds}
+                    label={label}
+                    selected={episodeSeconds === seconds}
+                    onPress={() => setEpisodeSeconds(seconds)}
+                  />
+                ))}
+              </View>
             ))}
-          </View>
-        ))}
+          </>
+        ) : null}
         <DialogButtons
           onCancel={() => setEpisodeOpen(false)}
           onConfirm={addEpisode}

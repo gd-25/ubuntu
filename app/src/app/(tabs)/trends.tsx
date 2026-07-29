@@ -8,12 +8,16 @@ import { Card, EmptyState, SectionTitle } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDuration, parisDayKey, parisHour, parisWeekKey, PARIS_TZ } from '@/lib/format';
+import { DEFAULT_GOALS, fetchGoals, type Goals } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import type { SessionSummary } from '@/lib/types';
+import { useDog } from '@/lib/use-dog';
 
 export default function TrendsScreen() {
   const colors = useTheme();
+  const { dog } = useDog();
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
+  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -32,7 +36,9 @@ export default function TrendsScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      // Objectifs quotidiens (paramétrables dans Réglages).
+      if (dog) fetchGoals(dog.id).then(setGoals);
+    }, [load, dog])
   );
 
   const onRefresh = useCallback(async () => {
@@ -41,8 +47,8 @@ export default function TrendsScreen() {
     setIsRefreshing(false);
   }, [load]);
 
-  // Minutes de solitude (sessions SOLO, pas semi solo) par jour — objectif
-  // 15 min/j, les 14 derniers jours avec au moins une session.
+  // Minutes de solitude (sessions SOLO, pas semi solo) par jour —
+  // les 14 derniers jours avec au moins une session.
   const dailySoloMinutes: ChartPoint[] = useMemo(() => {
     const byDay = new Map<string, number>();
     for (const s of summaries) {
@@ -141,8 +147,7 @@ export default function TrendsScreen() {
                   color={colors.success}
                 />
                 <ChartCaption>
-                  Minutes passées seul (sessions SOLO, pas semi solo) par jour — objectif
-                  15 min par jour.
+                  {`Minutes passées seul (sessions SOLO, pas semi solo) par jour — objectif ${goals.soloMinutes} min par jour.`}
                 </ChartCaption>
               </>
             ) : (

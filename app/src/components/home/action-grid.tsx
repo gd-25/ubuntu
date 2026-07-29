@@ -1,21 +1,16 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { CUES_DAILY_GOAL } from '@/components/home/cues-modal';
-import { OVERALL_DAILY_GOAL } from '@/components/home/overall-modal';
-import { SEMI_SOLO_DAILY_GOAL_MINUTES } from '@/components/home/semi-solo-modal';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import type { Goals } from '@/lib/goals';
 
 /**
  * L'écran d'accueil comme outil de travail : le bouton SOLO (lancement
  * instantané d'une session de solitude) et les actions du quotidien,
  * dans l'espace vert au-dessus de la forêt (5 + 4 boutons).
  */
-/** Objectif quotidien de solitude (minutes) — codé en dur pour l'instant. */
-export const SOLO_DAILY_GOAL_MINUTES = 15;
-
 export function ActionGrid({
   onSolo,
   onFeed,
@@ -30,6 +25,7 @@ export function ActionGrid({
   todayOveralls,
   todaySemiSoloMinutes,
   todaySoloMinutes,
+  goals,
 }: {
   onSolo: () => void;
   onFeed: () => void;
@@ -42,10 +38,12 @@ export function ActionGrid({
   onGarde: () => void;
   todayCues: number;
   todayOveralls: number;
-  /** Minutes de semi solo cumulées aujourd'hui (objectif 1 h/j). */
+  /** Minutes de semi solo cumulées aujourd'hui. */
   todaySemiSoloMinutes: number;
-  /** Minutes de solitude cumulées aujourd'hui (objectif 15 min/j). */
+  /** Minutes de solitude cumulées aujourd'hui. */
   todaySoloMinutes: number;
+  /** Objectifs quotidiens (paramétrables dans Réglages). */
+  goals: Goals;
 }) {
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.grid}>
@@ -60,29 +58,29 @@ export function ActionGrid({
         <ActionButton
           emoji="🔑"
           label="FAUX SIGN."
-          badge={`${todayCues}/${CUES_DAILY_GOAL}`}
-          badgeDone={todayCues >= CUES_DAILY_GOAL}
+          badge={`${todayCues}/${goals.cues}`}
+          badgeDone={todayCues >= goals.cues}
           onPress={onCues}
         />
         <ActionButton
           emoji="🐾"
           label="OVERALL"
-          badge={`${todayOveralls}/${OVERALL_DAILY_GOAL}`}
-          badgeDone={todayOveralls >= OVERALL_DAILY_GOAL}
+          badge={`${todayOveralls}/${goals.overalls}`}
+          badgeDone={todayOveralls >= goals.overalls}
           onPress={onOverall}
         />
         <ActionButton
           emoji="🧍"
           label="SEMI SOLO"
-          badge={`${todaySemiSoloMinutes}/${SEMI_SOLO_DAILY_GOAL_MINUTES} MIN`}
-          badgeDone={todaySemiSoloMinutes >= SEMI_SOLO_DAILY_GOAL_MINUTES}
+          badge={`${todaySemiSoloMinutes}/${goals.semiSoloMinutes} MIN`}
+          badgeDone={todaySemiSoloMinutes >= goals.semiSoloMinutes}
           onPress={onSemiSolo}
         />
         <ActionButton
           emoji="🚪"
           label="SOLO"
-          badge={`${todaySoloMinutes}/${SOLO_DAILY_GOAL_MINUTES} MIN`}
-          badgeDone={todaySoloMinutes >= SOLO_DAILY_GOAL_MINUTES}
+          badge={`${todaySoloMinutes}/${goals.soloMinutes} MIN`}
+          badgeDone={todaySoloMinutes >= goals.soloMinutes}
           onPress={onSolo}
         />
       </View>

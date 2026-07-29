@@ -16,28 +16,28 @@ import { useTheme } from '@/hooks/use-theme';
 import { rangeOnDay } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
-/** Objectif quotidien de semi solo : 1 h par jour. */
-export const SEMI_SOLO_DAILY_GOAL_MINUTES = 60;
-
 /**
  * Session semi solo saisie a posteriori : Ubuntu était seul dans une pièce
  * pendant qu'un humain était dans une autre. Juste l'heure de début, l'heure
  * de fin et un commentaire — pas de mesure des couinements, il ne couine
- * quasiment jamais. Objectif 1 h par jour.
+ * quasiment jamais. Objectif paramétrable dans Réglages.
  */
 export function SemiSoloModal({
   visible,
   topOffset,
   dogId,
   todayMinutes,
+  goal,
   onClose,
   onSaved,
 }: {
   visible: boolean;
   topOffset: number;
   dogId: string | null;
-  /** Minutes de semi solo déjà notées aujourd'hui (objectif 60 min/j). */
+  /** Minutes de semi solo déjà notées aujourd'hui. */
   todayMinutes: number;
+  /** Objectif quotidien en minutes (paramétrable dans Réglages). */
+  goal: number;
   onClose: () => void;
   onSaved: (message: string, minutes: number) => void;
 }) {
@@ -81,7 +81,7 @@ export function SemiSoloModal({
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSaved(
-      `🧍 SEMI SOLO NOTÉ · ${todayMinutes + minutes}/${SEMI_SOLO_DAILY_GOAL_MINUTES} MIN AUJOURD'HUI`,
+      `🧍 SEMI SOLO NOTÉ · ${todayMinutes + minutes}/${goal} MIN AUJOURD'HUI`,
       minutes
     );
   };
@@ -95,7 +95,7 @@ export function SemiSoloModal({
       <View style={styles.header}>
         <DialogLabel>UBUNTU SEUL DANS SA PIÈCE, TOI DANS UNE AUTRE</DialogLabel>
         <Text style={[styles.goal, { color: colors.textSecondary }]}>
-          {todayMinutes}/{SEMI_SOLO_DAILY_GOAL_MINUTES} MIN
+          {todayMinutes}/{goal} MIN
         </Text>
       </View>
       <DialogDate value={day} onChange={setDay} />
