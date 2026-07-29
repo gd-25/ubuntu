@@ -3,9 +3,9 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import { DialogButtons, DialogDate, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Spacing } from '@/constants/theme';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, rangeOnDay } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -26,6 +26,7 @@ export function VelcroModal({
   onSaved: (message: string) => void;
 }) {
   const scheme = useColorScheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [start, setStart] = useState<Date>(new Date());
   const [end, setEnd] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
@@ -37,6 +38,7 @@ export function VelcroModal({
     setWasVisible(visible);
     if (visible) {
       const now = new Date();
+      setDay(now);
       setStart(new Date(now.getTime() - 30 * 60 * 1000));
       setEnd(now);
       setNotes('');
@@ -45,14 +47,14 @@ export function VelcroModal({
 
   const save = async () => {
     if (!dogId) return;
-    // Saisie après coup : si le début dépasse la fin, c'était la veille.
-    const at = new Date(start);
-    if (at.getTime() > end.getTime()) at.setDate(at.getDate() - 1);
+    // Les deux heures vivent sur le jour choisi ; une fin avant le début
+    // (ex. 23 h 50 → 00 h 20) passe au lendemain.
+    const range = rangeOnDay(day, start, end);
     const { error } = await supabase.from('activities').insert({
       dog_id: dogId,
       kind: 'velcro',
-      at: at.toISOString(),
-      ended_at: end.toISOString(),
+      at: range.start.toISOString(),
+      ended_at: range.end.toISOString(),
       notes: notes.trim() || null,
     });
     if (error) {
@@ -61,13 +63,14 @@ export function VelcroModal({
     }
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const duration = (end.getTime() - at.getTime()) / 1000;
+    const duration = (range.end.getTime() - range.start.getTime()) / 1000;
     onSaved(`🍯 VELCRO NOTÉ (${formatDuration(duration)})`);
   };
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🍯 VELCRO" topOffset={topOffset}>
       <DialogLabel>POT DE COLLE — IL NOUS SUIT PARTOUT</DialogLabel>
+      <DialogDate value={day} onChange={setDay} />
       <View style={styles.timeRow}>
         <View style={styles.timeCol}>
           <DialogLabel>DÉBUT</DialogLabel>
@@ -87,7 +90,6 @@ export function VelcroModal({
             value={end}
             mode="time"
             display="compact"
-            maximumDate={new Date()}
             themeVariant={scheme === 'dark' ? 'dark' : 'light'}
             onChange={(_, date) => {
               if (date) setEnd(date);

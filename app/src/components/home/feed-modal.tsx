@@ -3,9 +3,9 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogDate, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Spacing } from '@/constants/theme';
-import { formatTime } from '@/lib/format';
+import { combineDayTime, formatTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { MealKind } from '@/lib/types';
 
@@ -40,6 +40,7 @@ export function FeedModal({
   const [fraction, setFraction] = useState<number>(0.5);
   const [kind, setKind] = useState<MealKind>('kibble');
   const [notes, setNotes] = useState('');
+  const [day, setDay] = useState<Date>(new Date());
   const [time, setTime] = useState<Date>(new Date());
 
   // Réinitialise le formulaire à chaque ouverture (ajustement pendant le
@@ -51,13 +52,14 @@ export function FeedModal({
       setFraction(0.5);
       setKind('kibble');
       setNotes('');
+      setDay(new Date());
       setTime(new Date());
     }
   }
 
   const save = async () => {
     if (!dogId) return;
-    const at = new Date(Math.min(time.getTime(), Date.now()));
+    const at = new Date(Math.min(combineDayTime(day, time).getTime(), Date.now()));
     const { error } = await supabase.from('activities').insert({
       dog_id: dogId,
       kind: 'meal',
@@ -77,6 +79,7 @@ export function FeedModal({
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🍖 MANGER" topOffset={topOffset}>
+      <DialogDate value={day} onChange={setDay} />
       <DialogLabel>QUOI ?</DialogLabel>
       <View style={styles.row}>
         {MEAL_KINDS.map(({ value, emoji, label }) => (

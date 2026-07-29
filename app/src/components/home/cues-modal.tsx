@@ -5,6 +5,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import {
   Chip,
   DialogButtons,
+  DialogDate,
   DialogLabel,
   DialogNotes,
   PixelDialog,
@@ -12,6 +13,7 @@ import {
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { combineDayTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { FakeCue } from '@/lib/types';
 
@@ -48,6 +50,7 @@ export function CuesModal({
   onSaved: (message: string) => void;
 }) {
   const colors = useTheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [selected, setSelected] = useState<FakeCue[]>(['keys', 'shoes']);
   const [notes, setNotes] = useState('');
 
@@ -57,6 +60,7 @@ export function CuesModal({
   if (visible !== wasVisible) {
     setWasVisible(visible);
     if (visible) {
+      setDay(new Date());
       setSelected(['keys', 'shoes']);
       setNotes('');
     }
@@ -74,7 +78,7 @@ export function CuesModal({
     const { error } = await supabase.from('activities').insert({
       dog_id: dogId,
       kind: 'fake_cue',
-      at: new Date().toISOString(),
+      at: combineDayTime(day, new Date()).toISOString(),
       cues: selected,
       notes: notes.trim() || null,
     });
@@ -93,6 +97,7 @@ export function CuesModal({
       onRequestClose={onClose}
       title="🔑 FAUX SIGNAUX"
       topOffset={topOffset}>
+      <DialogDate value={day} onChange={setDay} />
       <View style={styles.header}>
         <DialogLabel>ON A JOUÉ AVEC QUOI ?</DialogLabel>
         <Text style={[styles.goal, { color: colors.textSecondary }]}>

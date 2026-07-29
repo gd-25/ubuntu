@@ -86,6 +86,26 @@ export function parisHour(iso: string): number {
   return parseInt(hour, 10);
 }
 
+/** Le jour de `day` (année/mois/jour) avec l'heure de `time` (h/min). */
+export function combineDayTime(day: Date, time: Date): Date {
+  const result = new Date(day);
+  result.setHours(time.getHours(), time.getMinutes(), 0, 0);
+  return result;
+}
+
+/**
+ * Plage horaire saisie sur un jour donné : la fin est calée sur le MÊME
+ * jour que le début, et si elle tombe avant (ex. 23 h 50 → 00 h 20) elle
+ * passe au lendemain. La durée est donc toujours entre 0 et 24 h — fini
+ * les 19 h 10 → 19 h 20 comptés un jour plus tard.
+ */
+export function rangeOnDay(day: Date, startTime: Date, endTime: Date): { start: Date; end: Date } {
+  const start = combineDayTime(day, startTime);
+  const end = combineDayTime(day, endTime);
+  if (end.getTime() < start.getTime()) end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
 /** Sortable day key like "2026-07-23" on the Paris-local date. */
 export function parisDayKey(iso: string): string {
   return new Intl.DateTimeFormat('en-CA', {

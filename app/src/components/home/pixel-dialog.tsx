@@ -1,4 +1,5 @@
-import { Modal, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Modal, Pressable, StyleSheet, View, useColorScheme, type ViewStyle } from 'react-native';
 
 import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
@@ -51,6 +52,39 @@ export function PixelDialog({
 export function DialogLabel({ children }: { children: React.ReactNode }) {
   const colors = useTheme();
   return <Text style={[styles.label, { color: colors.textSecondary }]}>{children}</Text>;
+}
+
+/**
+ * Champ date sur toute la ligne (libellé à gauche, sélecteur à droite) :
+ * l'événement est daté d'aujourd'hui par défaut, modifiable si on le
+ * saisit après coup.
+ */
+export function DialogDate({
+  value,
+  onChange,
+  label = 'DATE',
+}: {
+  value: Date;
+  onChange: (day: Date) => void;
+  label?: string;
+}) {
+  const scheme = useColorScheme();
+  return (
+    <View style={styles.dateRow}>
+      <DialogLabel>{label}</DialogLabel>
+      <DateTimePicker
+        value={value}
+        mode="date"
+        display="compact"
+        locale="fr-FR"
+        maximumDate={new Date()}
+        themeVariant={scheme === 'dark' ? 'dark' : 'light'}
+        onChange={(_, date) => {
+          if (date) onChange(date);
+        }}
+      />
+    </View>
+  );
 }
 
 /** Rangée ANNULER / valider en bas de dialogue. */
@@ -202,6 +236,12 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 8,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
   },
   buttons: {
     flexDirection: 'row',

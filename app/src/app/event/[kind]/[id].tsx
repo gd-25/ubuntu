@@ -5,10 +5,11 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 
 import { MapFocus } from '@/components/home/map-focus';
-import { Chip, DialogNotes } from '@/components/home/pixel-dialog';
+import { Chip, DialogDate, DialogNotes } from '@/components/home/pixel-dialog';
 import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { combineDayTime, rangeOnDay } from '@/lib/format';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type {
@@ -71,13 +72,6 @@ const ACTIVITY_TITLES: Record<string, string> = {
   other: '📝 ACTIVITÉ',
 };
 
-/** Applique l'heure `time` sur la DATE de `base` (édition d'heure seule). */
-function withTime(base: Date, time: Date): Date {
-  const next = new Date(base);
-  next.setHours(time.getHours(), time.getMinutes(), 0, 0);
-  return next;
-}
-
 /**
  * Détail ÉDITABLE d'une entrée du journal (tout sauf les sessions de
  * solitude, qui ont leur propre écran). `kind` désigne la table :
@@ -95,6 +89,8 @@ export default function EventDetailScreen() {
   const [semiSolo, setSemiSolo] = useState<SemiSoloSession | null>(null);
 
   // Champs éditables (initialisés au chargement de la ligne).
+  /** Jour de l'événement (pour les nuits : jour du coucher). */
+  const [day, setDay] = useState<Date>(new Date());
   const [startTime, setStartTime] = useState<Date>(new Date());
   const [endTime, setEndTime] = useState<Date>(new Date());
   const [hasEnd, setHasEnd] = useState(false);
@@ -118,6 +114,7 @@ export default function EventDetailScreen() {
         const row = data as Activity | null;
         if (!row) return;
         setActivity(row);
+        setDay(new Date(row.at));
         setStartTime(new Date(row.at));
         setHasEnd(!!row.ended_at);
         if (row.ended_at) setEndTime(new Date(row.ended_at));
@@ -135,6 +132,7 @@ export default function EventDetailScreen() {
         const row = data as Night | null;
         if (!row) return;
         setNight(row);
+        setDay(new Date(row.started_at));
         setStartTime(new Date(row.started_at));
         setEndTime(new Date(row.ended_at));
         setNotes(row.notes ?? '');
@@ -149,6 +147,7 @@ export default function EventDetailScreen() {
         const row = data as OverallSession | null;
         if (!row) return;
         setOverall(row);
+        setDay(new Date(row.at));
         setStartTime(new Date(row.at));
         setNotes(row.notes ?? '');
         setDuration(row.duration_minutes);
@@ -161,6 +160,7 @@ export default function EventDetailScreen() {
         const row = data as SemiSoloSession | null;
         if (!row) return;
         setSemiSolo(row);
+        setDay(new Date(row.started_at));
         setStartTime(new Date(row.started_at));
         setEndTime(new Date(row.ended_at));
         setNotes(row.notes ?? '');
@@ -171,12 +171,15 @@ export default function EventDetailScreen() {
   const save = async () => {
     let error: { message: string } | null = null;
     if (kind === 'activity' && activity) {
-      const at = withTime(new Date(activity.at), startTime);
+      // Tout vit sur le jour choisi ; si la fin tombe avant le début
+      // (ex. 23 h 50 → 00 h 20) elle passe au lendemain — plus jamais de
+      // 19 h 10 → 19 h 20 compté un jour plus tard.
+      let at = combineDayTime(day, startTime);
       let endedAt: string | null = activity.ended_at;
       if (hasEnd) {
-        const end = withTime(new Date(activity.ended_at ?? activity.at), endTime);
-        if (at.getTime() > end.getTime()) at.setDate(at.getDate() - 1);
-        endedAt = end.toISOString();
+        const range = rangeOnDay(day, startTime, endTime);
+        at = range.start;
+        endedAt = range.end.toISOString();
       }
       ({ error } = await supabase
         .from('activities')
@@ -195,14 +198,13 @@ export default function EventDetailScreen() {
         })
         .eq('id', activity.id));
     } else if (kind === 'night' && night) {
-      const started = withTime(new Date(night.started_at), startTime);
-      const ended = withTime(new Date(night.ended_at), endTime);
-      if (started.getTime() >= ended.getTime()) started.setDate(started.getDate() - 1);
+      // `day` = jour du coucher ; le lever passe au lendemain si besoin.
+      const range = rangeOnDay(day, startTime, endTime);
       ({ error } = await supabase
         .from('nights')
         .update({
-          started_at: started.toISOString(),
-          ended_at: ended.toISOString(),
+          started_at: range.start.toISOString(),
+          ended_at: range.end.toISOString(),
           location,
           notes: notes.trim() || null,
         })
@@ -211,20 +213,18 @@ export default function EventDetailScreen() {
       ({ error } = await supabase
         .from('overall_sessions')
         .update({
-          at: withTime(new Date(overall.at), startTime).toISOString(),
+          at: combineDayTime(day, startTime).toISOString(),
           duration_minutes: duration,
           notes: notes.trim() || null,
         })
         .eq('id', overall.id));
     } else if (kind === 'semi_solo' && semiSolo) {
-      const started = withTime(new Date(semiSolo.started_at), startTime);
-      const ended = withTime(new Date(semiSolo.ended_at), endTime);
-      if (started.getTime() >= ended.getTime()) started.setDate(started.getDate() - 1);
+      const range = rangeOnDay(day, startTime, endTime);
       ({ error } = await supabase
         .from('semi_solo_sessions')
         .update({
-          started_at: started.toISOString(),
-          ended_at: ended.toISOString(),
+          started_at: range.start.toISOString(),
+          ended_at: range.end.toISOString(),
           notes: notes.trim() || null,
         })
         .eq('id', semiSolo.id));
@@ -288,7 +288,12 @@ export default function EventDetailScreen() {
         <Text style={[styles.label, { color: colors.textSecondary }]}>CHARGEMENT…</Text>
       ) : (
         <>
-          {/* ---------------------------------------------------- Horaires */}
+          {/* ----------------------------------------------- Date + horaires */}
+          <DialogDate
+            value={day}
+            onChange={setDay}
+            label={kind === 'night' ? 'NUIT DU' : 'DATE'}
+          />
           <View style={styles.timeRow}>
               <View style={styles.timeCol}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>

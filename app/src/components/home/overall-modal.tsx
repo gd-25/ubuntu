@@ -5,6 +5,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import {
   Chip,
   DialogButtons,
+  DialogDate,
   DialogLabel,
   DialogNotes,
   PixelDialog,
@@ -12,6 +13,7 @@ import {
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { combineDayTime } from '@/lib/format';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type { Space } from '@/lib/types';
@@ -52,6 +54,7 @@ export function OverallModal({
   onSaved: (message: string) => void;
 }) {
   const colors = useTheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [duration, setDuration] = useState<number>(5);
   const [notes, setNotes] = useState('');
 
@@ -61,6 +64,7 @@ export function OverallModal({
   if (visible !== wasVisible) {
     setWasVisible(visible);
     if (visible) {
+      setDay(new Date());
       setDuration(5);
       setNotes('');
     }
@@ -70,7 +74,7 @@ export function OverallModal({
     if (!dogId || !placement) return;
     const { error } = await supabase.from('overall_sessions').insert({
       dog_id: dogId,
-      at: new Date().toISOString(),
+      at: combineDayTime(day, new Date()).toISOString(),
       duration_minutes: duration,
       notes: notes.trim() || null,
       mat_x: Math.round(placement.x),
@@ -102,6 +106,7 @@ export function OverallModal({
           {todayCount}/{OVERALL_DAILY_GOAL} AUJOURD&apos;HUI
         </Text>
       </View>
+      <DialogDate value={day} onChange={setDay} />
       <DialogLabel>DURÉE (MIN)</DialogLabel>
       <View style={styles.row}>
         {DURATIONS.map((d) => (

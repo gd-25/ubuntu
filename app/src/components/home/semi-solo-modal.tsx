@@ -5,6 +5,7 @@ import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
 import {
   DialogButtons,
+  DialogDate,
   DialogLabel,
   DialogNotes,
   PixelDialog,
@@ -12,6 +13,7 @@ import {
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { rangeOnDay } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 /** Objectif quotidien de semi solo : 1 h par jour. */
@@ -41,6 +43,7 @@ export function SemiSoloModal({
 }) {
   const colors = useTheme();
   const scheme = useColorScheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [start, setStart] = useState<Date>(new Date());
   const [end, setEnd] = useState<Date>(new Date());
   const [notes, setNotes] = useState('');
@@ -52,6 +55,7 @@ export function SemiSoloModal({
     setWasVisible(visible);
     if (visible) {
       const now = new Date();
+      setDay(now);
       setStart(new Date(now.getTime() - 30 * 60 * 1000));
       setEnd(now);
       setNotes('');
@@ -60,14 +64,14 @@ export function SemiSoloModal({
 
   const save = async () => {
     if (!dogId) return;
-    // Saisie après coup : si le début dépasse la fin, c'était la veille.
-    const startedAt = new Date(start);
-    if (startedAt.getTime() > end.getTime()) startedAt.setDate(startedAt.getDate() - 1);
-    const minutes = Math.round((end.getTime() - startedAt.getTime()) / 60_000);
+    // Les deux heures vivent sur le jour choisi ; une fin avant le début
+    // (ex. 23 h 50 → 00 h 20) passe au lendemain.
+    const range = rangeOnDay(day, start, end);
+    const minutes = Math.round((range.end.getTime() - range.start.getTime()) / 60_000);
     const { error } = await supabase.from('semi_solo_sessions').insert({
       dog_id: dogId,
-      started_at: startedAt.toISOString(),
-      ended_at: end.toISOString(),
+      started_at: range.start.toISOString(),
+      ended_at: range.end.toISOString(),
       notes: notes.trim() || null,
     });
     if (error) {
@@ -94,6 +98,7 @@ export function SemiSoloModal({
           {todayMinutes}/{SEMI_SOLO_DAILY_GOAL_MINUTES} MIN
         </Text>
       </View>
+      <DialogDate value={day} onChange={setDay} />
       <View style={styles.timeRow}>
         <View style={styles.timeCol}>
           <DialogLabel>DÉBUT</DialogLabel>
@@ -113,7 +118,6 @@ export function SemiSoloModal({
             value={end}
             mode="time"
             display="compact"
-            maximumDate={new Date()}
             themeVariant={scheme === 'dark' ? 'dark' : 'light'}
             onChange={(_, date) => {
               if (date) setEnd(date);

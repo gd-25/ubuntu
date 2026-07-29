@@ -2,10 +2,11 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogDate, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { combineDayTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 const DURATIONS = [
@@ -32,6 +33,7 @@ export function GardeModal({
   onSaved: (message: string) => void;
 }) {
   const colors = useTheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [name, setName] = useState('');
   const [minutes, setMinutes] = useState<number>(120);
   const [notes, setNotes] = useState('');
@@ -42,6 +44,7 @@ export function GardeModal({
   if (visible !== wasVisible) {
     setWasVisible(visible);
     if (visible) {
+      setDay(new Date());
       setName('');
       setMinutes(120);
       setNotes('');
@@ -53,7 +56,7 @@ export function GardeModal({
     const { error } = await supabase.from('activities').insert({
       dog_id: dogId,
       kind: 'care',
-      at: new Date().toISOString(),
+      at: combineDayTime(day, new Date()).toISOString(),
       caregiver: name.trim(),
       duration_minutes: minutes,
       notes: notes.trim() || null,
@@ -69,6 +72,7 @@ export function GardeModal({
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🤝 GARDE" topOffset={topOffset}>
+      <DialogDate value={day} onChange={setDay} />
       <DialogLabel>QUI LE GARDE ?</DialogLabel>
       <TextInput
         value={name}

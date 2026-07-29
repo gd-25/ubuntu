@@ -192,6 +192,17 @@ export interface SemiSoloSession {
   created_at: string;
 }
 
+/** Note libre attachée à une journée du Journal (ex. où était Ubuntu). */
+export interface DayNote {
+  id: string;
+  dog_id: string;
+  /** Jour au format AAAA-MM-JJ. */
+  day: string;
+  content: string;
+  updated_at: string;
+  created_at: string;
+}
+
 /** Idée d'amélioration de l'app, saisie dans Réglages (simple stockage). */
 export interface AppImprovement {
   id: string;

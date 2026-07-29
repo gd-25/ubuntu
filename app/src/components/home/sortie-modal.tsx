@@ -3,11 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 
-import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogDate, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, rangeOnDay } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -29,6 +29,7 @@ export function SortieModal({
 }) {
   const colors = useTheme();
   const scheme = useColorScheme();
+  const [day, setDay] = useState<Date>(new Date());
   const [departure, setDeparture] = useState<Date>(new Date());
   const [arrival, setArrival] = useState<Date>(new Date());
   const [poopSmall, setPoopSmall] = useState(false);
@@ -43,6 +44,7 @@ export function SortieModal({
     setWasVisible(visible);
     if (visible) {
       const now = new Date();
+      setDay(now);
       setDeparture(new Date(now.getTime() - 30 * 60 * 1000));
       setArrival(now);
       setPoopSmall(false);
@@ -54,15 +56,14 @@ export function SortieModal({
 
   const save = async () => {
     if (!dogId) return;
-    // Une sortie saisie après coup : si l'heure de départ dépasse
-    // l'arrivée, elle était la veille (ex. 23 h 50 → 00 h 20).
-    const at = new Date(departure);
-    if (at.getTime() > arrival.getTime()) at.setDate(at.getDate() - 1);
+    // Les deux heures vivent sur le jour choisi ; une arrivée avant le
+    // départ (ex. 23 h 50 → 00 h 20) passe au lendemain.
+    const { start, end } = rangeOnDay(day, departure, arrival);
     const { error } = await supabase.from('activities').insert({
       dog_id: dogId,
       kind: 'walk',
-      at: at.toISOString(),
-      ended_at: arrival.toISOString(),
+      at: start.toISOString(),
+      ended_at: end.toISOString(),
       poop_small: poopSmall,
       poop_big: poopBig,
       off_leash: offLeash,
@@ -74,12 +75,13 @@ export function SortieModal({
     }
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const duration = (arrival.getTime() - at.getTime()) / 1000;
+    const duration = (end.getTime() - start.getTime()) / 1000;
     onSaved(`🚶 SORTIE NOTÉE (${formatDuration(duration)})`);
   };
 
   return (
     <PixelDialog visible={visible} onRequestClose={onClose} title="🚶 SORTIE" topOffset={topOffset}>
+      <DialogDate value={day} onChange={setDay} />
       <View style={styles.timeRow}>
         <View style={styles.timeCol}>
           <DialogLabel>DÉPART</DialogLabel>
@@ -99,7 +101,6 @@ export function SortieModal({
             value={arrival}
             mode="time"
             display="compact"
-            maximumDate={new Date()}
             themeVariant={scheme === 'dark' ? 'dark' : 'light'}
             onChange={(_, date) => {
               if (date) setArrival(date);

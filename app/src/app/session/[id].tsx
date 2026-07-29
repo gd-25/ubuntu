@@ -316,6 +316,10 @@ export default function SessionDetailScreen() {
     ? (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000
     : null;
 
+  // Même code couleur que le Journal : session réussie (≥ 90 % de calme)
+  // → pastille verte, sinon rouge.
+  const titleDot = summary && summary.calm_percent >= 90 ? '🟢' : '🔴';
+
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
@@ -325,7 +329,7 @@ export default function SessionDetailScreen() {
       automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled">
       <Text style={[styles.title, { color: colors.text }]}>
-        🔴 {formatDateTime(session.started_at).toUpperCase()}
+        {titleDot} {formatDateTime(session.started_at).toUpperCase()}
       </Text>
       <Text style={[styles.label, { color: colors.textSecondary }]}>
         {session.ended_at ? `TERMINÉE À ${formatTime(session.ended_at)}` : 'EN COURS'}

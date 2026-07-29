@@ -7,23 +7,25 @@ import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeabl
 import Animated, { FadeOut, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Chip, DialogButtons, DialogLabel, PixelDialog } from '@/components/home/pixel-dialog';
+import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
 import { ScreenTitle } from '@/components/screen-title';
 import { Text } from '@/components/text';
 import { EmptyState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDate, formatDuration, formatTime } from '@/lib/format';
+import { formatDate, formatDuration, formatTime, parisDayKey } from '@/lib/format';
 import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
 import type {
   Activity,
+  DayNote,
   FakeCue,
   Night,
   OverallSession,
   SemiSoloSession,
   SessionSummary,
 } from '@/lib/types';
+import { useDog } from '@/lib/use-dog';
 
 /** Types d'événements du journal (filtrables). */
 type EventType =
@@ -102,24 +104,33 @@ interface FeedItem {
 
 interface DaySection {
   title: string;
+  /** Clé triable du jour (AAAA-MM-JJ, heure de Paris) — note du jour. */
+  dayKey: string;
   data: FeedItem[];
 }
 
 export default function HistoryScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const { dog } = useDog();
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [nights, setNights] = useState<Night[]>([]);
   const [overalls, setOveralls] = useState<OverallSession[]>([]);
   const [semiSolos, setSemiSolos] = useState<SemiSoloSession[]>([]);
+  /** Notes de journée, indexées par jour AAAA-MM-JJ. */
+  const [dayNotes, setDayNotes] = useState<Record<string, DayNote>>({});
+  /** Jour en cours d'édition dans la modale note (clé + libellé). */
+  const [noteEditor, setNoteEditor] = useState<{ dayKey: string; title: string } | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [enabled, setEnabled] = useState<EventType[]>(ALL_TYPES);
   const [filterOpen, setFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [sessionsRes, activitiesRes, nightsRes, overallsRes, semiSolosRes] = await Promise.all([
+    const [sessionsRes, activitiesRes, nightsRes, overallsRes, semiSolosRes, dayNotesRes] =
+      await Promise.all([
       supabase
         .from('session_summaries')
         .select('*')
@@ -134,6 +145,7 @@ export default function HistoryScreen() {
         .select('*')
         .order('started_at', { ascending: false })
         .limit(100),
+      supabase.from('day_notes').select('*').order('day', { ascending: false }).limit(120),
     ]);
     if (sessionsRes.error)
       console.warn('Chargement de l’historique impossible :', sessionsRes.error.message);
@@ -142,6 +154,9 @@ export default function HistoryScreen() {
     setNights((nightsRes.data as Night[] | null) ?? []);
     setOveralls((overallsRes.data as OverallSession[] | null) ?? []);
     setSemiSolos((semiSolosRes.data as SemiSoloSession[] | null) ?? []);
+    const notesByDay: Record<string, DayNote> = {};
+    for (const n of (dayNotesRes.data as DayNote[] | null) ?? []) notesByDay[n.day] = n;
+    setDayNotes(notesByDay);
     setIsLoading(false);
   }, []);
 
@@ -324,10 +339,51 @@ export default function HistoryScreen() {
       const title = formatDate(item.at);
       const last = byDay[byDay.length - 1];
       if (last && last.title === title) last.data.push(item);
-      else byDay.push({ title, data: [item] });
+      else byDay.push({ title, dayKey: parisDayKey(item.at), data: [item] });
     }
     return byDay;
   }, [summaries, activities, nights, overalls, semiSolos, enabled]);
+
+  /** Enregistre (upsert) ou efface la note du jour en cours d'édition. */
+  const saveDayNote = useCallback(async () => {
+    if (!noteEditor || !dog) return;
+    const content = noteDraft.trim();
+    const { dayKey } = noteEditor;
+    if (!content) {
+      // Champ vidé → la note disparaît.
+      const { error } = await supabase
+        .from('day_notes')
+        .delete()
+        .eq('dog_id', dog.id)
+        .eq('day', dayKey);
+      if (error) {
+        Alert.alert('Erreur', `Note non supprimée : ${error.message}`);
+        return;
+      }
+      setDayNotes((prev) => {
+        const next = { ...prev };
+        delete next[dayKey];
+        return next;
+      });
+      setNoteEditor(null);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('day_notes')
+      .upsert(
+        { dog_id: dog.id, day: dayKey, content, updated_at: new Date().toISOString() },
+        { onConflict: 'dog_id,day' }
+      )
+      .select()
+      .single();
+    if (error) {
+      Alert.alert('Erreur', `Note non enregistrée : ${error.message}`);
+      return;
+    }
+    setDayNotes((prev) => ({ ...prev, [dayKey]: data as DayNote }));
+    setNoteEditor(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [noteEditor, noteDraft, dog]);
 
   const toggleType = useCallback((type: EventType) => {
     Haptics.selectionAsync();
@@ -495,6 +551,9 @@ export default function HistoryScreen() {
       if (day !== currentDay) {
         currentDay = day;
         byDay.push(`\n=== ${day} ===`);
+        // Note libre de la journée (ex. où était Ubuntu), en tête du jour.
+        const note = dayNotes[parisDayKey(line.at)];
+        if (note) byDay.push(`Note du jour : ${note.content}`);
       }
       byDay.push(`- ${line.text}`);
     }
@@ -511,12 +570,13 @@ export default function HistoryScreen() {
       `- PROTOCOLE OVERALL : exercice de relaxation sur son tapis (objectif 1/jour).`,
       `- VELCRO : il est « pot de colle », nous suit partout.`,
       `- GARDE : gardé par quelqu'un d'autre.`,
+      `- « Note du jour » : note libre sur la journée (ex. où était Ubuntu s'il n'était pas à la maison).`,
     ].join('\n');
 
     await Clipboard.setStringAsync(`${header}\n${byDay.join('\n')}\n`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Copié !', `L'historique du dernier mois (${lines.length} événements) est dans le presse-papier.`);
-  }, [summaries, activities, nights, overalls, semiSolos]);
+  }, [summaries, activities, nights, overalls, semiSolos, dayNotes]);
 
   const filterCount = enabled.length;
 
@@ -568,12 +628,29 @@ export default function HistoryScreen() {
         }
         renderSectionHeader={({ section }) => (
           <View style={[styles.dayHeader, { backgroundColor: colors.background }]}>
-            <View
-              style={[styles.dayChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.dayChipText, { color: colors.text }]}>
-                {section.title.toUpperCase()}
-              </Text>
+            <View style={styles.dayHeaderRow}>
+              <View
+                style={[styles.dayChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.dayChipText, { color: colors.text }]}>
+                  {section.title.toUpperCase()}
+                </Text>
+              </View>
+              {/* Crayon : note libre de la journée (ex. où était Boubou). */}
+              <Pressable
+                onPress={() => {
+                  setNoteEditor({ dayKey: section.dayKey, title: section.title });
+                  setNoteDraft(dayNotes[section.dayKey]?.content ?? '');
+                }}
+                hitSlop={10}
+                style={styles.dayNoteButton}>
+                <Text style={styles.dayNotePencil}>✏️</Text>
+              </Pressable>
             </View>
+            {dayNotes[section.dayKey] ? (
+              <Text style={[styles.dayNoteText, { color: colors.textSecondary }]}>
+                📍 {dayNotes[section.dayKey].content}
+              </Text>
+            ) : null}
           </View>
         )}
         renderItem={({ item }) => <FeedRow item={item} onDelete={() => deleteItem(item)} />}
@@ -604,6 +681,25 @@ export default function HistoryScreen() {
           confirmLabel="OK !"
           onCancel={() => setEnabled(ALL_TYPES)}
           onConfirm={() => setFilterOpen(false)}
+        />
+      </PixelDialog>
+
+      {/* Note du jour : texte libre attaché à la journée (lieu de Boubou…) */}
+      <PixelDialog
+        visible={!!noteEditor}
+        onRequestClose={() => setNoteEditor(null)}
+        title={`✏️ ${(noteEditor?.title ?? '').toUpperCase()}`}
+        topOffset={insets.top + 40}>
+        <DialogLabel>NOTE DE LA JOURNÉE (LIEU, CONTEXTE…)</DialogLabel>
+        <DialogNotes
+          value={noteDraft}
+          onChangeText={setNoteDraft}
+          placeholder="Ex. Boubou chez les parents de Greg…"
+        />
+        <DialogButtons
+          onCancel={() => setNoteEditor(null)}
+          onConfirm={saveDayNote}
+          confirmLabel="ENREGISTRER"
         />
       </PixelDialog>
     </View>
@@ -739,6 +835,22 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     paddingVertical: 6,
+    gap: 5,
+  },
+  dayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dayNoteButton: {
+    paddingVertical: 2,
+  },
+  dayNotePencil: {
+    fontSize: 11,
+  },
+  dayNoteText: {
+    fontSize: 7,
+    lineHeight: 12,
   },
   dayChip: {
     alignSelf: 'flex-start',
