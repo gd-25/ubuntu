@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
 import Animated, { SlideInUp, SlideOutUp, useSharedValue } from 'react-native-reanimated';
@@ -65,6 +65,7 @@ import type {
   VocalEpisode,
 } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
+import { syncWidget } from '@/lib/widget';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
 
@@ -80,6 +81,8 @@ export default function HouseScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { dog } = useDog();
+  /** Nonce posé par la route /solo (deep link du widget) : lance une session. */
+  const { autosolo } = useLocalSearchParams<{ autosolo?: string }>();
 
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
@@ -322,8 +325,11 @@ export default function HouseScreen() {
 
   useEffect(() => {
     if (!dog) return;
+    // Nom de canal UNIQUE par montage : lors d'un remount (deep link /solo,
+    // navigation), l'ancien canal du même nom peut être encore abonné et
+    // Supabase refuse d'y rattacher des callbacks (« after subscribe() »).
     const channel = supabase
-      .channel(`house-${dog.id}`)
+      .channel(`house-${dog.id}-${Date.now().toString(36)}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'avatar_positions', filter: `dog_id=eq.${dog.id}` },
@@ -507,6 +513,25 @@ export default function HouseScreen() {
     setAlonePrompt(false);
     startSession();
   }, [startSession, showToast]);
+
+  // Tap sur le widget (aucune session en cours) : le deep link /solo pose
+  // un nonce — on lance une session dès que le chien est chargé.
+  const handledAutosoloRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autosolo || !dog || handledAutosoloRef.current === autosolo) return;
+    handledAutosoloRef.current = autosolo;
+    startSolo();
+  }, [autosolo, dog, startSolo]);
+
+  // L'état du widget (écran verrouillé) suit la session en cours, les
+  // minutes solo du jour et l'objectif.
+  useEffect(() => {
+    syncWidget({
+      sessionStartedAt: activeSession?.started_at ?? null,
+      soloMinutes: todaySoloMinutes,
+      soloGoal: goals.soloMinutes,
+    });
+  }, [activeSession?.started_at, todaySoloMinutes, goals.soloMinutes]);
 
   /** Mini-picker post-SOLO, question 1 : état d'Ubuntu au moment du départ.
       Le panneau reste ouvert pour la question 2 (il se ferme tout seul). */

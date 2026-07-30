@@ -13,6 +13,12 @@
       "icon": "./assets/images/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "appleTeamId": "H64BBH4HUR",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.gregdeshusses.ubuntu"
+        ]
       }
     },
     "android": {
@@ -49,7 +55,8 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,
