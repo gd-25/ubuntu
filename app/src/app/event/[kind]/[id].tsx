@@ -268,7 +268,7 @@ export default function EventDetailScreen() {
     kind === 'night'
       ? '🌙 NUIT'
       : kind === 'overall'
-        ? '🎯 SESSION OVERALL'
+        ? '🎯 EXERCICE'
         : kind === 'semi_solo'
           ? '🧍 SEMI SOLO'
           : ACTIVITY_TITLES[activity?.kind ?? ''] ?? '…';
@@ -475,9 +475,11 @@ export default function EventDetailScreen() {
 
           {kind === 'overall' && overall ? (
             <>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>
-                TAPIS : {SPACE_LABELS[overall.mat_space]}
-              </Text>
+              {overall.mat_space ? (
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  TAPIS : {SPACE_LABELS[overall.mat_space]}
+                </Text>
+              ) : null}
               <Text style={[styles.label, { color: colors.textSecondary }]}>DURÉE (MIN)</Text>
               <View style={styles.row}>
                 {DURATIONS.map((d) => (

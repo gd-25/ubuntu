@@ -13,7 +13,7 @@ import { CuesModal } from '@/components/home/cues-modal';
 import { DodoModal } from '@/components/home/dodo-modal';
 import { FeedModal } from '@/components/home/feed-modal';
 import { GardeModal } from '@/components/home/garde-modal';
-import { OverallModal, type MatPlacement } from '@/components/home/overall-modal';
+import { OverallModal } from '@/components/home/overall-modal';
 import { SemiSoloModal } from '@/components/home/semi-solo-modal';
 import { SoloPicker } from '@/components/home/solo-picker';
 import { SortieModal } from '@/components/home/sortie-modal';
@@ -44,7 +44,6 @@ import {
   MAP_H,
   MAP_W,
   SLOTS,
-  spaceAt,
   SPACE_LABELS,
   UBUNTU_MAT_SPOT,
   type Positions,
@@ -80,7 +79,7 @@ export default function HouseScreen() {
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { dog, person } = useDog();
+  const { dog } = useDog();
 
   // --- État du plan ---
   const [positions, setPositions] = useState<Positions>(DEFAULT_POSITIONS);
@@ -123,10 +122,7 @@ export default function HouseScreen() {
   const [gardeOpen, setGardeOpen] = useState(false);
   const [velcroOpen, setVelcroOpen] = useState(false);
   const [semiSoloOpen, setSemiSoloOpen] = useState(false);
-  /** Mode placement Overall : le tapis clignote et se laisse déplacer. */
-  const [overallPlacing, setOverallPlacing] = useState(false);
-  /** Tapis posé : la modale de session Overall s'ouvre sur cette position. */
-  const [overallPlacement, setOverallPlacement] = useState<MatPlacement | null>(null);
+  const [overallOpen, setOverallOpen] = useState(false);
   /** Mini-picker d'état au départ, affiché juste après le lancement SOLO. */
   const [soloPickerFor, setSoloPickerFor] = useState<string | null>(null);
   /** Compteurs du jour pour les objectifs (faux signaux 10/j, Overall 1/j,
@@ -538,39 +534,43 @@ export default function HouseScreen() {
       const sessionId = soloPickerFor;
       if (!sessionId) return;
       Haptics.selectionAsync();
+      // Un participant décoché n'a pas de localisation : on la remet à null.
+      const patch = {
+        participants,
+        ...(participants.includes('greg') ? {} : { greg_location: null }),
+        ...(participants.includes('fiona') ? {} : { fiona_location: null }),
+      };
       setActiveSession((prev) =>
-        prev && prev.id === sessionId ? { ...prev, participants } : prev
+        prev && prev.id === sessionId ? { ...prev, ...patch } : prev
       );
-      const { error } = await supabase
-        .from('sessions')
-        .update({ participants })
-        .eq('id', sessionId);
+      const { error } = await supabase.from('sessions').update(patch).eq('id', sessionId);
       if (error) console.warn('Participants non enregistrés :', error.message);
     },
     [soloPickerFor]
   );
 
-  /** Mini-picker post-SOLO, question 2 : où sera l'humain pendant la
-      session. Déplace aussi SON avatar sur le plan : couloir → palier (en
-      bas), en bas / dehors → sentier (en haut). */
+  /** Mini-picker post-SOLO : où sera CE participant pendant la session
+      (une ligne par participant — Fiona peut être dans le couloir pendant
+      que Greg est en bas). Déplace aussi SON avatar sur le plan :
+      couloir → palier (en bas), en bas / dehors → sentier (en haut). */
   const pickHumanLocation = useCallback(
-    async (location: HumanLocation) => {
+    async (who: 'greg' | 'fiona', location: HumanLocation) => {
       const sessionId = soloPickerFor;
       if (!sessionId) return;
       Haptics.selectionAsync();
       const targetSpace: Space = location === 'couloir' ? 'couloir_ext' : 'dehors';
-      setPositions((prev) => ({ ...prev, [person]: targetSpace }));
-      persistPosition(person, targetSpace);
+      setPositions((prev) => ({ ...prev, [who]: targetSpace }));
+      persistPosition(who, targetSpace);
       setActiveSession((prev) =>
-        prev && prev.id === sessionId ? { ...prev, human_location: location } : prev
+        prev && prev.id === sessionId ? { ...prev, [`${who}_location`]: location } : prev
       );
       const { error } = await supabase
         .from('sessions')
-        .update({ human_location: location })
+        .update({ [`${who}_location`]: location })
         .eq('id', sessionId);
       if (error) console.warn('Position humaine non enregistrée :', error.message);
     },
-    [soloPickerFor, person, persistPosition]
+    [soloPickerFor, persistPosition]
   );
 
   /**
@@ -702,31 +702,13 @@ export default function HouseScreen() {
             if (error) console.warn("Sync de l'objet impossible :", error.message);
           });
       }
-      if (object === 'mat' && overallPlacing) {
-        setOverallPlacement({ x, y, space: spaceAt(x, y) });
-      }
       if (object === 'basket' && basketPlacing) {
         setBasketPlacing(false);
         setDodoOpen(true);
       }
     },
-    [dog, overallPlacing, basketPlacing]
+    [dog, basketPlacing]
   );
-
-  // ------------------------------------------------- Placement Overall
-
-  /** Bouton OVERALL : le tapis clignote, on le pose là où il sera (la
-      bannière de placement porte la consigne — pas de toast en doublon). */
-  const startOverallPlacing = useCallback(() => {
-    Haptics.selectionAsync();
-    setOverallPlacing(true);
-  }, []);
-
-  /** Fin (enregistrée ou annulée) : le tapis reste où il a été posé. */
-  const closeOverall = useCallback(() => {
-    setOverallPlacement(null);
-    setOverallPlacing(false);
-  }, []);
 
   // ------------------------------------------- Repositionnement du panier
 
@@ -844,7 +826,7 @@ export default function HouseScreen() {
               otherPos={objectPos.basket}
               scale={scale}
               night={scheme === 'dark'}
-              blinking={overallPlacing && !overallPlacement}
+              blinking={false}
               onDragChange={(dragging) => setDraggingObject(dragging ? 'mat' : null)}
               onDropped={(x, y) => handleObjectDropped('mat', x, y)}
             />
@@ -917,7 +899,7 @@ export default function HouseScreen() {
 
       {/* L'outil de travail : les 7 actions, dans l'espace vert
           (masqué quand un panneau occupe le haut de l'écran) */}
-      {!activeSession && !alonePrompt && !soloPickerFor && !overallPlacing && !basketPlacing ? (
+      {!activeSession && !alonePrompt && !soloPickerFor && !basketPlacing ? (
         <View style={[styles.actionsWrap, { top: panelTop }]}>
           <ActionGrid
             onSolo={startSolo}
@@ -926,7 +908,7 @@ export default function HouseScreen() {
             onDodo={openDodo}
             onVelcro={() => setVelcroOpen(true)}
             onCues={() => setCuesOpen(true)}
-            onOverall={startOverallPlacing}
+            onOverall={() => setOverallOpen(true)}
             onSemiSolo={() => setSemiSoloOpen(true)}
             onGarde={() => setGardeOpen(true)}
             todayCues={todayCues}
@@ -961,35 +943,11 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Placement Overall en cours : consigne + annulation */}
-      {overallPlacing && !overallPlacement ? (
-        <Animated.View
-          entering={SlideInUp.duration(240)}
-          exiting={SlideOutUp.duration(160)}
-          style={[
-            styles.placingBanner,
-            {
-              top: panelTop,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              boxShadow: `4px 4px 0px 0px ${colors.border}`,
-            },
-          ]}>
-          <Text style={[styles.placingText, { color: colors.text }]}>
-            🐾 GLISSEZ LE TAPIS LÀ OÙ VOUS LE POSEZ POUR LA SESSION
-          </Text>
-          <Pressable onPress={closeOverall} hitSlop={8}>
-            <Text style={[styles.placingCancel, { color: colors.textSecondary }]}>ANNULER</Text>
-          </Pressable>
-        </Animated.View>
-      ) : null}
-
       {/* Mini-picker d'état au départ (un seul tap, juste après SOLO) —
           descendu pour laisser la place au toast au niveau du badge */}
       {soloPickerFor ? (
         <SoloPicker
           top={panelTop + 22}
-          person={person}
           onPickState={pickDepartureState}
           onPickLocation={pickHumanLocation}
           onPickParticipants={pickParticipants}
@@ -1163,13 +1121,12 @@ export default function HouseScreen() {
         }}
       />
       <OverallModal
-        visible={!!overallPlacement}
+        visible={overallOpen}
         topOffset={panelTop}
         dogId={dog?.id ?? null}
-        placement={overallPlacement}
         todayCount={todayOveralls}
         goal={goals.overalls}
-        onClose={closeOverall}
+        onClose={() => setOverallOpen(false)}
         onSaved={(message) => {
           setTodayOveralls((n) => n + 1);
           showToast(message);

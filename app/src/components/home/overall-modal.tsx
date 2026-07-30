@@ -14,29 +14,19 @@ import { Text } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { combineDayTime } from '@/lib/format';
-import { SPACE_LABELS } from '@/lib/house';
 import { supabase } from '@/lib/supabase';
-import type { Space } from '@/lib/types';
 
 const DURATIONS = [2, 5, 10, 15, 20, 30] as const;
 
-/** Position finale du tapis pendant la session (unités carte + zone). */
-export interface MatPlacement {
-  x: number;
-  y: number;
-  space: Space;
-}
-
 /**
- * Session du protocole Overall, ouverte une fois le tapis posé sur le
- * plan : durée, friandises données, observations. La position du tapis
- * est la variable de généralisation (réussit-il partout ?).
+ * Exercice de dressage (ex-protocole Overall) : date, durée et description
+ * libre de ce qui a été travaillé. Plus de positionnement du tapis — les
+ * anciennes sessions gardent leur position, les nouvelles n'en ont pas.
  */
 export function OverallModal({
   visible,
   topOffset,
   dogId,
-  placement,
   todayCount,
   goal,
   onClose,
@@ -45,8 +35,7 @@ export function OverallModal({
   visible: boolean;
   topOffset: number;
   dogId: string | null;
-  placement: MatPlacement | null;
-  /** Sessions Overall déjà notées aujourd'hui. */
+  /** Exercices déjà notés aujourd'hui. */
   todayCount: number;
   /** Objectif quotidien (paramétrable dans Réglages). */
   goal: number;
@@ -71,37 +60,28 @@ export function OverallModal({
   }
 
   const save = async () => {
-    if (!dogId || !placement) return;
+    if (!dogId) return;
     const { error } = await supabase.from('overall_sessions').insert({
       dog_id: dogId,
       at: combineDayTime(day, new Date()).toISOString(),
       duration_minutes: duration,
       notes: notes.trim() || null,
-      mat_x: Math.round(placement.x),
-      mat_y: Math.round(placement.y),
-      mat_space: placement.space,
     });
     if (error) {
-      Alert.alert('Erreur', `Session non enregistrée : ${error.message}`);
+      Alert.alert('Erreur', `Exercice non enregistré : ${error.message}`);
       return;
     }
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onSaved(
-      `🐾 OVERALL NOTÉ (${SPACE_LABELS[placement.space]}) · ${todayCount + 1}/${goal} AUJOURD'HUI`
-    );
+    onSaved(`🎯 EXERCICE NOTÉ · ${todayCount + 1}/${goal} AUJOURD'HUI`);
   };
 
   return (
-    <PixelDialog
-      visible={visible}
-      onRequestClose={onClose}
-      title="🐾 SESSION OVERALL"
-      topOffset={topOffset}>
+    <PixelDialog visible={visible} onRequestClose={onClose} title="🎯 EXERCICE" topOffset={topOffset}>
       <View style={styles.header}>
-        <Text style={[styles.place, { color: colors.accent }]}>
-          TAPIS : {placement ? SPACE_LABELS[placement.space] : '…'}
-        </Text>
+        <View style={styles.headerLabel}>
+          <DialogLabel>SESSION DE DRESSAGE</DialogLabel>
+        </View>
         <Text style={[styles.goal, { color: colors.textSecondary }]}>
           {todayCount}/{goal} AUJOURD&apos;HUI
         </Text>
@@ -113,8 +93,8 @@ export function OverallModal({
           <Chip key={d} label={String(d)} selected={duration === d} onPress={() => setDuration(d)} />
         ))}
       </View>
-      <DialogLabel>OBSERVATIONS</DialogLabel>
-      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Il s'est posé direct, relevé 2x…" />
+      <DialogLabel>DESCRIPTION</DialogLabel>
+      <DialogNotes value={notes} onChangeText={setNotes} placeholder="Ce qu'on a travaillé, comment ça s'est passé…" />
       <DialogButtons onCancel={onClose} onConfirm={save} confirmLabel="ENREGISTRER" />
     </PixelDialog>
   );
@@ -127,8 +107,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  place: {
-    fontSize: 8,
+  headerLabel: {
+    flexShrink: 1,
   },
   goal: {
     fontSize: 7,

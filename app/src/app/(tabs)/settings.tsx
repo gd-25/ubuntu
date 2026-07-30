@@ -355,7 +355,7 @@ export default function SettingsScreen() {
             onChange={(v) => setGoalInputs((prev) => ({ ...prev, cues: v }))}
           />
           <GoalRow
-            label="Overall (par jour)"
+            label="Exercices (par jour)"
             value={goalInputs.overalls}
             onChange={(v) => setGoalInputs((prev) => ({ ...prev, overalls: v }))}
           />

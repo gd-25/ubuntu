@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
 import Svg, { G, Rect } from 'react-native-svg';
@@ -23,13 +23,13 @@ const LOCATIONS: { value: HumanLocation; label: string }[] = [
   { value: 'dehors', label: 'DEHORS' },
 ];
 
-/** Avatar de la personne qui utilise l'app (même sprites que le plan). */
+/** Avatars famille (mêmes sprites que le plan). */
 const AVATARS: Record<Exclude<Person, 'ubuntu'>, { source: number; w: number; h: number }> = {
   greg: { source: require('../../../assets/images/avatars/greg.png'), w: 22, h: 30 },
   fiona: { source: require('../../../assets/images/avatars/fio.png'), w: 24, h: 32 },
 };
 
-type Participant = Exclude<Person, 'ubuntu'>;
+export type Participant = Exclude<Person, 'ubuntu'>;
 
 const PARTICIPANTS: { value: Participant; label: string }[] = [
   { value: 'fiona', label: 'FIONA' },
@@ -63,53 +63,236 @@ function DownstairsBackground() {
 }
 
 /**
+ * Case commune aux trois sections : un visuel de hauteur FIXE (emoji,
+ * avatar ou scène) au-dessus d'un libellé — toutes les cases ont la même
+ * hauteur et la même structure. Sélection : bordure accent épaisse.
+ */
+function PickOption({
+  visual,
+  label,
+  selected,
+  onPress,
+}: {
+  visual: ReactNode;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const colors = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.option,
+        {
+          borderColor: selected ? colors.accent : colors.border,
+          borderWidth: selected ? 3 : 2,
+          backgroundColor: colors.background,
+          opacity: pressed ? 0.6 : 1,
+        },
+      ]}>
+      <View style={styles.optionVisual}>{visual}</View>
+      <Text style={[styles.optionText, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Titre de section (même style dans le picker et la sheet de session). */
+function SectionTitle({ children }: { children: ReactNode }) {
+  const colors = useTheme();
+  return <Text style={[styles.title, { color: colors.accent }]}>{children}</Text>;
+}
+
+/** Section 1 : l'état d'Ubuntu au moment du départ. */
+export function DepartureStateRow({
+  title = 'IL ÉTAIT COMMENT AU DÉPART ?',
+  value,
+  onPick,
+  header,
+}: {
+  title?: string;
+  value: DepartureState | null;
+  onPick: (state: DepartureState) => void;
+  /** Contenu optionnel à droite du titre (ex. la croix de fermeture). */
+  header?: ReactNode;
+}) {
+  return (
+    <>
+      <View style={styles.header}>
+        <SectionTitle>{title}</SectionTitle>
+        {header}
+      </View>
+      <View style={styles.row}>
+        {STATES.map(({ value: state, emoji, label }) => (
+          <PickOption
+            key={state}
+            visual={<Text style={styles.optionEmoji}>{emoji}</Text>}
+            label={label}
+            selected={value === state}
+            onPress={() => onPick(state)}
+          />
+        ))}
+      </View>
+    </>
+  );
+}
+
+/** Section 2 : qui participe (décoché = pas dans l'appartement du tout). */
+export function ParticipantsRow({
+  title = 'QUI PARTICIPE ?',
+  value,
+  onToggle,
+}: {
+  title?: string;
+  value: Participant[];
+  onToggle: (who: Participant) => void;
+}) {
+  return (
+    <>
+      <SectionTitle>{title}</SectionTitle>
+      <View style={styles.row}>
+        {PARTICIPANTS.map(({ value: who, label }) => {
+          const selected = value.includes(who);
+          const sprite = AVATARS[who];
+          return (
+            <PickOption
+              key={who}
+              visual={
+                <Image
+                  source={sprite.source}
+                  style={{ width: sprite.w, height: sprite.h, opacity: selected ? 1 : 0.35 }}
+                  contentFit="contain"
+                />
+              }
+              label={label}
+              selected={selected}
+              onPress={() => onToggle(who)}
+            />
+          );
+        })}
+      </View>
+    </>
+  );
+}
+
+/** Section 3 : où sera (était) CE participant — son avatar sur trois fonds.
+ * Une ligne par participant : Fiona peut être dans le couloir pendant que
+ * Greg est en bas. */
+export function HumanLocationRow({
+  title,
+  person,
+  value,
+  onPick,
+}: {
+  title: string;
+  /** Le participant concerné (son avatar est posé sur les scènes). */
+  person: Participant;
+  value: HumanLocation | null;
+  onPick: (location: HumanLocation) => void;
+}) {
+  const avatar = AVATARS[person];
+  return (
+    <>
+      <SectionTitle>{title}</SectionTitle>
+      <View style={styles.row}>
+        {LOCATIONS.map(({ value: location, label }) => (
+          <PickOption
+            key={location}
+            visual={
+              <>
+                {location === 'couloir' ? (
+                  <View style={[StyleSheet.absoluteFill, styles.hallway]} />
+                ) : location === 'en_bas' ? (
+                  <View style={StyleSheet.absoluteFill}>
+                    <DownstairsBackground />
+                  </View>
+                ) : (
+                  <LinearGradient
+                    colors={['#E84848', '#E89840', '#E8D848', '#50B858', '#4890E0', '#9058C8']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                )}
+                <Image
+                  source={avatar.source}
+                  style={{ width: avatar.w, height: avatar.h }}
+                  contentFit="contain"
+                />
+              </>
+            }
+            label={label}
+            selected={value === location}
+            onPress={() => onPick(location)}
+          />
+        ))}
+      </View>
+    </>
+  );
+}
+
+/** Titre de la ligne de localisation d'un participant. */
+export function locationRowTitle(person: Participant, past: boolean): string {
+  const name = person === 'fiona' ? 'FIONA' : 'GREG';
+  return past ? `OÙ ÉTAIT ${name} ?` : `OÙ SERA ${name} ?`;
+}
+
+/**
  * Mini-picker affiché juste après le tap SOLO : (1) l'état d'Ubuntu au
- * moment du départ (la variable la plus prédictive), (2) où sera
- * l'humain pendant la session — l'avatar du compte sur trois fonds :
- * couloir gris, en bas (sentier et sapins), dehors (arc-en-ciel) — et
- * (3) qui participe à l'exercice (les deux par défaut ; décocher
- * quelqu'un = il n'était pas dans l'appartement du tout).
- * Le panneau se ferme tout seul quand les questions 1 et 2 sont répondues.
+ * moment du départ (la variable la plus prédictive), (2) qui participe à
+ * l'exercice (les deux par défaut ; décocher quelqu'un = il n'était pas
+ * dans l'appartement du tout) et (3) où sera CHAQUE participant pendant
+ * la session — une ligne par participant coché. Le panneau se ferme tout
+ * seul quand l'état et toutes les localisations sont répondus.
  */
 export function SoloPicker({
   top,
-  person,
   onPickState,
   onPickLocation,
   onPickParticipants,
   onDismiss,
 }: {
   top: number;
-  /** Avatar du compte connecté (greg ou fiona). */
-  person: Exclude<Person, 'ubuntu'>;
   onPickState: (state: DepartureState) => void;
-  onPickLocation: (location: HumanLocation) => void;
+  /** Localisation d'UN participant (appelé une fois par ligne). */
+  onPickLocation: (person: Participant, location: HumanLocation) => void;
   onPickParticipants: (participants: Participant[]) => void;
   onDismiss: () => void;
 }) {
   const colors = useTheme();
   const [pickedState, setPickedState] = useState<DepartureState | null>(null);
-  const [pickedLocation, setPickedLocation] = useState<HumanLocation | null>(null);
+  const [locations, setLocations] = useState<Record<Participant, HumanLocation | null>>({
+    fiona: null,
+    greg: null,
+  });
   const [participants, setParticipants] = useState<Participant[]>(['fiona', 'greg']);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const avatar = AVATARS[person];
 
-  /** Ferme le panneau (un instant après) quand les deux réponses sont là. */
-  const maybeClose = (state: DepartureState | null, location: HumanLocation | null) => {
-    if (!state || !location || closeTimer.current) return;
+  /** Ferme le panneau (un instant après) quand tout est répondu :
+      l'état + la localisation de CHAQUE participant coché. */
+  const maybeClose = (
+    state: DepartureState | null,
+    nextLocations: Record<Participant, HumanLocation | null>,
+    nextParticipants: Participant[]
+  ) => {
+    if (!state || closeTimer.current) return;
+    if (nextParticipants.some((p) => !nextLocations[p])) return;
     closeTimer.current = setTimeout(onDismiss, 350);
   };
 
   const pickState = (state: DepartureState) => {
     setPickedState(state);
     onPickState(state);
-    maybeClose(state, pickedLocation);
+    maybeClose(state, locations, participants);
   };
 
-  const pickLocation = (location: HumanLocation) => {
-    setPickedLocation(location);
-    onPickLocation(location);
-    maybeClose(pickedState, location);
+  const pickLocation = (person: Participant, location: HumanLocation) => {
+    const next = { ...locations, [person]: location };
+    setLocations(next);
+    onPickLocation(person, location);
+    maybeClose(pickedState, next, participants);
   };
 
   /** Coche/décoche un participant (au moins un doit rester). */
@@ -120,6 +303,7 @@ export function SoloPicker({
     if (next.length === 0) return;
     setParticipants(next);
     onPickParticipants(next);
+    maybeClose(pickedState, locations, next);
   };
 
   return (
@@ -135,114 +319,26 @@ export function SoloPicker({
           boxShadow: `4px 4px 0px 0px ${colors.border}`,
         },
       ]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.accent }]}>IL ÉTAIT COMMENT AU DÉPART ?</Text>
-        <Pressable onPress={onDismiss} hitSlop={8}>
-          <Text style={[styles.dismiss, { color: colors.textSecondary }]}>✕</Text>
-        </Pressable>
-      </View>
-      <View style={styles.row}>
-        {STATES.map(({ value, emoji, label }) => (
-          <Pressable
-            key={value}
-            onPress={() => pickState(value)}
-            style={({ pressed }) => [
-              styles.option,
-              {
-                backgroundColor: pickedState === value ? colors.accent : colors.background,
-                borderColor: colors.border,
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}>
-            <Text style={styles.optionEmoji}>{emoji}</Text>
-            <Text
-              style={[
-                styles.optionText,
-                { color: pickedState === value ? colors.accentText : colors.text },
-              ]}
-              numberOfLines={1}>
-              {label}
-            </Text>
+      <DepartureStateRow
+        value={pickedState}
+        onPick={pickState}
+        header={
+          <Pressable onPress={onDismiss} hitSlop={8}>
+            <Text style={[styles.dismiss, { color: colors.textSecondary }]}>✕</Text>
           </Pressable>
-        ))}
-      </View>
-
-      {/* Qui participe à l'exercice ? (décoché = pas dans l'appartement) */}
-      <View style={styles.participantsRow}>
-        <Text style={[styles.title, { color: colors.accent }]}>QUI PARTICIPE ?</Text>
-        {PARTICIPANTS.map(({ value, label }) => {
-          const selected = participants.includes(value);
-          const sprite = AVATARS[value];
-          return (
-            <Pressable
-              key={value}
-              onPress={() => toggleParticipant(value)}
-              style={({ pressed }) => [
-                styles.participant,
-                {
-                  backgroundColor: selected ? colors.accent : colors.background,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.6 : 1,
-                },
-              ]}>
-              <Image
-                source={sprite.source}
-                style={{ width: sprite.w * 0.8, height: sprite.h * 0.8, opacity: selected ? 1 : 0.35 }}
-                contentFit="contain"
-              />
-              <Text
-                style={[
-                  styles.optionText,
-                  { color: selected ? colors.accentText : colors.text },
-                ]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Text style={[styles.title, { color: colors.accent }]}>ET TOI, TU SERAS OÙ ?</Text>
-      <View style={styles.row}>
-        {LOCATIONS.map(({ value, label }) => (
-          <Pressable
-            key={value}
-            onPress={() => pickLocation(value)}
-            style={({ pressed }) => [
-              styles.locationOption,
-              {
-                borderColor: pickedLocation === value ? colors.accent : colors.border,
-                borderWidth: pickedLocation === value ? 3 : 2,
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}>
-            <View style={styles.locationScene}>
-              {value === 'couloir' ? (
-                <View style={[StyleSheet.absoluteFill, styles.hallway]} />
-              ) : value === 'en_bas' ? (
-                <View style={StyleSheet.absoluteFill}>
-                  <DownstairsBackground />
-                </View>
-              ) : (
-                <LinearGradient
-                  colors={['#E84848', '#E89840', '#E8D848', '#50B858', '#4890E0', '#9058C8']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              )}
-              <Image
-                source={avatar.source}
-                style={{ width: avatar.w, height: avatar.h }}
-                contentFit="contain"
-              />
-            </View>
-            <Text style={[styles.optionText, { color: colors.text }]} numberOfLines={1}>
-              {label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+        }
+      />
+      <ParticipantsRow value={participants} onToggle={toggleParticipant} />
+      {/* Une ligne de localisation PAR participant coché. */}
+      {PARTICIPANTS.filter(({ value }) => participants.includes(value)).map(({ value }) => (
+        <HumanLocationRow
+          key={value}
+          title={locationRowTitle(value, false)}
+          person={value}
+          value={locations[value]}
+          onPick={(location) => pickLocation(value, location)}
+        />
+      ))}
     </Animated.View>
   );
 }
@@ -275,38 +371,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
+  // Case commune : visuel 44 de haut + libellé — même hauteur partout.
   option: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingVertical: 9,
-    paddingHorizontal: 2,
-  },
-  optionEmoji: {
-    fontSize: 16,
-  },
-  optionText: {
-    fontSize: 5.5,
-  },
-  participantsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  participant: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-  },
-  locationOption: {
     flex: 1,
     alignItems: 'center',
     gap: 4,
@@ -314,12 +380,18 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     overflow: 'hidden',
   },
-  locationScene: {
+  optionVisual: {
     alignSelf: 'stretch',
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  optionEmoji: {
+    fontSize: 16,
+  },
+  optionText: {
+    fontSize: 5.5,
   },
   hallway: {
     backgroundColor: '#55555E',

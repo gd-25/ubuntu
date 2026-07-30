@@ -21,6 +21,12 @@ import {
   DialogNotes,
   PixelDialog,
 } from '@/components/home/pixel-dialog';
+import {
+  DepartureStateRow,
+  HumanLocationRow,
+  locationRowTitle,
+  ParticipantsRow,
+} from '@/components/home/solo-picker';
 import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -57,25 +63,6 @@ const KINDS: { value: AddKind; label: string }[] = [
 const OBS_KINDS: { value: AddKind; label: string }[] = [
   { value: 'sit', label: '🐩 ASSIS' },
   { value: 'down', label: '🛏 COUCHÉ' },
-];
-
-/** Mêmes options que le mini-picker post-SOLO (modifiables a posteriori). */
-const DEPARTURE_STATES: { value: DepartureState; emoji: string; label: string }[] = [
-  { value: 'asleep', emoji: '😴', label: 'ENDORMI' },
-  { value: 'settled', emoji: '😌', label: 'POSÉ' },
-  { value: 'active', emoji: '⚡', label: 'ACTIF' },
-  { value: 'following', emoji: '👀', label: 'NOUS SUIVAIT' },
-];
-
-const HUMAN_LOCATIONS: { value: HumanLocation; label: string }[] = [
-  { value: 'couloir', label: 'COULOIR' },
-  { value: 'en_bas', label: 'EN BAS' },
-  { value: 'dehors', label: 'DEHORS' },
-];
-
-const PARTICIPANT_OPTIONS: { value: 'fiona' | 'greg'; label: string }[] = [
-  { value: 'fiona', label: 'FIONA' },
-  { value: 'greg', label: 'GREG' },
 ];
 
 const EPISODE_DURATIONS = [
@@ -337,17 +324,19 @@ export default function SessionDetailScreen() {
     }
   };
 
-  const pickHumanLocation = async (location: HumanLocation) => {
+  /** Localisation d'UN participant (Fiona couloir, Greg en bas…). */
+  const pickHumanLocation = async (who: 'greg' | 'fiona', location: HumanLocation) => {
     if (!session) return;
     Haptics.selectionAsync();
-    const previous = session.human_location;
-    setSession({ ...session, human_location: location });
+    const key = `${who}_location` as const;
+    const previous = session[key];
+    setSession({ ...session, [key]: location });
     const { error } = await supabase
       .from('sessions')
-      .update({ human_location: location })
+      .update({ [key]: location })
       .eq('id', session.id);
     if (error) {
-      setSession((prev) => (prev ? { ...prev, human_location: previous } : prev));
+      setSession((prev) => (prev ? { ...prev, [key]: previous } : prev));
       Alert.alert('Erreur', `Modification impossible : ${error.message}`);
     }
   };
@@ -360,13 +349,17 @@ export default function SessionDetailScreen() {
       : [...current, who];
     if (next.length === 0) return;
     Haptics.selectionAsync();
-    setSession({ ...session, participants: next });
-    const { error } = await supabase
-      .from('sessions')
-      .update({ participants: next })
-      .eq('id', session.id);
+    // Un participant décoché n'a pas de localisation : on la remet à null.
+    const patch = {
+      participants: next,
+      ...(next.includes('greg') ? {} : { greg_location: null }),
+      ...(next.includes('fiona') ? {} : { fiona_location: null }),
+    };
+    const snapshot = session;
+    setSession({ ...session, ...patch });
+    const { error } = await supabase.from('sessions').update(patch).eq('id', session.id);
     if (error) {
-      setSession((prev) => (prev ? { ...prev, participants: current } : prev));
+      setSession(snapshot);
       Alert.alert('Erreur', `Modification impossible : ${error.message}`);
     }
   };
@@ -512,42 +505,6 @@ export default function SessionDetailScreen() {
         </View>
       ) : null}
 
-      {/* ------------------- Infos du départ (mêmes choix que le picker) */}
-      <DialogLabel>IL ÉTAIT COMMENT AU DÉPART ?</DialogLabel>
-      <View style={styles.row}>
-        {DEPARTURE_STATES.map(({ value, emoji, label }) => (
-          <Chip
-            key={value}
-            emoji={emoji}
-            label={label}
-            selected={session.departure_state === value}
-            onPress={() => pickDepartureState(value)}
-          />
-        ))}
-      </View>
-      <DialogLabel>OÙ ÉTAIT L&apos;HUMAIN ?</DialogLabel>
-      <View style={styles.row}>
-        {HUMAN_LOCATIONS.map(({ value, label }) => (
-          <Chip
-            key={value}
-            label={label}
-            selected={session.human_location === value}
-            onPress={() => pickHumanLocation(value)}
-          />
-        ))}
-      </View>
-      <DialogLabel>QUI PARTICIPAIT ? (DÉCOCHÉ = PAS DANS L&apos;APPART)</DialogLabel>
-      <View style={styles.row}>
-        {PARTICIPANT_OPTIONS.map(({ value, label }) => (
-          <Chip
-            key={value}
-            label={label}
-            selected={participants.includes(value)}
-            onPress={() => toggleParticipant(value)}
-          />
-        ))}
-      </View>
-
       {/* ------------------------------------------------------- Frise */}
       <DialogLabel>CHRONOLOGIE</DialogLabel>
       <EpisodeTimeline
@@ -639,6 +596,28 @@ export default function SessionDetailScreen() {
           <Text style={[styles.tagChipText, { color: colors.accent }]}>＋</Text>
         </Pressable>
       </View>
+
+      {/* --------- Infos du départ : exactement les mêmes sections que la
+          modale de lancement (SoloPicker), modifiables a posteriori.
+          Une ligne de localisation PAR participant (les vieilles sessions
+          sans valeur par personne retombent sur l'ancien champ unique). */}
+      <DepartureStateRow value={session.departure_state} onPick={pickDepartureState} />
+      <ParticipantsRow
+        title="QUI PARTICIPAIT ?"
+        value={participants}
+        onToggle={toggleParticipant}
+      />
+      {(['fiona', 'greg'] as const)
+        .filter((p) => participants.includes(p))
+        .map((p) => (
+          <HumanLocationRow
+            key={p}
+            title={locationRowTitle(p, true)}
+            person={p}
+            value={session[`${p}_location`] ?? session.human_location}
+            onPick={(location) => pickHumanLocation(p, location)}
+          />
+        ))}
 
       {/* ------------------------------------------------------- Notes */}
       <DialogLabel>NOTES</DialogLabel>

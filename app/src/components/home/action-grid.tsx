@@ -63,8 +63,8 @@ export function ActionGrid({
           onPress={onCues}
         />
         <ActionButton
-          emoji="🐾"
-          label="OVERALL"
+          emoji="🎯"
+          label="EXERCICE"
           badge={`${todayOveralls}/${goals.overalls}`}
           badgeDone={todayOveralls >= goals.overalls}
           onPress={onOverall}

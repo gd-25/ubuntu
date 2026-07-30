@@ -37,8 +37,11 @@ export interface Session {
   is_exercise: boolean;
   /** Calculé à la clôture : dernier épisode < 30 s avant la fin de session. */
   returned_during_vocalization: boolean | null;
-  /** Où l'humain est pendant la session (couloir / en bas / dehors). */
+  /** Où l'humain est pendant la session — LEGACY (une seule valeur). */
   human_location: HumanLocation | null;
+  /** Localisation par participant (Fiona couloir, Greg en bas…). */
+  greg_location: HumanLocation | null;
+  fiona_location: HumanLocation | null;
   /** Qui participe à l'exercice (un absent n'était pas dans l'appart). */
   participants: ('greg' | 'fiona')[];
 }
@@ -169,8 +172,8 @@ export interface ObjectPosition {
 }
 
 /**
- * Session du protocole Overall : la position finale du tapis est la
- * variable de généralisation (réussit-il partout ou juste à côté du canapé).
+ * Exercice de dressage (ex-protocole Overall). La position du tapis n'est
+ * plus saisie — les colonnes restent pour les anciennes sessions.
  */
 export interface OverallSession {
   id: string;
@@ -179,9 +182,9 @@ export interface OverallSession {
   duration_minutes: number;
   treats_count: number;
   notes: string | null;
-  mat_x: number;
-  mat_y: number;
-  mat_space: Space;
+  mat_x: number | null;
+  mat_y: number | null;
+  mat_space: Space | null;
   created_at: string;
 }
 

@@ -49,7 +49,7 @@ const EVENT_DEFS: { type: EventType; emoji: string; label: string }[] = [
   { type: 'meal', emoji: '🍖', label: 'REPAS' },
   { type: 'mat', emoji: '🐾', label: 'TAPIS' },
   { type: 'fake_cue', emoji: '🔑', label: 'FAUX SIGNAUX' },
-  { type: 'overall', emoji: '🎯', label: 'OVERALL' },
+  { type: 'overall', emoji: '🎯', label: 'EXERCICES' },
   { type: 'velcro', emoji: '🍯', label: 'VELCRO' },
   { type: 'care', emoji: '🤝', label: 'GARDES' },
 ];
@@ -325,9 +325,9 @@ export default function HistoryScreen() {
           at: o.at,
           title: `🎯 ${formatTime(o.at)}`,
           detail: info([
-            'overall',
+            'exercice',
             `${o.duration_minutes} min`,
-            SPACE_LABELS[o.mat_space].toLowerCase(),
+            o.mat_space ? SPACE_LABELS[o.mat_space].toLowerCase() : null,
             o.notes,
           ]),
           href: { pathname: '/event/[kind]/[id]', params: { kind: 'overall', id: o.id } },
@@ -539,10 +539,10 @@ export default function HistoryScreen() {
       if (o.at < sinceIso) continue;
       lines.push({
         at: o.at,
-        text: `${formatTime(o.at)} PROTOCOLE OVERALL — ${info([
+        text: `${formatTime(o.at)} EXERCICE DE DRESSAGE — ${info([
           `${o.duration_minutes} min`,
-          `tapis dans ${SPACE_LABELS[o.mat_space].toLowerCase()}`,
-          o.notes ? `notes : ${o.notes}` : null,
+          o.mat_space ? `tapis dans ${SPACE_LABELS[o.mat_space].toLowerCase()}` : null,
+          o.notes ? `description : ${o.notes}` : null,
         ])}`,
       });
     }
@@ -572,7 +572,7 @@ export default function HistoryScreen() {
       `- NUIT : où Ubuntu a dormi.`,
       `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
       `- FAUX SIGNAL DE DÉPART : désensibilisation (on joue avec clés/chaussures… sans partir, objectif ${goals.cues}/jour).`,
-      `- PROTOCOLE OVERALL : exercice de relaxation sur son tapis (objectif ${goals.overalls}/jour).`,
+      `- EXERCICE DE DRESSAGE : session d'entraînement (Overall, obéissance… — objectif ${goals.overalls}/jour).`,
       `- VELCRO : il est « pot de colle », nous suit partout.`,
       `- GARDE : gardé par quelqu'un d'autre.`,
       `- « Note du jour » : note libre sur la journée (ex. où était Ubuntu s'il n'était pas à la maison).`,
