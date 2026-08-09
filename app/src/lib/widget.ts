@@ -16,7 +16,7 @@ interface WidgetState {
   soloGoal: number;
 }
 
-let storage: { set: (key: string, value: number) => void } | null = null;
+let storage: { set: (key: string, value: number | string) => void } | null = null;
 let reload: (() => void) | null = null;
 if (Platform.OS === 'ios') {
   try {
@@ -26,6 +26,26 @@ if (Platform.OS === 'ios') {
     reload = () => ExtensionStorage.reloadWidget();
   } catch {
     // Expo Go : pas de module natif, le widget n'existe pas de toute façon.
+  }
+}
+
+/**
+ * Config des App Intents du widget (boutons BALADE/SOLO et statut) : le
+ * widget appelle l'edge function widget-actions directement — il lui faut
+ * le dog_id, l'URL et le secret. À pousser dès que le chien est connu.
+ */
+export function syncWidgetConfig(dogId: string): void {
+  if (!storage) return;
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const secret = process.env.EXPO_PUBLIC_WIDGET_SECRET;
+  if (!url || !secret) return;
+  try {
+    storage.set('widget.dogId', dogId);
+    storage.set('widget.functionUrl', `${url}/functions/v1/widget-actions`);
+    storage.set('widget.secret', secret);
+    reload?.();
+  } catch (error) {
+    console.warn('Config du widget impossible :', error);
   }
 }
 

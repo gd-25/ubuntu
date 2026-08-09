@@ -65,7 +65,7 @@ import type {
   VocalEpisode,
 } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
-import { syncWidget } from '@/lib/widget';
+import { syncWidget, syncWidgetConfig } from '@/lib/widget';
 
 const HEARTBEAT_FRESH_SECONDS = 120;
 
@@ -140,6 +140,8 @@ export default function HouseScreen() {
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
   const [alonePrompt, setAlonePrompt] = useState(false);
+  /** Incrémenté à chaque fetch de l'accueil (resync du widget iOS). */
+  const [fetchTick, setFetchTick] = useState(0);
 
   // Refs pour les callbacks async (évite les fermetures obsolètes).
   const positionsRef = useRef(positions);
@@ -174,6 +176,14 @@ export default function HouseScreen() {
     const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // --------------------------------------------------------- Widget iOS
+  // Config des boutons du widget (dog_id + URL + secret de l'edge
+  // function) dès que le chien est connu ; l'état de session, lui, part
+  // via syncWidget plus bas.
+  useEffect(() => {
+    if (dog) syncWidgetConfig(dog.id);
+  }, [dog]);
 
   // ------------------------------------------------------------- Chargement
 
@@ -302,6 +312,7 @@ export default function HouseScreen() {
       let ignore = false;
       fetchAll().then((snapshot) => {
         if (ignore || !snapshot) return;
+        setFetchTick((tick) => tick + 1);
         setPositions(snapshot.positions);
         if (snapshot.objects) setObjectPos(snapshot.objects);
         setLastHeartbeat(snapshot.heartbeat);
@@ -524,14 +535,17 @@ export default function HouseScreen() {
   }, [autosolo, dog, startSolo]);
 
   // L'état du widget (écran verrouillé) suit la session en cours, les
-  // minutes solo du jour et l'objectif.
+  // minutes solo du jour et l'objectif. `fetchTick` force une resync après
+  // CHAQUE fetch de l'accueil : sans lui, une session démarrée depuis le
+  // widget puis supprimée ailleurs laisse le widget bloqué « en session »
+  // (null → null, aucune dépendance ne change).
   useEffect(() => {
     syncWidget({
       sessionStartedAt: activeSession?.started_at ?? null,
       soloMinutes: todaySoloMinutes,
       soloGoal: goals.soloMinutes,
     });
-  }, [activeSession?.started_at, todaySoloMinutes, goals.soloMinutes]);
+  }, [activeSession?.started_at, todaySoloMinutes, goals.soloMinutes, fetchTick]);
 
   /** Mini-picker post-SOLO, question 1 : état d'Ubuntu au moment du départ.
       Le panneau reste ouvert pour la question 2 (il se ferme tout seul). */

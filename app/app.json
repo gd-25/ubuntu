@@ -2,19 +2,19 @@
   "expo": {
     "name": "UBUNTU",
     "slug": "ubuntu",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ubuntu",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.gregdeshusses.ubuntu",
+      "appleTeamId": "H64BBH4HUR",
       "supportsTablet": false,
       "icon": "./assets/images/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "appleTeamId": "H64BBH4HUR",
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.gregdeshusses.ubuntu"
