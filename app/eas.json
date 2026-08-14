@@ -11,8 +11,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://ecggmoualhaafcdbthke.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU",
-        "EXPO_PUBLIC_WIDGET_SECRET": "e8fcbc3c53d7ffb3b0f0d9227c0e4c821dd1f35ed9a3d6dc"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU"
       }
     },
     "production": {
@@ -21,8 +20,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://ecggmoualhaafcdbthke.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU",
-        "EXPO_PUBLIC_WIDGET_SECRET": "e8fcbc3c53d7ffb3b0f0d9227c0e4c821dd1f35ed9a3d6dc"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU"
       }
     },
     "simulator": {
@@ -32,8 +30,7 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://ecggmoualhaafcdbthke.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU",
-        "EXPO_PUBLIC_WIDGET_SECRET": "e8fcbc3c53d7ffb3b0f0d9227c0e4c821dd1f35ed9a3d6dc"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZ2dtb3VhbGhhYWZjZGJ0aGtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzU3ODMsImV4cCI6MjA5OTU1MTc4M30.HbEoHpoJEnDs4mtYtX3rWRZ8rte-ON0zIivrpSHcFoU"
       }
     }
   },

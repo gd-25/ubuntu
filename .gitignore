@@ -19,6 +19,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Outillage perso (skills Claude, MCP local) — jamais dans le repo public
+.claude/
+
 # Divers
 .DS_Store
 agent/agent.log
