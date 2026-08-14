@@ -1,5 +1,11 @@
 # UBUNTU — Dog Monitor 🐶
 
+<p align="center">
+  <img src="docs/screenshots/home.png" width="30%" alt="Home screen — pixel-art map of the apartment with family avatars and quick actions" />
+  <img src="docs/screenshots/journal.png" width="30%" alt="Journal — daily log of alone sessions, walks and nights with calm percentages" />
+  <img src="docs/screenshots/session.png" width="30%" alt="Session detail — timeline, bark episodes with video clips, context tags" />
+</p>
+
 Track how a dog experiences daily life — alone time first, but also walks,
 training, meals and nights. A Tapo camera films the room, an old laptop
 listens to the audio stream and detects vocalizations (barking, howling,
