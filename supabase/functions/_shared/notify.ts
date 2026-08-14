@@ -66,12 +66,14 @@ async function logNotification(
   });
 }
 
-/** Applique les règles de notif à un épisode fraîchement inséré. */
+/** Applique les règles de notif à un épisode inséré ou étendu (live). */
 export async function applyNotifyRules(
   supabase: SupabaseClient,
   episode: EpisodeRecord,
+  opts: { firstEpisode?: boolean } = {},
 ): Promise<string[]> {
   const applied: string[] = [];
+  const allowFirstEpisode = opts.firstEpisode ?? true;
   const durationSeconds =
     (Date.parse(episode.ended_at) - Date.parse(episode.started_at)) / 1000;
   const minMinutes = Number(
@@ -95,8 +97,8 @@ export async function applyNotifyRules(
     }
   }
 
-  // Règle 2 : premier épisode d'une session (optionnelle).
-  if (notifyFirst && episode.session_id) {
+  // Règle 2 : premier épisode d'une session (optionnelle, INSERT seulement).
+  if (notifyFirst && allowFirstEpisode && episode.session_id) {
     const { count } = await supabase
       .from("vocal_episodes")
       .select("id", { count: "exact", head: true })

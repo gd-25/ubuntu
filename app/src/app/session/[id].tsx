@@ -36,7 +36,7 @@ import {
   formatDateTime,
   formatDuration,
   formatTime,
-  KIND_LABELS,
+  formatVolume,
   OBSERVED_LABELS,
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -512,17 +512,17 @@ export default function SessionDetailScreen() {
         sessionStart={session.started_at}
         sessionEnd={session.ended_at}
         nowMs={nowMs}
-        showLegend={false}
       />
 
       {/* ------ Détail des épisodes ET observations, en ordre chrono */}
       {timeline.map(({ episode, obs }) =>
         episode ? (
           <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
-            <View style={[styles.episodeDot, { backgroundColor: colors[episode.kind] }]} />
+            <View style={[styles.episodeDot, { backgroundColor: colors.bark }]} />
             <Text style={[styles.episodeText, { color: colors.text }]}>
-              {formatTime(episode.started_at)} · {KIND_LABELS[episode.kind].toUpperCase()} ·{' '}
+              {formatTime(episode.started_at)} ·{' '}
               {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
+              {formatVolume(episode.peak_rms) ? ` · ${formatVolume(episode.peak_rms)}` : ''}
               {episode.source === 'manual' ? ' · MANUEL' : ''}
               {episode.dismissed ? ' · ÉCARTÉ' : ''}
             </Text>

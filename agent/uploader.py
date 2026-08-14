@@ -92,7 +92,7 @@ class Uploader:
         self._wakeup.set()
 
     def enqueue_update(self, table: str, row_id: str, fields: dict) -> None:
-        """PATCH différé d'une ligne (ex. clip_path une fois le clip uploadé)."""
+        """PATCH différé d'une ligne (ex. extension d'un épisode live)."""
         if self.dry_run:
             log.info("[dry-run] update %s/%s : %s", table, row_id, json.dumps(fields))
             return
@@ -101,6 +101,20 @@ class Uploader:
                 "INSERT INTO pending_events (table_name, payload, created_at, op, row_id)"
                 " VALUES (?, ?, ?, 'update', ?)",
                 (table, json.dumps(fields), time.time(), row_id),
+            )
+            self._db.commit()
+        self._wakeup.set()
+
+    def enqueue_delete(self, table: str, row_id: str) -> None:
+        """DELETE différé d'une ligne (épisode live finalement trop court)."""
+        if self.dry_run:
+            log.info("[dry-run] delete %s/%s", table, row_id)
+            return
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO pending_events (table_name, payload, created_at, op, row_id)"
+                " VALUES (?, '{}', ?, 'delete', ?)",
+                (table, time.time(), row_id),
             )
             self._db.commit()
         self._wakeup.set()
@@ -168,12 +182,13 @@ class Uploader:
 
     def _send_batch(self, batch: list[tuple[int, str, str, str, str | None]]) -> bool:
         # Regroupe les inserts par table (une requête par table) ; les updates
-        # partent individuellement.
+        # et deletes partent individuellement. L'ordre par ligne est préservé :
+        # un insert précède toujours les updates/deletes de la même ligne.
         inserts: dict[str, list[tuple[int, dict]]] = {}
-        updates: list[tuple[int, str, str, dict]] = []
+        mutations: list[tuple[int, str, str, str, dict]] = []
         for queue_id, table, payload, op, row_id in batch:
-            if op == "update" and row_id:
-                updates.append((queue_id, table, row_id, json.loads(payload)))
+            if op in ("update", "delete") and row_id:
+                mutations.append((queue_id, op, table, row_id, json.loads(payload)))
             else:
                 inserts.setdefault(table, []).append((queue_id, json.loads(payload)))
 
@@ -181,7 +196,13 @@ class Uploader:
             try:
                 resp = requests.post(
                     f"{self.base_url}/{table}",
-                    headers=self.headers,
+                    # resolution=merge-duplicates : un POST rejoué après un
+                    # succès partiel (timeout réseau) ne bloque pas la file
+                    # sur un conflit de clé primaire.
+                    headers={
+                        **self.headers,
+                        "Prefer": "return=minimal,resolution=merge-duplicates",
+                    },
                     json=[payload for _, payload in rows],
                     timeout=REQUEST_TIMEOUT,
                 )
@@ -192,18 +213,25 @@ class Uploader:
             self._delete_rows([queue_id for queue_id, _ in rows])
             log.info("%d événement(s) envoyé(s) vers %s", len(rows), table)
 
-        for queue_id, table, row_id, fields in updates:
+        for queue_id, op, table, row_id, fields in mutations:
             try:
-                resp = requests.patch(
-                    f"{self.base_url}/{table}?id=eq.{row_id}",
-                    headers=self.headers,
-                    json=fields,
-                    timeout=REQUEST_TIMEOUT,
-                )
+                if op == "delete":
+                    resp = requests.delete(
+                        f"{self.base_url}/{table}?id=eq.{row_id}",
+                        headers=self.headers,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                else:
+                    resp = requests.patch(
+                        f"{self.base_url}/{table}?id=eq.{row_id}",
+                        headers=self.headers,
+                        json=fields,
+                        timeout=REQUEST_TIMEOUT,
+                    )
                 resp.raise_for_status()
             except requests.RequestException as exc:
-                log.debug("PATCH %s/%s : %s", table, row_id, exc)
+                log.debug("%s %s/%s : %s", op.upper(), table, row_id, exc)
                 return False
             self._delete_rows([queue_id])
-            log.info("mise à jour envoyée : %s/%s", table, row_id)
+            log.debug("%s envoyé : %s/%s", op, table, row_id)
         return True

@@ -1,7 +1,15 @@
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
+import {
+  Alert,
+  AppState,
+  Modal,
+  Pressable,
+  StyleSheet,
+  View,
+  useColorScheme,
+} from 'react-native';
 import Animated, { SlideInUp, SlideOutUp, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -142,6 +150,11 @@ export default function HouseScreen() {
   const [alonePrompt, setAlonePrompt] = useState(false);
   /** Incrémenté à chaque fetch de l'accueil (resync du widget iOS). */
   const [fetchTick, setFetchTick] = useState(0);
+  /** Incrémenté à chaque retour de l'app au premier plan : déclenche un
+      refetch ET la recréation du canal realtime (la websocket meurt en
+      arrière-plan sans erreur — le badge caméra restait « déconnecté »
+      jusqu'à un aller-retour dans les Réglages). */
+  const [wakeTick, setWakeTick] = useState(0);
 
   // Refs pour les callbacks async (évite les fermetures obsolètes).
   const positionsRef = useRef(positions);
@@ -307,30 +320,80 @@ export default function HouseScreen() {
     };
   }, [dog]);
 
+  const applySnapshot = useCallback((snapshot: NonNullable<Awaited<ReturnType<typeof fetchAll>>>) => {
+    setFetchTick((tick) => tick + 1);
+    setPositions(snapshot.positions);
+    if (snapshot.objects) setObjectPos(snapshot.objects);
+    setLastHeartbeat(snapshot.heartbeat);
+    setActiveSession(snapshot.session);
+    if (snapshot.session) setAlonePrompt(false);
+    setSessionEpisodes(snapshot.episodes);
+    setActiveWalk(snapshot.walk);
+    setTodayCues(snapshot.todayCues);
+    setTodayOveralls(snapshot.todayOveralls);
+    setTodaySemiSoloMinutes(snapshot.todaySemiSoloMinutes);
+    setTodaySoloMinutes(snapshot.todaySoloMinutes);
+    setGoals(snapshot.goals);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let ignore = false;
       fetchAll().then((snapshot) => {
-        if (ignore || !snapshot) return;
-        setFetchTick((tick) => tick + 1);
-        setPositions(snapshot.positions);
-        if (snapshot.objects) setObjectPos(snapshot.objects);
-        setLastHeartbeat(snapshot.heartbeat);
-        setActiveSession(snapshot.session);
-        if (snapshot.session) setAlonePrompt(false);
-        setSessionEpisodes(snapshot.episodes);
-        setActiveWalk(snapshot.walk);
-        setTodayCues(snapshot.todayCues);
-        setTodayOveralls(snapshot.todayOveralls);
-        setTodaySemiSoloMinutes(snapshot.todaySemiSoloMinutes);
-        setTodaySoloMinutes(snapshot.todaySoloMinutes);
-        setGoals(snapshot.goals);
+        if (!ignore && snapshot) applySnapshot(snapshot);
       });
       return () => {
         ignore = true;
       };
-    }, [fetchAll])
+    }, [fetchAll, applySnapshot])
   );
+
+  // Retour au premier plan : refetch immédiat (le focus effect ne se
+  // déclenche pas quand l'app revient d'arrière-plan sur le même écran).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setWakeTick((tick) => tick + 1);
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (wakeTick === 0) return;
+    let ignore = false;
+    fetchAll().then((snapshot) => {
+      if (!ignore && snapshot) applySnapshot(snapshot);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [wakeTick, fetchAll, applySnapshot]);
+
+  // Filet de sécurité pendant que l'écran est ouvert : si le canal realtime
+  // meurt en silence, le badge caméra et la frise restent justes quand même
+  // (dernier heartbeat + épisodes de la session en cours toutes les 30 s).
+  useEffect(() => {
+    if (!dog) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('agent_heartbeats')
+        .select('*')
+        .eq('dog_id', dog.id)
+        .order('at', { ascending: false })
+        .limit(1);
+      const heartbeat = (data?.[0] as AgentHeartbeat | undefined) ?? null;
+      if (heartbeat) setLastHeartbeat(heartbeat);
+      const session = activeSessionRef.current;
+      if (session) {
+        const { data: eps, error } = await supabase
+          .from('vocal_episodes')
+          .select('*')
+          .eq('session_id', session.id)
+          .order('started_at', { ascending: true });
+        if (!error && eps) setSessionEpisodes(eps as VocalEpisode[]);
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [dog]);
 
   // ------------------------------------------------------------- Realtime
 
@@ -339,8 +402,11 @@ export default function HouseScreen() {
     // Nom de canal UNIQUE par montage : lors d'un remount (deep link /solo,
     // navigation), l'ancien canal du même nom peut être encore abonné et
     // Supabase refuse d'y rattacher des callbacks (« after subscribe() »).
+    // `wakeTick` en dépendance : au retour au premier plan, la websocket
+    // d'arrière-plan est souvent morte sans erreur — on repart d'un canal
+    // neuf plutôt que d'espérer une reconnexion silencieuse.
     const channel = supabase
-      .channel(`house-${dog.id}-${Date.now().toString(36)}`)
+      .channel(`house-${dog.id}-${wakeTick}-${Date.now().toString(36)}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'avatar_positions', filter: `dog_id=eq.${dog.id}` },
@@ -411,7 +477,7 @@ export default function HouseScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [dog]);
+  }, [dog, wakeTick]);
 
   // ------------------------------------------------------------- Actions
 
@@ -1062,7 +1128,6 @@ export default function HouseScreen() {
             sessionStart={activeSession.started_at}
             sessionEnd={null}
             nowMs={now}
-            showLegend={false}
           />
           {/* Exercice d'entraînement ou absence subie (courses…) ? Les
               absences subies sont filtrables dans les stats. */}

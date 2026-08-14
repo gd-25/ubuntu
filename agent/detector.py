@@ -2,10 +2,14 @@
 
 Deux responsabilités :
 - YamnetClassifier : classe une fenêtre audio (16 kHz mono float32) avec YAMNet
-  et renvoie la confiance "chien" + les scores par famille (bark/howl/whine).
+  et renvoie la confiance "chien", les scores par famille (bark/howl/whine),
+  la preuve spécifiquement chien et le score des classes « imitateurs »
+  (oiseau/grincement — le moteur de rotation de la caméra).
 - EpisodeTracker : machine à états avec hystérésis qui transforme la suite de
-  fenêtres classées en épisodes {started_at, ended_at, kind, avg/peak confidence},
-  avec filtrage des épisodes trop courts et fusion des épisodes rapprochés.
+  fenêtres classées en épisodes LIVE : un événement `open` dès l'entrée en
+  vocalise (~2-3 s), des `update` réguliers tant que ça dure, un `close` à la
+  sortie, un `discard` si l'épisode était trop court. Une reprise < merge_gap
+  rouvre le même épisode (même id → même ligne en base).
 
 EpisodeTracker est du pur Python sans dépendance ML : c'est lui qui est couvert
 par les tests unitaires (tests/test_detector.py).
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -38,6 +43,26 @@ FAMILY_CLASSES = {
 # tout son animal est le chien.
 EXTRA_TARGET_CLASSES = ("Dog", "Animal", "Domestic animals, pets")
 
+# Classes portant une vraie preuve « chien » (pas les génériques Animal/…).
+DOG_EVIDENCE_CLASSES = (
+    "Bark", "Bow-wow", "Yip", "Howl", "Whimper (dog)", "Growling", "Dog",
+)
+# Le moteur de rotation de la caméra grince comme un oiseau : YAMNet le classe
+# Bird/Chirp/Squeak avec un score très élevé, et la classe générique "Animal"
+# suit — d'où des faux positifs. Une fenêtre est mise au veto quand ces
+# classes dominent nettement toute preuve chien (calibré sur les clips
+# écartés dans l'app + vérité terrain par mouvement vidéo, 2026-08-14 :
+# 11/15 clips rotation supprimés, 0 vrai épisode perdu).
+VETO_CLASSES = (
+    "Bird",
+    "Bird vocalization, bird call, bird song",
+    "Chirp, tweet",
+    "Squeak",
+    "Wild animals",
+)
+VETO_RATIO = 2.0
+VETO_FLOOR = 0.5
+
 
 @dataclass
 class WindowResult:
@@ -46,9 +71,17 @@ class WindowResult:
     timestamp: float  # début de la fenêtre, epoch UTC (secondes)
     confidence: float  # score max sur l'ensemble des classes cibles
     family_scores: dict[str, float]  # score max par famille
+    dog_score: float = 0.0  # score max des classes spécifiquement chien
+    veto_score: float = 0.0  # score max des classes oiseau/grincement
+    rms: float = 0.0  # volume RMS de la fenêtre [0..1]
+
+    @property
+    def vetoed(self) -> bool:
+        """Bruit d'oiseau/grincement dominant toute preuve chien (rotation caméra)."""
+        return self.veto_score > max(VETO_RATIO * self.dog_score, VETO_FLOOR)
 
     def is_positive(self, threshold: float) -> bool:
-        return self.confidence >= threshold
+        return self.confidence >= threshold and not self.vetoed
 
 
 @dataclass
@@ -58,6 +91,7 @@ class Episode:
     kind: str  # 'bark' | 'howl' | 'whine'
     avg_confidence: float
     peak_confidence: float
+    peak_rms: float = 0.0  # volume max produit pendant l'épisode
 
     @property
     def duration(self) -> float:
@@ -65,9 +99,26 @@ class Episode:
 
 
 @dataclass
-class _PendingEpisode:
-    """Épisode en construction / en attente de fusion éventuelle."""
+class EpisodeEvent:
+    """Événement live à répercuter en base.
 
+    - open    : l'épisode démarre → INSERT (ended_at provisoire)
+    - update  : il continue → PATCH (extension, éventuellement après fusion)
+    - close   : il est clos → PATCH final (peut être suivi d'un update/close
+                si une reprise < merge_gap le rouvre : même id, même ligne)
+    - discard : trop court → DELETE
+    """
+
+    action: str  # 'open' | 'update' | 'close' | 'discard'
+    episode_id: str
+    episode: Episode | None = None
+
+
+@dataclass
+class _PendingEpisode:
+    """Épisode en construction (ou clos mais encore fusionnable)."""
+
+    episode_id: str
     started_at: float
     ended_at: float
     family_votes: dict[str, int] = field(default_factory=dict)
@@ -75,12 +126,15 @@ class _PendingEpisode:
     conf_sum: float = 0.0
     conf_count: int = 0
     peak: float = 0.0
+    peak_rms: float = 0.0
+    last_emit: float = 0.0  # timestamp du dernier événement émis (throttle)
 
     def add_window(self, w: WindowResult, window_duration: float) -> None:
         self.ended_at = max(self.ended_at, w.timestamp + window_duration)
         self.conf_sum += w.confidence
         self.conf_count += 1
         self.peak = max(self.peak, w.confidence)
+        self.peak_rms = max(self.peak_rms, w.rms)
         if not w.family_scores:
             return
         best = max(w.family_scores, key=lambda k: w.family_scores[k])
@@ -89,17 +143,6 @@ class _PendingEpisode:
         self.family_votes[best] = self.family_votes.get(best, 0) + 1
         for fam, score in w.family_scores.items():
             self.family_score_sums[fam] = self.family_score_sums.get(fam, 0.0) + score
-
-    def absorb(self, other: "_PendingEpisode") -> None:
-        """Fusionne `other` (plus récent) dans cet épisode."""
-        self.ended_at = max(self.ended_at, other.ended_at)
-        self.conf_sum += other.conf_sum
-        self.conf_count += other.conf_count
-        self.peak = max(self.peak, other.peak)
-        for fam, n in other.family_votes.items():
-            self.family_votes[fam] = self.family_votes.get(fam, 0) + n
-        for fam, s in other.family_score_sums.items():
-            self.family_score_sums[fam] = self.family_score_sums.get(fam, 0.0) + s
 
     def to_episode(self) -> Episode:
         if self.family_votes:
@@ -117,19 +160,21 @@ class _PendingEpisode:
             kind=kind,
             avg_confidence=round(avg, 4),
             peak_confidence=round(self.peak, 4),
+            peak_rms=round(self.peak_rms, 5),
         )
 
 
 class EpisodeTracker:
-    """Hystérésis fenêtre par fenêtre → épisodes.
+    """Hystérésis fenêtre par fenêtre → événements d'épisodes live.
 
     - Passage à l'état "vocalise" si >= `enter_votes` des `enter_window` dernières
-      fenêtres sont positives (défaut : 3 sur 5).
+      fenêtres sont positives (défaut : 3 sur 5) → événement `open` immédiat.
+    - Tant que ça dure : `update` au plus toutes les `update_interval` secondes.
     - Retour à "calme" après >= `exit_negatives` fenêtres négatives consécutives
-      (défaut : 8, soit ~4 s avec un hop de 0,5 s).
-    - Épisodes de durée < `min_duration` (1 s) : ignorés.
-    - Deux épisodes séparés de < `merge_gap` (5 s) : fusionnés. Un épisode n'est
-      donc émis qu'une fois le délai de fusion écoulé (voir poll()/flush()).
+      (défaut : 8, soit ~4 s avec un hop de 0,5 s) → événement `close`.
+    - Épisodes de durée < `min_duration` (1 s) : `discard`.
+    - Une reprise < `merge_gap` (5 s) après un `close` ROUVRE le même épisode
+      (même id) : la ligne en base est simplement étendue, jamais dupliquée.
     """
 
     def __init__(
@@ -141,6 +186,7 @@ class EpisodeTracker:
         min_duration: float = 1.0,
         merge_gap: float = 5.0,
         window_duration: float = WINDOW_DURATION,
+        update_interval: float = 2.0,
     ):
         self.threshold = threshold
         self.enter_votes = enter_votes
@@ -148,58 +194,90 @@ class EpisodeTracker:
         self.min_duration = min_duration
         self.merge_gap = merge_gap
         self.window_duration = window_duration
+        self.update_interval = update_interval
 
         self._recent: deque[tuple[WindowResult, bool]] = deque(maxlen=enter_window)
         self._vocal = False
         self._current: _PendingEpisode | None = None
         self._negatives = 0
-        self._pending: _PendingEpisode | None = None  # clos, en attente de fusion
-        self._ready: list[Episode] = []
+        self._pending: _PendingEpisode | None = None  # clos, encore fusionnable
 
     @property
     def is_vocal(self) -> bool:
         return self._vocal
 
-    def push(self, window: WindowResult) -> list[Episode]:
-        """Ingère une fenêtre classée ; renvoie les épisodes prêts à émettre."""
+    def push(self, window: WindowResult) -> list[EpisodeEvent]:
+        """Ingère une fenêtre classée ; renvoie les événements à répercuter."""
+        events: list[EpisodeEvent] = []
         positive = window.is_positive(self.threshold)
         self._recent.append((window, positive))
 
         if self._vocal:
-            self._push_vocal(window, positive)
+            self._push_vocal(window, positive, events)
         else:
-            self._push_calm()
+            self._push_calm(events)
 
-        self._release_pending(window.timestamp)
-        ready, self._ready = self._ready, []
-        return ready
+        self._expire_pending(window.timestamp)
+        return events
 
-    def _push_calm(self) -> None:
+    def _push_calm(self, events: list[EpisodeEvent]) -> None:
         positives = [w for w, pos in self._recent if pos]
         if len(positives) < self.enter_votes:
             return
         self._vocal = True
         self._negatives = 0
         first = positives[0]
+
+        if (
+            self._pending is not None
+            and first.timestamp - self._pending.ended_at < self.merge_gap
+        ):
+            # Reprise rapide : on rouvre l'épisode précédent (même ligne).
+            self._current, self._pending = self._pending, None
+            for w, pos in self._recent:
+                if pos:
+                    self._current.add_window(w, self.window_duration)
+            self._current.last_emit = first.timestamp
+            events.append(
+                EpisodeEvent("update", self._current.episode_id, self._current.to_episode())
+            )
+            return
+
+        self._pending = None
         self._current = _PendingEpisode(
-            started_at=first.timestamp, ended_at=first.timestamp
+            episode_id=str(uuid.uuid4()),
+            started_at=first.timestamp,
+            ended_at=first.timestamp,
         )
         for w, pos in self._recent:
             if pos:
                 self._current.add_window(w, self.window_duration)
+        self._current.last_emit = first.timestamp
+        events.append(
+            EpisodeEvent("open", self._current.episode_id, self._current.to_episode())
+        )
 
-    def _push_vocal(self, window: WindowResult, positive: bool) -> None:
+    def _push_vocal(
+        self, window: WindowResult, positive: bool, events: list[EpisodeEvent]
+    ) -> None:
         assert self._current is not None
         if positive:
             self._negatives = 0
             self._current.add_window(window, self.window_duration)
+            if window.timestamp - self._current.last_emit >= self.update_interval:
+                self._current.last_emit = window.timestamp
+                events.append(
+                    EpisodeEvent(
+                        "update", self._current.episode_id, self._current.to_episode()
+                    )
+                )
             return
         self._negatives += 1
         if self._negatives < self.exit_negatives:
             return
-        self._close_current()
+        self._close_current(events)
 
-    def _close_current(self) -> None:
+    def _close_current(self, events: list[EpisodeEvent]) -> None:
         candidate, self._current = self._current, None
         self._vocal = False
         self._negatives = 0
@@ -207,41 +285,33 @@ class EpisodeTracker:
         assert candidate is not None
 
         if candidate.ended_at - candidate.started_at < self.min_duration:
-            log.debug("épisode < %.1fs ignoré", self.min_duration)
+            log.debug("épisode < %.1fs écarté", self.min_duration)
+            events.append(EpisodeEvent("discard", candidate.episode_id))
             return
 
-        if self._pending is not None:
-            if candidate.started_at - self._pending.ended_at < self.merge_gap:
-                self._pending.absorb(candidate)
-                return
-            self._ready.append(self._pending.to_episode())
-        self._pending = candidate
+        events.append(
+            EpisodeEvent("close", candidate.episode_id, candidate.to_episode())
+        )
+        self._pending = candidate  # encore fusionnable pendant merge_gap
 
-    def _release_pending(self, now: float) -> None:
+    def _expire_pending(self, now: float) -> None:
         if self._pending is None or self._vocal:
             return
         if now - self._pending.ended_at >= self.merge_gap:
-            self._ready.append(self._pending.to_episode())
-            self._pending = None
+            self._pending = None  # la ligne est déjà à jour en base
 
-    def poll(self, now: float) -> list[Episode]:
-        """À appeler périodiquement même sans audio (permet d'émettre un épisode
-        en attente de fusion quand le délai est écoulé)."""
-        self._release_pending(now)
-        ready, self._ready = self._ready, []
-        return ready
+    def poll(self, now: float) -> list[EpisodeEvent]:
+        """À appeler périodiquement même sans audio (expire la fenêtre de fusion)."""
+        self._expire_pending(now)
+        return []
 
-    def flush(self) -> list[Episode]:
+    def flush(self) -> list[EpisodeEvent]:
         """Clôt et émet tout (arrêt de l'agent ou perte du flux)."""
+        events: list[EpisodeEvent] = []
         if self._current is not None:
-            self._close_current()
-        episodes = []
-        if self._pending is not None:
-            episodes.append(self._pending.to_episode())
-            self._pending = None
-        episodes = self._ready + episodes
-        self._ready = []
-        return episodes
+            self._close_current(events)
+        self._pending = None
+        return events
 
 
 class YamnetClassifier:
@@ -283,27 +353,27 @@ class YamnetClassifier:
 
     @staticmethod
     def _load_class_map(class_map_path: str) -> dict[str, list[int]]:
-        """Renvoie {'bark': [idx...], 'howl': [...], 'whine': [...], '_extra': [...]}."""
+        """Renvoie {famille|_extra|_dog|_veto: [indices]}."""
         name_to_index: dict[str, int] = {}
         with open(class_map_path, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 name_to_index[row["display_name"]] = int(row["index"])
 
+        groups: dict[str, tuple[str, ...]] = {
+            **FAMILY_CLASSES,
+            "_extra": EXTRA_TARGET_CLASSES,
+            "_dog": DOG_EVIDENCE_CLASSES,
+            "_veto": VETO_CLASSES,
+        }
         indices: dict[str, list[int]] = {}
         missing: list[str] = []
-        for family, names in FAMILY_CLASSES.items():
-            indices[family] = []
+        for group, names in groups.items():
+            indices[group] = []
             for name in names:
                 if name in name_to_index:
-                    indices[family].append(name_to_index[name])
+                    indices[group].append(name_to_index[name])
                 else:
                     missing.append(name)
-        indices["_extra"] = []
-        for name in EXTRA_TARGET_CLASSES:
-            if name in name_to_index:
-                indices["_extra"].append(name_to_index[name])
-            else:
-                missing.append(name)
         if missing:
             raise RuntimeError(
                 f"Classes absentes de {class_map_path}: {missing}. "
@@ -311,10 +381,11 @@ class YamnetClassifier:
             )
         return indices
 
-    def classify(self, waveform) -> tuple[float, dict[str, float]]:
+    def classify(self, waveform) -> tuple[float, dict[str, float], float, float]:
         """waveform : np.ndarray float32 [-1, 1], 15600 échantillons à 16 kHz.
 
-        Renvoie (confiance max sur les classes cibles, scores max par famille).
+        Renvoie (confiance max sur les classes cibles, scores max par famille,
+        preuve chien spécifique, score des classes oiseau/grincement).
         """
         np = self._np
         self._interpreter.set_tensor(self._input_index, waveform.astype(np.float32))
@@ -325,8 +396,14 @@ class YamnetClassifier:
         family_scores = {
             family: float(frame_max[idx].max()) if idx else 0.0
             for family, idx in self._class_indices.items()
-            if family != "_extra"
+            if family in FAMILY_CLASSES
         }
-        all_indices = [i for idx in self._class_indices.values() for i in idx]
-        confidence = float(frame_max[all_indices].max())
-        return confidence, family_scores
+        target_indices = [
+            i
+            for group in (*FAMILY_CLASSES, "_extra")
+            for i in self._class_indices[group]
+        ]
+        confidence = float(frame_max[target_indices].max())
+        dog_score = float(frame_max[self._class_indices["_dog"]].max())
+        veto_score = float(frame_max[self._class_indices["_veto"]].max())
+        return confidence, family_scores, dog_score, veto_score

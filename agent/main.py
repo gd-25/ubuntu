@@ -20,7 +20,6 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -162,8 +161,8 @@ class Agent:
                 log.exception("erreur inattendue dans la boucle d'écoute")
             self.stream_alive = False
             with self._tracker_lock:
-                episodes = self.tracker.flush()
-            self._emit(episodes)
+                events = self.tracker.flush()
+            self._emit(events)
             if self._stop.is_set():
                 break
             if self._silent_reconnect:
@@ -186,8 +185,8 @@ class Agent:
             backoff = min(backoff * 2, MAX_RTSP_BACKOFF)
 
         with self._tracker_lock:
-            episodes = self.tracker.flush()
-        self._emit(episodes)
+            events = self.tracker.flush()
+        self._emit(events)
         if self.clip_recorder:
             self.clip_recorder.stop()
         self.uploader.stop()
@@ -260,23 +259,31 @@ class Agent:
                 elif now - last_loud > SILENT_SECONDS:
                     self._silent_reconnect = True
                     return
-                confidence, family_scores = self.classifier.classify(samples)
+                confidence, family_scores, dog_score, veto_score = (
+                    self.classifier.classify(samples)
+                )
                 window = WindowResult(
                     timestamp=now - WINDOW_DURATION,
                     confidence=confidence,
                     family_scores=family_scores,
+                    dog_score=dog_score,
+                    veto_score=veto_score,
+                    rms=self.last_rms,
                 )
                 if self.dry_run and confidence >= self.tracker.threshold:
                     best = max(family_scores, key=lambda k: family_scores[k])
                     log.info(
-                        "🐶 fenêtre positive  conf=%.2f  famille=%s  scores=%s",
+                        "🐶 fenêtre %s  conf=%.2f  chien=%.2f  veto=%.2f  famille=%s  rms=%.4f",
+                        "VETO" if window.vetoed else "positive",
                         confidence,
+                        dog_score,
+                        veto_score,
                         best,
-                        {k: round(v, 2) for k, v in family_scores.items()},
+                        self.last_rms,
                     )
                 with self._tracker_lock:
-                    episodes = self.tracker.push(window)
-                self._emit(episodes)
+                    events = self.tracker.push(window)
+                self._emit(events)
         finally:
             self._ffmpeg_proc = None
             stderr = b""
@@ -292,33 +299,69 @@ class Agent:
             if stderr:
                 log.warning("ffmpeg : %s", stderr.decode(errors="replace").strip()[-500:])
 
-    def _emit(self, episodes) -> None:
-        for ep in episodes:
-            episode_id = str(uuid.uuid4())
-            log.info(
-                "🔊 épisode %s  %.1fs  avg=%.2f  peak=%.2f  (%s → %s)",
-                ep.kind,
-                ep.duration,
-                ep.avg_confidence,
-                ep.peak_confidence,
-                utc_iso(ep.started_at),
-                utc_iso(ep.ended_at),
-            )
-            self.uploader.enqueue_episode(
-                {
-                    # Id généré côté agent : permet de rattacher le clip vidéo
-                    # (PATCH clip_path) une fois l'upload terminé.
-                    "id": episode_id,
-                    "dog_id": self.dog_id or None,
-                    "started_at": utc_iso(ep.started_at),
-                    "ended_at": utc_iso(ep.ended_at),
-                    "kind": ep.kind,
-                    "avg_confidence": ep.avg_confidence,
-                    "peak_confidence": ep.peak_confidence,
-                }
-            )
-            if self.clip_recorder:
-                self.clip_recorder.request(episode_id, ep.started_at, ep.ended_at)
+    def _emit(self, events) -> None:
+        """Répercute les événements live du tracker vers Supabase.
+
+        open → INSERT immédiat (l'app voit l'épisode ~2-3 s après le début),
+        update → PATCH d'extension, close → PATCH final + clip vidéo,
+        discard → DELETE (épisode trop court).
+        """
+        for ev in events:
+            ep = ev.episode
+            if ev.action == "open":
+                log.info(
+                    "🔴 épisode OUVERT %s  kind=%s  rms=%.4f  (%s)",
+                    ev.episode_id[:8],
+                    ep.kind,
+                    ep.peak_rms,
+                    utc_iso(ep.started_at),
+                )
+                self.uploader.enqueue_episode(
+                    {
+                        # Id généré côté tracker : stable de l'open au close,
+                        # permet aussi de rattacher le clip vidéo (PATCH
+                        # clip_path) une fois l'upload terminé.
+                        "id": ev.episode_id,
+                        "dog_id": self.dog_id or None,
+                        "started_at": utc_iso(ep.started_at),
+                        "ended_at": utc_iso(ep.ended_at),
+                        "kind": ep.kind,
+                        "avg_confidence": ep.avg_confidence,
+                        "peak_confidence": ep.peak_confidence,
+                        "peak_rms": ep.peak_rms,
+                    }
+                )
+            elif ev.action in ("update", "close"):
+                self.uploader.enqueue_update(
+                    "vocal_episodes",
+                    ev.episode_id,
+                    {
+                        "ended_at": utc_iso(ep.ended_at),
+                        "kind": ep.kind,
+                        "avg_confidence": ep.avg_confidence,
+                        "peak_confidence": ep.peak_confidence,
+                        "peak_rms": ep.peak_rms,
+                    },
+                )
+                if ev.action == "close":
+                    log.info(
+                        "🔊 épisode CLOS %s  %s  %.1fs  avg=%.2f  peak=%.2f  rms=%.4f",
+                        ev.episode_id[:8],
+                        ep.kind,
+                        ep.duration,
+                        ep.avg_confidence,
+                        ep.peak_confidence,
+                        ep.peak_rms,
+                    )
+                    if self.clip_recorder:
+                        # x-upsert : un close après fusion réécrit le même clip
+                        # en plus long — jamais de doublon.
+                        self.clip_recorder.request(
+                            ev.episode_id, ep.started_at, ep.ended_at
+                        )
+            elif ev.action == "discard":
+                log.info("🗑 épisode trop court écarté %s", ev.episode_id[:8])
+                self.uploader.enqueue_delete("vocal_episodes", ev.episode_id)
 
     def session_open(self) -> bool:
         """Une session est-elle ouverte pour le chien ?
@@ -353,11 +396,11 @@ class Agent:
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(timeout=HEARTBEAT_INTERVAL):
-            # poll() permet d'émettre un épisode en attente de fusion même si
-            # le flux est silencieux ou coupé.
+            # poll() expire la fenêtre de fusion même si le flux est
+            # silencieux ou coupé (la ligne en base est déjà à jour).
             with self._tracker_lock:
-                episodes = self.tracker.poll(time.time())
-            self._emit(episodes)
+                events = self.tracker.poll(time.time())
+            self._emit(events)
             # Flux gelé (socket morte) : le read() de la boucle principale
             # bloque sans erreur — on tue ffmpeg d'ici pour la débloquer, et
             # on dit la vérité dans le statut.

@@ -55,6 +55,9 @@ export interface VocalEpisode {
   kind: EpisodeKind;
   avg_confidence: number | null;
   peak_confidence: number | null;
+  /** Volume max (RMS 0..1) produit pendant l'épisode — la variable qui
+      compte : plus parlant que la famille bark/howl/whine. */
+  peak_rms: number | null;
   clip_path: string | null;
   /** 'agent' = détecté par YAMNet ; 'manual' = saisi par l'utilisateur. */
   source: 'agent' | 'manual';

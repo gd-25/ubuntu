@@ -4,8 +4,8 @@ import Svg, { Line, Rect } from 'react-native-svg';
 
 import { Text } from '@/components/text';
 import { useTheme } from '@/hooks/use-theme';
-import { formatTime, KIND_LABELS } from '@/lib/format';
-import type { EpisodeKind, VocalEpisode } from '@/lib/types';
+import { formatTime } from '@/lib/format';
+import type { VocalEpisode } from '@/lib/types';
 
 const TRACK_HEIGHT = 26;
 const SVG_HEIGHT = 40;
@@ -13,21 +13,20 @@ const MIN_SEGMENT_WIDTH = 3;
 
 /**
  * Horizontal timeline of vocal episodes across a session's duration.
- * Each episode is a colored segment (bark / howl / whine).
+ * Une seule couleur pour toutes les vocalises — la variable intéressante
+ * est le volume (affiché dans la liste), pas la famille bark/howl/whine.
  */
 export function EpisodeTimeline({
   episodes,
   sessionStart,
   sessionEnd,
   nowMs,
-  showLegend = true,
 }: {
   episodes: VocalEpisode[];
   sessionStart: string;
   sessionEnd?: string | null;
   /** Right edge of the track for ongoing sessions (pass Date.now() from the caller). */
   nowMs?: number;
-  showLegend?: boolean;
 }) {
   const colors = useTheme();
   const [width, setWidth] = useState(0);
@@ -36,7 +35,6 @@ export function EpisodeTimeline({
   const endMs = sessionEnd ? new Date(sessionEnd).getTime() : (nowMs ?? startMs + 60_000);
   const spanMs = Math.max(endMs - startMs, 1000);
 
-  const kindColor = (kind: EpisodeKind) => colors[kind];
   const trackY = (SVG_HEIGHT - TRACK_HEIGHT) / 2;
 
   return (
@@ -69,7 +67,7 @@ export function EpisodeTimeline({
                 width={Math.min(w, width)}
                 height={TRACK_HEIGHT}
                 rx={2}
-                fill={kindColor(episode.kind)}
+                fill={colors.bark}
               />
             );
           })}
@@ -93,24 +91,6 @@ export function EpisodeTimeline({
           {sessionEnd ? formatTime(sessionEnd) : 'maintenant'}
         </Text>
       </View>
-      {showLegend ? <Legend /> : null}
-    </View>
-  );
-}
-
-function Legend() {
-  const colors = useTheme();
-  const kinds: EpisodeKind[] = ['bark', 'howl', 'whine'];
-  return (
-    <View style={styles.legend}>
-      {kinds.map((kind) => (
-        <View key={kind} style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors[kind] }]} />
-          <Text style={[styles.legendLabel, { color: colors.textSecondary }]}>
-            {KIND_LABELS[kind]}
-          </Text>
-        </View>
-      ))}
     </View>
   );
 }
@@ -128,24 +108,5 @@ const styles = StyleSheet.create({
   },
   axisLabel: {
     fontSize: 11,
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 4,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 3,
-  },
-  legendLabel: {
-    fontSize: 12,
   },
 });

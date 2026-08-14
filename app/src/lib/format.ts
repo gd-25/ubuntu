@@ -140,6 +140,18 @@ export const KIND_LABELS: Record<string, string> = {
   whine: 'Gémissement',
 };
 
+/**
+ * Volume d'un épisode (RMS max 0..1, mesuré par l'agent) sur une échelle
+ * 1-5 lisible. Repères issus des clips réels : ~0.003 couinement discret,
+ * ~0.03 aboiement net, ~0.09 aboiement très fort près de la caméra.
+ */
+export function formatVolume(rms: number | null | undefined): string | null {
+  if (rms == null || rms <= 0) return null;
+  const thresholds = [0.005, 0.015, 0.04, 0.08];
+  const level = 1 + thresholds.filter((t) => rms >= t).length;
+  return `VOL ${level}/5`;
+}
+
 export const ACTIVITY_LABELS: Record<string, string> = {
   walk: '🚶 Sortie',
   meal: '🍽️ Repas',
