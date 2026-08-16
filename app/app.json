@@ -2,7 +2,7 @@
   "expo": {
     "name": "UBUNTU",
     "slug": "ubuntu",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ubuntu",
@@ -38,6 +38,14 @@
     "plugins": [
       "expo-router",
       "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "UBUNTU place votre avatar sur le plan selon que vous êtes à l'appartement ou non.",
+          "locationAlwaysAndWhenInUsePermission": "UBUNTU vous propose de laisser Ubuntu seul quand vous rentrez à l'appartement, même si l'app est fermée.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

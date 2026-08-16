@@ -1,3 +1,4 @@
+import { useFocusEffect } from 'expo-router';
 import { Check, Plus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -11,6 +12,13 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { formatDate, formatDateTime, formatTime, secondsSince } from '@/lib/format';
 import { DEFAULT_GOALS, fetchGoals, saveGoals } from '@/lib/goals';
+import {
+  checkPositionNow,
+  disableHomeTracking,
+  enableHomeTracking,
+  HOME_ADDRESS,
+  readState,
+} from '@/lib/location';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import type { AgentHeartbeat, AppImprovement, Tag } from '@/lib/types';
@@ -21,12 +29,16 @@ const HEARTBEAT_FRESH_SECONDS = 120;
 export default function SettingsScreen() {
   const colors = useTheme();
   const { user, signOut } = useAuth();
-  const { dog, saveName } = useDog();
+  const { dog, person, saveName } = useDog();
 
   const [nameInput, setNameInput] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
+  /** Suivi de position : activé ? et où on se trouve (null = inconnu). */
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [atHome, setAtHome] = useState<boolean | null>(null);
+  const [isTogglingLocation, setIsTogglingLocation] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<AgentHeartbeat | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [newTagLabel, setNewTagLabel] = useState('');
@@ -76,6 +88,52 @@ export default function SettingsScreen() {
   const loadHeartbeat = useCallback(async () => {
     setLastHeartbeat(await fetchHeartbeat());
   }, [fetchHeartbeat]);
+
+  // État du suivi de position (stocké sur l'appareil) — relu à chaque
+  // affichage de l'écran, avec une mesure fraîche si le suivi est actif.
+  useFocusEffect(
+    useCallback(() => {
+      let ignore = false;
+      (async () => {
+        const state = await readState();
+        if (ignore) return;
+        setLocationEnabled(state.enabled);
+        setAtHome(state.atHome);
+        if (!state.enabled) return;
+        const position = await checkPositionNow();
+        if (!ignore) setAtHome(position);
+      })();
+      return () => {
+        ignore = true;
+      };
+    }, [])
+  );
+
+  const onToggleLocation = async () => {
+    if (!dog) return;
+    setIsTogglingLocation(true);
+    try {
+      if (locationEnabled) {
+        await disableHomeTracking();
+        setLocationEnabled(false);
+        setAtHome(null);
+        return;
+      }
+      const errorMessage = await enableHomeTracking(dog.id, person);
+      if (errorMessage) {
+        Alert.alert('Localisation', errorMessage);
+        return;
+      }
+      setLocationEnabled(true);
+      setAtHome(await checkPositionNow());
+      Alert.alert(
+        'Localisation activée',
+        'Votre avatar suivra vos allées et venues, et une notification vous proposera de laisser Ubuntu seul quand vous êtes à la maison et que l’objectif du jour n’est pas atteint.'
+      );
+    } finally {
+      setIsTogglingLocation(false);
+    }
+  };
 
   // Particularités de session (liste par chien).
   useEffect(() => {
@@ -392,6 +450,33 @@ export default function SettingsScreen() {
           loading={isRegisteringPush}
         />
       </Card>
+
+      {dog ? (
+        <Card>
+          <SectionTitle>Ma localisation</SectionTitle>
+          <Text style={[styles.body, { color: colors.textSecondary }]}>
+            {`Votre téléphone signale seulement si vous êtes à l’appartement (${HOME_ADDRESS}) ou non : votre avatar se place tout seul sur le plan, et si l’objectif de solitude du jour n’est pas atteint, une notification vous propose de laisser Ubuntu seul (entre 10 h 30 et 22 h 30, une fois par jour).`}
+          </Text>
+          {locationEnabled ? (
+            <View style={styles.confirmRow}>
+              <Check size={16} color={colors.success} />
+              <Text style={[styles.body, { color: colors.success }]}>
+                {atHome === null
+                  ? 'Suivi activé (position pas encore mesurée).'
+                  : atHome
+                    ? 'Suivi activé — vous êtes à l’appartement.'
+                    : 'Suivi activé — vous êtes dehors.'}
+              </Text>
+            </View>
+          ) : null}
+          <Button
+            label={locationEnabled ? 'Désactiver le suivi' : 'Activer la localisation'}
+            variant={locationEnabled ? 'secondary' : 'primary'}
+            onPress={onToggleLocation}
+            loading={isTogglingLocation}
+          />
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Agent d’écoute</SectionTitle>

@@ -54,6 +54,7 @@ import {
   type Positions,
   type Spot,
 } from '@/lib/house';
+import { checkPositionNow, refreshSoloNudge, syncTrackingContext } from '@/lib/location';
 import { supabase } from '@/lib/supabase';
 import type {
   Activity,
@@ -85,7 +86,7 @@ export default function HouseScreen() {
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { dog } = useDog();
+  const { dog, person } = useDog();
   /** Nonce posé par la route /solo (deep link du widget) : lance une session. */
   const { autosolo } = useLocalSearchParams<{ autosolo?: string }>();
 
@@ -180,6 +181,14 @@ export default function HouseScreen() {
   useEffect(() => {
     if (dog) syncWidgetConfig(dog.id);
   }, [dog]);
+
+  // ---------------------------------------------------- Localisation
+  // Le geofencing ne prévient qu'aux franchissements : on remesure au
+  // lancement et à chaque retour au premier plan (wakeTick).
+  useEffect(() => {
+    if (!dog) return;
+    syncTrackingContext(dog.id, person).then(() => checkPositionNow());
+  }, [dog, person, wakeTick]);
 
   // ------------------------------------------------------------- Chargement
 
@@ -575,6 +584,9 @@ export default function HouseScreen() {
       soloMinutes: todaySoloMinutes,
       soloGoal: goals.soloMinutes,
     });
+    // Même occasion : la suggestion de session du jour se recalcule avec
+    // les minutes fraîches (elle s'annule dès l'objectif atteint).
+    refreshSoloNudge({ soloMinutes: todaySoloMinutes, goalMinutes: goals.soloMinutes });
   }, [activeSession?.started_at, todaySoloMinutes, goals.soloMinutes, fetchTick]);
 
   /** Mini-picker post-SOLO, question 1 : état d'Ubuntu au moment du départ.

@@ -226,6 +226,9 @@ export interface AppImprovement {
 /** Membres de la famille sur le plan de la maison. */
 export type Person = 'greg' | 'fiona' | 'ubuntu';
 
+/** Membre humain de la famille (celui qui laisse Ubuntu seul). */
+export type Participant = Exclude<Person, 'ubuntu'>;
+
 /** Espaces du plan : pièces, balcon, palier et dehors (forêt). */
 export type Space =
   | 'bureau'
