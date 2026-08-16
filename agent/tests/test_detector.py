@@ -4,12 +4,18 @@ Lancer :  cd agent && python3 -m pytest tests/ -v
 Aucune dépendance ML requise (EpisodeTracker est du pur Python).
 """
 
+import csv
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from detector import EpisodeTracker, NoiseTracker, WindowResult  # noqa: E402
+from detector import (  # noqa: E402
+    EpisodeTracker,
+    NoiseTracker,
+    WindowResult,
+    YamnetClassifier,
+)
 
 HOP = 0.5
 WINDOW = 0.975
@@ -383,3 +389,29 @@ def test_flush_closes_the_current_noise():
     feed_noise(tracker, [0.02, 0.02])
     assert len(tracker.flush()) == 1
     assert tracker.flush() == []
+
+
+def test_class_map_returns_names_by_index(tmp_path):
+    """Régression : la table index → nom ne doit pas être écrasée par la
+    variable de boucle des groupes (on renvoyait VETO_CLASSES, d'où des
+    `top_label` faux — « Bird » pour l'index 0)."""
+    required = [
+        "Bark", "Bow-wow", "Yip", "Howl", "Whimper (dog)", "Growling",
+        "Dog", "Animal", "Domestic animals, pets", "Bird",
+        "Bird vocalization, bird call, bird song", "Chirp, tweet", "Squeak",
+        "Wild animals",
+    ]
+    csv_path = tmp_path / "class_map.csv"
+    # csv.writer : certains noms contiennent une virgule (« Chirp, tweet »).
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["index", "mid", "display_name"])
+        writer.writerow([0, "/m/09x0r", "Speech"])
+        for i, name in enumerate(required):
+            writer.writerow([i + 1, f"/m/{i}", name])
+
+    indices, names_by_index = YamnetClassifier._load_class_map(str(csv_path))
+    assert names_by_index[0] == "Speech"
+    assert names_by_index[1] == "Bark"
+    assert len(names_by_index) == len(required) + 1
+    assert indices["bark"] == [1, 2, 3]

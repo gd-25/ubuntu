@@ -64,10 +64,11 @@ VETO_RATIO = 2.0
 VETO_FLOOR = 0.5
 
 # Seuil « il s'est passé quelque chose » pour la capture des AUTRES BRUITS
-# (tout ce que YAMNet n'a pas retenu comme vocalise). Volontairement très
-# bas : les couinements faibles qu'on rate aujourd'hui sont juste au-dessus
-# du bruit de fond de l'appartement (~0.0005 mesuré sur les clips).
-NOISE_RMS = 0.0015
+# (tout ce que YAMNet n'a pas retenu comme vocalise). Volontairement bas :
+# les couinements faibles qu'on rate aujourd'hui sont à peine au-dessus du
+# bruit de fond de l'appartement. Calibré en live le 2026-08-16 : à 0.0015
+# le fond de pièce (~0.0016) déclenchait tout seul.
+NOISE_RMS = 0.002
 
 
 @dataclass
@@ -353,9 +354,13 @@ class NoiseTracker:
     def __init__(
         self,
         rms_threshold: float = NOISE_RMS,
-        exit_negatives: int = 6,
-        min_duration: float = 0.4,
-        max_duration: float = 60.0,
+        # ~5 s de calme pour clore : deux bruits proches donnent UN clip
+        # plutôt que dix (mesuré en live : 4 clips/min avec 3 s).
+        exit_negatives: int = 10,
+        # Un couinement dure au moins une seconde ; en dessous c'est un
+        # claquement, un pas, un artefact de fenêtre.
+        min_duration: float = 1.0,
+        max_duration: float = 45.0,
         window_duration: float = WINDOW_DURATION,
     ):
         self.rms_threshold = rms_threshold
@@ -457,9 +462,11 @@ class YamnetClassifier:
         with open(class_map_path, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 name_to_index[row["display_name"]] = int(row["index"])
-        names = [""] * (max(name_to_index.values(), default=-1) + 1)
+        # `names_by_index` et pas `names` : la boucle plus bas réutilise ce
+        # nom pour les classes d'un groupe (on renverrait VETO_CLASSES…).
+        names_by_index = [""] * (max(name_to_index.values(), default=-1) + 1)
         for name, index in name_to_index.items():
-            names[index] = name
+            names_by_index[index] = name
 
         groups: dict[str, tuple[str, ...]] = {
             **FAMILY_CLASSES,
@@ -481,7 +488,7 @@ class YamnetClassifier:
                 f"Classes absentes de {class_map_path}: {missing}. "
                 "Vérifier que le fichier est bien yamnet_class_map.csv."
             )
-        return indices, names
+        return indices, names_by_index
 
     def classify(self, waveform) -> tuple[float, dict[str, float], float, float, str]:
         """waveform : np.ndarray float32 [-1, 1], 15600 échantillons à 16 kHz.
