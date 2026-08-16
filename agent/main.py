@@ -30,9 +30,11 @@ from detector import (
     HOP_DURATION,
     WINDOW_DURATION,
     EpisodeTracker,
+    NoiseTracker,
     WindowResult,
     YamnetClassifier,
 )
+from noises import NoiseRecorder, purge_old_noises
 from uploader import Uploader
 
 log = logging.getLogger("ubuntu")
@@ -123,8 +125,25 @@ class Agent:
                 should_record=self.session_open,
             )
 
+        # Capture des « autres bruits » : tout ce qui dépasse le seuil de
+        # volume pendant une session, y compris ce que YAMNet ne retient pas
+        # (les couinements faibles ratés). Nécessite les clips.
+        self.noise_tracker = None
+        self.noise_recorder = None
+        if self.clip_recorder and os.environ.get("NOISE_CAPTURE", "true").lower() != "false":
+            self.noise_tracker = NoiseTracker()
+            self.noise_recorder = NoiseRecorder(
+                clip_dir=self.clip_recorder.clip_dir,
+                supabase_url=os.environ.get("SUPABASE_URL", ""),
+                service_key=os.environ.get("SUPABASE_SERVICE_KEY", ""),
+                dog_id=self.dog_id,
+                should_record=self.session_open,
+            )
+
         self.started_at = time.time()
         self.stream_alive = False
+        # Purge quotidienne des bruits de plus de 30 jours.
+        self.last_purge_at = 0.0
         self._supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
         self._service_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
         self.last_rms = 0.0
@@ -146,6 +165,8 @@ class Agent:
         self.uploader.start()
         if self.clip_recorder:
             self.clip_recorder.start()
+        if self.noise_recorder:
+            self.noise_recorder.start()
         heartbeat = threading.Thread(
             target=self._heartbeat_loop, daemon=True, name="heartbeat"
         )
@@ -163,6 +184,7 @@ class Agent:
             with self._tracker_lock:
                 events = self.tracker.flush()
             self._emit(events)
+            self._flush_noises()
             if self._stop.is_set():
                 break
             if self._silent_reconnect:
@@ -187,8 +209,11 @@ class Agent:
         with self._tracker_lock:
             events = self.tracker.flush()
         self._emit(events)
+        self._flush_noises()
         if self.clip_recorder:
             self.clip_recorder.stop()
+        if self.noise_recorder:
+            self.noise_recorder.stop()
         self.uploader.stop()
         log.info("agent arrêté proprement")
 
@@ -259,7 +284,7 @@ class Agent:
                 elif now - last_loud > SILENT_SECONDS:
                     self._silent_reconnect = True
                     return
-                confidence, family_scores, dog_score, veto_score = (
+                confidence, family_scores, dog_score, veto_score, top_label = (
                     self.classifier.classify(samples)
                 )
                 window = WindowResult(
@@ -269,6 +294,7 @@ class Agent:
                     dog_score=dog_score,
                     veto_score=veto_score,
                     rms=self.last_rms,
+                    top_label=top_label,
                 )
                 if self.dry_run and confidence >= self.tracker.threshold:
                     best = max(family_scores, key=lambda k: family_scores[k])
@@ -283,7 +309,9 @@ class Agent:
                     )
                 with self._tracker_lock:
                     events = self.tracker.push(window)
+                    is_vocal = self.tracker.is_vocal
                 self._emit(events)
+                self._push_noise(window, is_vocal)
         finally:
             self._ffmpeg_proc = None
             stderr = b""
@@ -363,6 +391,29 @@ class Agent:
                 log.info("🗑 épisode trop court écarté %s", ev.episode_id[:8])
                 self.uploader.enqueue_delete("vocal_episodes", ev.episode_id)
 
+    # ----------------------------------------------------- autres bruits
+
+    def _push_noise(self, window: WindowResult, is_vocal: bool) -> None:
+        """Suit les bruits en parallèle des vocalises détectées.
+
+        Un bruit couvert par un épisode est déjà dans la chronologie de la
+        session : seuls les AUTRES bruits partent à l'enregistrement.
+        """
+        if not self.noise_tracker or not self.noise_recorder:
+            return
+        closed = self.noise_tracker.push(window, covered=is_vocal)
+        for noise in closed:
+            if noise.covered:
+                continue
+            self.noise_recorder.request(noise)
+
+    def _flush_noises(self) -> None:
+        if not self.noise_tracker or not self.noise_recorder:
+            return
+        for noise in self.noise_tracker.flush():
+            if not noise.covered:
+                self.noise_recorder.request(noise)
+
     def session_open(self) -> bool:
         """Une session est-elle ouverte pour le chien ?
 
@@ -431,6 +482,16 @@ class Agent:
                     "rms_level": round(rms, 5),
                 }
             )
+            # Rétention des « autres bruits » : une passe par jour suffit
+            # (elle traite jusqu'à PURGE_BATCH lignes, le reste attend).
+            if self.noise_recorder and time.time() - self.last_purge_at > 86_400:
+                self.last_purge_at = time.time()
+                try:
+                    purge_old_noises(
+                        self._supabase_url, self._service_key, self.dog_id
+                    )
+                except Exception:
+                    log.exception("purge des bruits : échec")
             log.debug(
                 "heartbeat status=%s rms=%.4f uptime=%.0fs file=%d",
                 status,

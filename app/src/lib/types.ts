@@ -67,6 +67,28 @@ export interface VocalEpisode {
 }
 
 /**
+ * Un bruit entendu pendant une session mais NON retenu comme vocalise par
+ * l'agent (seuil YAMNet trop strict pour les couinements faibles). Gardé
+ * 30 jours avec son clip ; « promu » depuis le détail de session, il
+ * devient une vraie vocalise et son clip est conservé — la liste des
+ * promus servira à recalibrer le détecteur.
+ */
+export interface AmbientNoise {
+  id: string;
+  dog_id: string;
+  started_at: string;
+  ended_at: string;
+  peak_rms: number | null;
+  /** Meilleure classe YAMNet au moment du bruit (indicatif). */
+  top_label: string | null;
+  dog_score: number | null;
+  clip_path: string | null;
+  promoted: boolean;
+  promoted_episode_id: string | null;
+  created_at: string;
+}
+
+/**
  * Observation comportementale pendant une session (pas une vocalise).
  * 'sit' (assis) et 'down' (couché) sont les deux marques de soulagement ;
  * 'relief' est l'ancien marqueur générique, conservé pour l'historique.

@@ -63,6 +63,12 @@ VETO_CLASSES = (
 VETO_RATIO = 2.0
 VETO_FLOOR = 0.5
 
+# Seuil « il s'est passé quelque chose » pour la capture des AUTRES BRUITS
+# (tout ce que YAMNet n'a pas retenu comme vocalise). Volontairement très
+# bas : les couinements faibles qu'on rate aujourd'hui sont juste au-dessus
+# du bruit de fond de l'appartement (~0.0005 mesuré sur les clips).
+NOISE_RMS = 0.0015
+
 
 @dataclass
 class WindowResult:
@@ -74,6 +80,7 @@ class WindowResult:
     dog_score: float = 0.0  # score max des classes spécifiquement chien
     veto_score: float = 0.0  # score max des classes oiseau/grincement
     rms: float = 0.0  # volume RMS de la fenêtre [0..1]
+    top_label: str = ""  # meilleure classe YAMNet, toutes classes confondues
 
     @property
     def vetoed(self) -> bool:
@@ -314,6 +321,98 @@ class EpisodeTracker:
         return events
 
 
+@dataclass
+class Noise:
+    """Un bruit entendu pendant une session, détecté ou non comme vocalise."""
+
+    noise_id: str
+    started_at: float
+    ended_at: float
+    peak_rms: float = 0.0
+    top_label: str = ""
+    dog_score: float = 0.0
+    # True si un épisode de vocalise couvrait ce bruit : il est déjà
+    # affiché dans la chronologie, inutile d'en refaire un « autre bruit ».
+    covered: bool = False
+
+    @property
+    def duration(self) -> float:
+        return self.ended_at - self.started_at
+
+
+class NoiseTracker:
+    """Découpe le flux en « bruits » sur le seul critère du volume.
+
+    Indépendant de YAMNet et de son seuil : dès que le RMS dépasse
+    `rms_threshold`, un bruit s'ouvre ; il se ferme après `exit_negatives`
+    fenêtres sous le seuil. Les bruits couverts par un épisode détecté sont
+    marqués (`mark_covered`) et jetés par l'appelant — ne restent que les
+    « autres bruits », candidats à une promotion manuelle en couinement.
+    """
+
+    def __init__(
+        self,
+        rms_threshold: float = NOISE_RMS,
+        exit_negatives: int = 6,
+        min_duration: float = 0.4,
+        max_duration: float = 60.0,
+        window_duration: float = WINDOW_DURATION,
+    ):
+        self.rms_threshold = rms_threshold
+        self.exit_negatives = exit_negatives
+        self.min_duration = min_duration
+        self.max_duration = max_duration
+        self.window_duration = window_duration
+        self._current: Noise | None = None
+        self._negatives = 0
+
+    def push(self, window: WindowResult, covered: bool = False) -> list[Noise]:
+        """Ingère une fenêtre ; renvoie les bruits qui viennent de se clore.
+
+        `covered` : cette fenêtre appartient à un épisode de vocalise déjà
+        détecté. Le marquage a lieu AVANT la fermeture éventuelle — un bruit
+        se clôt plus tôt que l'épisode qui le contient (moins de fenêtres
+        négatives pour sortir), il serait sinon relâché comme « autre bruit ».
+        """
+        closed: list[Noise] = []
+        if covered and self._current is not None:
+            self._current.covered = True
+        if window.rms >= self.rms_threshold:
+            self._negatives = 0
+            if self._current is None:
+                self._current = Noise(
+                    noise_id=str(uuid.uuid4()),
+                    started_at=window.timestamp,
+                    ended_at=window.timestamp + self.window_duration,
+                )
+            noise = self._current
+            noise.ended_at = max(noise.ended_at, window.timestamp + self.window_duration)
+            noise.peak_rms = max(noise.peak_rms, window.rms)
+            noise.dog_score = max(noise.dog_score, window.dog_score)
+            if window.top_label and window.rms >= noise.peak_rms:
+                noise.top_label = window.top_label
+            # Un bruit continu (aspirateur, travaux) ne doit pas produire un
+            # clip d'une heure : on le tronçonne.
+            if noise.duration >= self.max_duration:
+                closed.extend(self._close())
+            return closed
+
+        self._negatives += 1
+        if self._current is not None and self._negatives >= self.exit_negatives:
+            closed.extend(self._close())
+        return closed
+
+    def _close(self) -> list[Noise]:
+        noise, self._current = self._current, None
+        self._negatives = 0
+        if noise is None or noise.duration < self.min_duration:
+            return []
+        return [noise]
+
+    def flush(self) -> list[Noise]:
+        return self._close()
+
+
 class YamnetClassifier:
     """Enveloppe du modèle YAMNet TFLite.
 
@@ -326,7 +425,7 @@ class YamnetClassifier:
 
         self._np = np
         self._interpreter = self._load_interpreter(model_path)
-        self._class_indices = self._load_class_map(class_map_path)
+        self._class_indices, self._class_names = self._load_class_map(class_map_path)
 
         input_details = self._interpreter.get_input_details()[0]
         self._input_index = input_details["index"]
@@ -352,12 +451,15 @@ class YamnetClassifier:
         return Interpreter(model_path=model_path)
 
     @staticmethod
-    def _load_class_map(class_map_path: str) -> dict[str, list[int]]:
-        """Renvoie {famille|_extra|_dog|_veto: [indices]}."""
+    def _load_class_map(class_map_path: str) -> tuple[dict[str, list[int]], list[str]]:
+        """Renvoie ({famille|_extra|_dog|_veto: [indices]}, noms par index)."""
         name_to_index: dict[str, int] = {}
         with open(class_map_path, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 name_to_index[row["display_name"]] = int(row["index"])
+        names = [""] * (max(name_to_index.values(), default=-1) + 1)
+        for name, index in name_to_index.items():
+            names[index] = name
 
         groups: dict[str, tuple[str, ...]] = {
             **FAMILY_CLASSES,
@@ -379,13 +481,14 @@ class YamnetClassifier:
                 f"Classes absentes de {class_map_path}: {missing}. "
                 "Vérifier que le fichier est bien yamnet_class_map.csv."
             )
-        return indices
+        return indices, names
 
-    def classify(self, waveform) -> tuple[float, dict[str, float], float, float]:
+    def classify(self, waveform) -> tuple[float, dict[str, float], float, float, str]:
         """waveform : np.ndarray float32 [-1, 1], 15600 échantillons à 16 kHz.
 
         Renvoie (confiance max sur les classes cibles, scores max par famille,
-        preuve chien spécifique, score des classes oiseau/grincement).
+        preuve chien spécifique, score des classes oiseau/grincement, nom de
+        la classe la mieux notée toutes classes confondues).
         """
         np = self._np
         self._interpreter.set_tensor(self._input_index, waveform.astype(np.float32))
@@ -406,4 +509,8 @@ class YamnetClassifier:
         confidence = float(frame_max[target_indices].max())
         dog_score = float(frame_max[self._class_indices["_dog"]].max())
         veto_score = float(frame_max[self._class_indices["_veto"]].max())
-        return confidence, family_scores, dog_score, veto_score
+        top_index = int(frame_max.argmax())
+        top_label = (
+            self._class_names[top_index] if top_index < len(self._class_names) else ""
+        )
+        return confidence, family_scores, dog_score, veto_score, top_label

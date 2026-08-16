@@ -67,6 +67,39 @@ def pick_segments(
     return [path for _, path in sorted(picked)]
 
 
+def wait_for_final_segment(segments, clip_end: float) -> None:
+    """Attend (au plus FINAL_SEGMENT_TIMEOUT) la clôture du segment de fin.
+
+    `segments` : callable renvoyant [(chemin, mtime)].
+    """
+    deadline = time.time() + FINAL_SEGMENT_TIMEOUT
+    while time.time() < deadline:
+        if any(mtime >= clip_end for _, mtime in segments()):
+            return
+        time.sleep(0.5)
+
+
+def build_mp4(paths: list[Path], out: Path) -> bool:
+    """Concatène des segments mkv en un mp4 (vidéo copiée, audio en AAC)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        concat_list = Path(tmp) / "list.txt"
+        concat_list.write_text(
+            "".join(f"file '{p.as_posix()}'\n" for p in paths), encoding="utf-8"
+        )
+        cmd = [
+            "ffmpeg", "-nostdin", "-loglevel", "error",
+            "-f", "concat", "-safe", "0", "-i", str(concat_list),
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "48k",
+            "-movflags", "+faststart",
+            str(out),
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=60)
+        if result.returncode != 0 or not out.exists():
+            log.warning("remux échoué (%s)", result.stderr.decode(errors="replace")[-300:])
+            return False
+    return True
+
+
 class ClipRecorder:
     def __init__(
         self,
@@ -148,12 +181,7 @@ class ClipRecorder:
         clip_start = started_at - self.preroll
         clip_end = ended_at + self.postroll
 
-        # Attend que le segment couvrant la fin du clip soit clos.
-        deadline = time.time() + FINAL_SEGMENT_TIMEOUT
-        while time.time() < deadline:
-            if any(mtime >= clip_end for _, mtime in self._segments()):
-                break
-            time.sleep(0.5)
+        wait_for_final_segment(self._segments, clip_end)
 
         paths = pick_segments(self._segments(), clip_start, clip_end)
         if not paths:
@@ -161,25 +189,9 @@ class ClipRecorder:
             return
 
         with tempfile.TemporaryDirectory() as tmp:
-            concat_list = Path(tmp) / "list.txt"
-            concat_list.write_text(
-                "".join(f"file '{p.as_posix()}'\n" for p in paths), encoding="utf-8"
-            )
             out = Path(tmp) / f"{episode_id}.mp4"
-            cmd = [
-                "ffmpeg", "-nostdin", "-loglevel", "error",
-                "-f", "concat", "-safe", "0", "-i", str(concat_list),
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "48k",
-                "-movflags", "+faststart",
-                str(out),
-            ]
-            result = subprocess.run(cmd, capture_output=True, timeout=60)
-            if result.returncode != 0 or not out.exists():
-                log.warning(
-                    "clip %s : remux échoué (%s)",
-                    episode_id,
-                    result.stderr.decode(errors="replace")[-300:],
-                )
+            if not build_mp4(paths, out):
+                log.warning("clip %s : remux échoué", episode_id)
                 return
             self._upload(episode_id, out)
 

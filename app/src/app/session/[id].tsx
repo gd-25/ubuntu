@@ -41,6 +41,7 @@ import {
 } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type {
+  AmbientNoise,
   DepartureState,
   EpisodeKind,
   HumanLocation,
@@ -94,6 +95,9 @@ export default function SessionDetailScreen() {
   const [episodes, setEpisodes] = useState<VocalEpisode[]>([]);
   /** Observations (assis, couché, soulagement, panique) de la session. */
   const [observations, setObservations] = useState<ObservedEvent[]>([]);
+  /** Bruits entendus pendant la session mais non retenus par l'agent. */
+  const [noises, setNoises] = useState<AmbientNoise[]>([]);
+  const [promotingId, setPromotingId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('');
@@ -132,6 +136,28 @@ export default function SessionDetailScreen() {
     setSummary(summaryRes.data as SessionSummary | null);
     setObservations((obsRes.data as ObservedEvent[] | null) ?? []);
   }, [id]);
+
+  /** Bruits de la session : rattachés par PLAGE HORAIRE (l'agent ne connaît
+      pas l'id de session au moment où il les enregistre). */
+  const fetchNoises = useCallback(
+    async (row: Session) => {
+      const endMs = row.ended_at ? new Date(row.ended_at).getTime() : nowMs;
+      const { data, error } = await supabase
+        .from('ambient_noises')
+        .select('*')
+        .eq('dog_id', row.dog_id)
+        .eq('promoted', false)
+        .gte('started_at', row.started_at)
+        .lte('started_at', new Date(endMs).toISOString())
+        .order('started_at', { ascending: true });
+      if (error) {
+        console.warn('Chargement des autres bruits impossible :', error.message);
+        return;
+      }
+      setNoises((data as AmbientNoise[] | null) ?? []);
+    },
+    [nowMs]
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -201,11 +227,12 @@ export default function SessionDetailScreen() {
       );
       if (row) setEpisodeTime(new Date(row.started_at));
       setIsLoading(false);
+      if (row) fetchNoises(row);
     })();
     return () => {
       ignore = true;
     };
-  }, [id, nowMs]);
+  }, [id, nowMs, fetchNoises]);
 
   const toggleTag = async (tag: Tag) => {
     if (!session) return;
@@ -286,6 +313,49 @@ export default function SessionDetailScreen() {
     setEpisodeOpen(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // La frise et les stats (vue session_summaries) se recalculent.
+    fetchEpisodesAndSummary();
+  };
+
+  /**
+   * « C'était un couinement » : le bruit devient une vraie vocalise (avec
+   * son clip, qui échappe alors à la purge des 30 jours) et la ligne reste
+   * en base marquée `promoted` — c'est la trace d'un couinement raté par
+   * l'agent, matière première du futur recalibrage de YAMNet.
+   */
+  const promoteNoise = async (noise: AmbientNoise) => {
+    if (!session) return;
+    setPromotingId(noise.id);
+    const { data, error } = await supabase
+      .from('vocal_episodes')
+      .insert({
+        dog_id: session.dog_id,
+        session_id: session.id,
+        started_at: noise.started_at,
+        ended_at: noise.ended_at,
+        kind: 'whine',
+        source: 'manual',
+        peak_rms: noise.peak_rms,
+        clip_path: noise.clip_path,
+      })
+      .select()
+      .single();
+    if (error) {
+      setPromotingId(null);
+      Alert.alert('Erreur', `Promotion impossible : ${error.message}`);
+      return;
+    }
+    const episode = data as VocalEpisode;
+    const { error: markError } = await supabase
+      .from('ambient_noises')
+      .update({ promoted: true, promoted_episode_id: episode.id })
+      .eq('id', noise.id);
+    setPromotingId(null);
+    if (markError) {
+      Alert.alert('Erreur', `Bruit non marqué : ${markError.message}`);
+      return;
+    }
+    setNoises((prev) => prev.filter((n) => n.id !== noise.id));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     fetchEpisodesAndSummary();
   };
 
@@ -636,6 +706,44 @@ export default function SessionDetailScreen() {
         <Text style={[styles.saveButtonText, { color: colors.accentText }]}>ENREGISTRER</Text>
       </Pressable>
 
+      {/* ------------------------------- Autres bruits (tout en bas) -----
+          Tout ce que la caméra a entendu sans que l'agent y voie une
+          vocalise : les couinements très faibles passent sous le seuil.
+          Un tap sur COUINEMENT les remonte dans la chronologie. */}
+      <DialogLabel>AUTRES BRUITS</DialogLabel>
+      <Text style={[styles.noiseHelp, { color: colors.textSecondary }]}>
+        Bruits entendus pendant la session sans être retenus comme vocalises. Écoutez le clip : si
+        c&apos;en était une, COUINEMENT la remonte plus haut et garde la vidéo.
+      </Text>
+      {noises.length === 0 ? (
+        <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
+          AUCUN AUTRE BRUIT ENREGISTRÉ (CONSERVÉS 30 JOURS)
+        </Text>
+      ) : null}
+      {noises.map((noise) => (
+        <View key={noise.id} style={styles.episodeRow}>
+          <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
+            {formatTime(noise.started_at)} ·{' '}
+            {formatDuration(episodeDurationSeconds(noise.started_at, noise.ended_at))}
+            {formatVolume(noise.peak_rms) ? ` · ${formatVolume(noise.peak_rms)}` : ''}
+            {noise.top_label ? ` · ${noise.top_label.toUpperCase()}` : ''}
+          </Text>
+          {noise.clip_path ? <ClipButton clipPath={noise.clip_path} /> : null}
+          <Pressable
+            onPress={() => promoteNoise(noise)}
+            disabled={promotingId === noise.id}
+            hitSlop={8}>
+            <Text
+              style={[
+                styles.episodeAction,
+                { color: colors.accent, opacity: promotingId === noise.id ? 0.4 : 1 },
+              ]}>
+              COUINEMENT
+            </Text>
+          </Pressable>
+        </View>
+      ))}
+
       {/* --------------------------- Modale « ajouter un épisode » ------- */}
       <PixelDialog
         visible={episodeOpen}
@@ -864,6 +972,10 @@ const styles = StyleSheet.create({
   },
   episodeAction: {
     fontSize: 7,
+  },
+  noiseHelp: {
+    fontSize: 6.5,
+    lineHeight: 11,
   },
   // Épisode écarté : visible mais grisé (il reste consultable, clip inclus).
   dismissed: {

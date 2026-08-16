@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from detector import EpisodeTracker, WindowResult  # noqa: E402
+from detector import EpisodeTracker, NoiseTracker, WindowResult  # noqa: E402
 
 HOP = 0.5
 WINDOW = 0.975
@@ -316,3 +316,70 @@ def test_windows_below_threshold_are_negative():
     tracker = make_tracker(threshold=0.5)
     events = run(tracker, "+++++", confidence=0.4)
     assert events == []
+
+
+# --------------------------------------------------------------- NoiseTracker
+
+
+def noise_window(t, rms, dog_score=0.0, top_label="Speech"):
+    return WindowResult(
+        t,
+        confidence=0.0,
+        family_scores={},
+        dog_score=dog_score,
+        rms=rms,
+        top_label=top_label,
+    )
+
+
+def feed_noise(tracker, rms_values, start=2000.0, covered=False):
+    """Envoie une suite de fenêtres (une valeur de RMS chacune)."""
+    closed = []
+    t = start
+    for rms in rms_values:
+        closed += tracker.push(noise_window(t, rms), covered=covered)
+        t += HOP
+    return closed, t
+
+
+def test_noise_opens_and_closes_on_volume():
+    tracker = NoiseTracker(rms_threshold=0.01, exit_negatives=3, min_duration=0.4)
+    closed, t = feed_noise(tracker, [0.02, 0.05, 0.02])
+    assert closed == []  # toujours en cours
+    closed, t = feed_noise(tracker, [0.001, 0.001], start=t)
+    assert closed == []  # pas encore assez de fenêtres silencieuses
+    closed, _ = feed_noise(tracker, [0.001], start=t)
+    assert len(closed) == 1
+    assert closed[0].peak_rms == 0.05
+    assert closed[0].duration > 0.4
+
+
+def test_short_noise_is_dropped():
+    """Un pic isolé plus court que min_duration ne produit rien."""
+    tracker = NoiseTracker(rms_threshold=0.01, exit_negatives=1, min_duration=2.0)
+    closed, _ = feed_noise(tracker, [0.02, 0.001])
+    assert closed == []
+
+
+def test_covered_noise_is_flagged_before_it_closes():
+    """Le bruit d'un épisode détecté est marqué même si l'épisode dure encore."""
+    tracker = NoiseTracker(rms_threshold=0.01, exit_negatives=2, min_duration=0.4)
+    closed, t = feed_noise(tracker, [0.05, 0.05], covered=True)
+    assert closed == []
+    closed, _ = feed_noise(tracker, [0.001, 0.001], start=t, covered=True)
+    assert len(closed) == 1 and closed[0].covered is True
+
+
+def test_long_noise_is_chunked():
+    """Un bruit continu est tronçonné : jamais de clip d'une heure."""
+    tracker = NoiseTracker(rms_threshold=0.01, exit_negatives=3, max_duration=3.0)
+    closed, _ = feed_noise(tracker, [0.02] * 12)
+    assert len(closed) >= 2
+    assert all(n.duration <= 4.0 for n in closed)
+
+
+def test_flush_closes_the_current_noise():
+    tracker = NoiseTracker(rms_threshold=0.01, min_duration=0.4)
+    feed_noise(tracker, [0.02, 0.02])
+    assert len(tracker.flush()) == 1
+    assert tracker.flush() == []

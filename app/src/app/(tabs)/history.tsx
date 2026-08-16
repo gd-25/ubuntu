@@ -22,6 +22,7 @@ import type {
   Activity,
   DayNote,
   FakeCue,
+  HumanLocation,
   Night,
   OverallSession,
   SemiSoloSession,
@@ -91,15 +92,48 @@ const COPY_RANGES: CopyRange[] = [
   { label: 'Tout l’historique', days: null },
 ];
 
+/** Où les humains étaient pendant la session. */
+const HUMAN_LOCATION_LABELS: Record<HumanLocation, string> = {
+  couloir: 'Couloir',
+  en_bas: 'En bas',
+  dehors: 'Dehors',
+};
+
+/** Les colonnes de `sessions` absentes de la vue session_summaries. */
+interface SessionExtras {
+  participants: Participant[] | null;
+  greg_location: HumanLocation | null;
+  fiona_location: HumanLocation | null;
+  human_location: HumanLocation | null;
+  notes?: string | null;
+}
+
 /**
  * Qui a laissé Ubuntu seul (remplace l'ancienne particularité « Départ à
- * deux ») — repris dans l'export texte des sessions.
+ * deux ») — affiché sous chaque session et repris dans l'export texte.
  */
-function participantsLabel(people: Participant[] | undefined): string | null {
+function participantsLabel(people: Participant[] | null | undefined): string | null {
   if (!people || people.length === 0) return null;
-  if (people.includes('greg') && people.includes('fiona')) return 'qui part : Greg et Fiona';
-  if (people.includes('greg')) return 'qui part : Greg seul (Fiona absente)';
-  return 'qui part : Fiona seule (Greg absent)';
+  if (people.includes('greg') && people.includes('fiona')) return 'Fiona & Greg';
+  if (people.includes('greg')) return 'Greg';
+  return 'Fiona';
+}
+
+/**
+ * Où étaient les participants : une seule mention si tout le monde était au
+ * même endroit, sinon les deux séparées par une barre. Les vieilles sessions
+ * retombent sur l'ancien champ unique `human_location`.
+ */
+function locationLabel(extras: SessionExtras | undefined): string | null {
+  if (!extras) return null;
+  const people = extras.participants ?? ['greg', 'fiona'];
+  const values = people
+    .map((person) => (person === 'greg' ? extras.greg_location : extras.fiona_location))
+    .map((value) => value ?? extras.human_location)
+    .filter((value): value is HumanLocation => !!value);
+  const unique = [...new Set(values)];
+  if (unique.length === 0) return null;
+  return unique.map((value) => HUMAN_LOCATION_LABELS[value]).join(' / ');
 }
 
 const FRACTION_LABELS: Record<number, string> = {
@@ -140,6 +174,8 @@ export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { dog } = useDog();
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
+  /** Participants et localisations, par id de session. */
+  const [sessionExtras, setSessionExtras] = useState<Record<string, SessionExtras>>({});
   const [activities, setActivities] = useState<Activity[]>([]);
   const [nights, setNights] = useState<Night[]>([]);
   const [overalls, setOveralls] = useState<OverallSession[]>([]);
@@ -159,12 +195,25 @@ export default function HistoryScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [sessionsRes, activitiesRes, nightsRes, overallsRes, semiSolosRes, dayNotesRes] =
-      await Promise.all([
+    const [
+      sessionsRes,
+      extrasRes,
+      activitiesRes,
+      nightsRes,
+      overallsRes,
+      semiSolosRes,
+      dayNotesRes,
+    ] = await Promise.all([
       supabase
         .from('session_summaries')
         .select('*')
         .not('ended_at', 'is', null)
+        .order('started_at', { ascending: false })
+        .limit(100),
+      // Participants et localisations : absents de la vue session_summaries.
+      supabase
+        .from('sessions')
+        .select('id, participants, greg_location, fiona_location, human_location')
         .order('started_at', { ascending: false })
         .limit(100),
       supabase.from('activities').select('*').order('at', { ascending: false }).limit(200),
@@ -180,6 +229,11 @@ export default function HistoryScreen() {
     if (sessionsRes.error)
       console.warn('Chargement de l’historique impossible :', sessionsRes.error.message);
     setSummaries((sessionsRes.data as SessionSummary[] | null) ?? []);
+    const extras: Record<string, SessionExtras> = {};
+    for (const row of ((extrasRes.data as ({ id: string } & SessionExtras)[] | null) ?? [])) {
+      extras[row.id] = row;
+    }
+    setSessionExtras(extras);
     setActivities((activitiesRes.data as Activity[] | null) ?? []);
     setNights((nightsRes.data as Night[] | null) ?? []);
     setOveralls((overallsRes.data as OverallSession[] | null) ?? []);
@@ -224,10 +278,12 @@ export default function HistoryScreen() {
           type: 'session',
           at: s.started_at,
           title: `${dot} ${formatTime(s.started_at)}${s.ended_at ? ` → ${formatTime(s.ended_at)}` : ''}`,
+          // Durée · qui participait · temps vocalisé · où ils étaient.
           detail: info([
             formatDuration(seconds),
-            `${s.episode_count} épisode${s.episode_count > 1 ? 's' : ''}`,
+            participantsLabel(sessionExtras[s.session_id]?.participants),
             `vocal ${formatDuration(s.total_vocal_seconds)}`,
+            locationLabel(sessionExtras[s.session_id]),
             s.is_exercise === false && 'subie',
           ]),
           calmPercent: s.calm_percent,
@@ -374,7 +430,7 @@ export default function HistoryScreen() {
       else byDay.push({ title, dayKey: parisDayKey(item.at), data: [item] });
     }
     return byDay;
-  }, [summaries, activities, nights, overalls, semiSolos, enabled]);
+  }, [summaries, sessionExtras, activities, nights, overalls, semiSolos, enabled]);
 
   /** Enregistre (upsert) ou efface la note du jour en cours d'édition. */
   const saveDayNote = useCallback(async () => {
@@ -488,8 +544,12 @@ export default function HistoryScreen() {
         .gte('started_at', sinceIso)
         .order('started_at', { ascending: true })
         .limit(1000),
-      // Notes et participants ne sont pas dans la vue session_summaries.
-      supabase.from('sessions').select('id, notes, participants').gte('started_at', sinceIso).limit(1000),
+      // Notes, participants et localisations : pas dans session_summaries.
+      supabase
+        .from('sessions')
+        .select('id, notes, participants, greg_location, fiona_location, human_location')
+        .gte('started_at', sinceIso)
+        .limit(1000),
       supabase.from('activities').select('*').gte('at', sinceIso).limit(3000),
       supabase.from('nights').select('*').gte('ended_at', sinceIso).limit(500),
       supabase.from('overall_sessions').select('*').gte('at', sinceIso).limit(500),
@@ -499,9 +559,7 @@ export default function HistoryScreen() {
 
     const rangeSummaries = (summariesRes.data as SessionSummary[] | null) ?? [];
     const sessionRows =
-      (sessionRowsRes.data as
-        | { id: string; notes: string | null; participants: Participant[] }[]
-        | null) ?? [];
+      (sessionRowsRes.data as ({ id: string } & SessionExtras)[] | null) ?? [];
     const rangeActivities = (activitiesRes.data as Activity[] | null) ?? [];
     const rangeNights = (nightsRes.data as Night[] | null) ?? [];
     const rangeOveralls = (overallsRes.data as OverallSession[] | null) ?? [];
@@ -510,7 +568,7 @@ export default function HistoryScreen() {
     for (const n of (dayNotesRes.data as DayNote[] | null) ?? []) rangeDayNotes[n.day] = n;
 
     const sessionNotes = new Map(sessionRows.map((r) => [r.id, r.notes]));
-    const sessionParticipants = new Map(sessionRows.map((r) => [r.id, r.participants]));
+    const sessionById = new Map(sessionRows.map((r) => [r.id, r]));
 
     const info = (parts: (string | null | undefined | false)[]) =>
       parts.filter(Boolean).join(', ');
@@ -518,12 +576,16 @@ export default function HistoryScreen() {
 
     for (const s of rangeSummaries) {
       const notes = sessionNotes.get(s.session_id);
+      const extras = sessionById.get(s.session_id);
+      const who = participantsLabel(extras?.participants);
+      const where = locationLabel(extras);
       lines.push({
         at: s.started_at,
         text:
           `${formatTime(s.started_at)}–${s.ended_at ? formatTime(s.ended_at) : '?'} SESSION SOLO ` +
           `(${dur(s.started_at, s.ended_at)}) — ${info([
-            participantsLabel(sessionParticipants.get(s.session_id)),
+            who ? `qui part : ${who}` : null,
+            where ? `où ils étaient : ${where.toLowerCase()}` : null,
             `${s.episode_count} épisode${s.episode_count > 1 ? 's' : ''} de vocalises`,
             `${formatDuration(s.total_vocal_seconds)} vocalisées`,
             `${Math.round(s.calm_percent)} % calme`,
@@ -630,7 +692,7 @@ export default function HistoryScreen() {
       `HISTORIQUE D'UBUNTU (chien) — ${period}.`,
       `Contexte : Ubuntu est un chien qu'on entraîne à rester seul (anxiété de séparation). Ses vocalises sont surveillées par caméra pendant les sessions.`,
       `Types d'événements :`,
-      `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise ; « qui part » = qui était là et l'a laissé seul (Greg, Fiona ou les deux).`,
+      `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise ; « qui part » = qui était là et l'a laissé seul (Greg, Fiona ou les deux) ; « où ils étaient » = couloir (sur le palier), en bas (dans l'immeuble) ou dehors.`,
       `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif ${goals.semiSoloMinutes} min/jour).`,
       `- NUIT : où Ubuntu a dormi.`,
       `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
