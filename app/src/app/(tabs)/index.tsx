@@ -22,7 +22,6 @@ import { DodoModal } from '@/components/home/dodo-modal';
 import { FeedModal } from '@/components/home/feed-modal';
 import { GardeModal } from '@/components/home/garde-modal';
 import { OverallModal } from '@/components/home/overall-modal';
-import { SemiSoloModal } from '@/components/home/semi-solo-modal';
 import { SoloPicker } from '@/components/home/solo-picker';
 import { SortieModal } from '@/components/home/sortie-modal';
 import { VelcroModal } from '@/components/home/velcro-modal';
@@ -47,12 +46,10 @@ import {
   departureTypeOf,
   FURNITURE_SPOTS,
   isOnUbuntuMat,
-  isUbuntuAlone,
   MAGNET_SPOTS,
   MAP_H,
   MAP_W,
   SLOTS,
-  SPACE_LABELS,
   UBUNTU_MAT_SPOT,
   type Positions,
   type Spot,
@@ -132,22 +129,18 @@ export default function HouseScreen() {
   const [cuesOpen, setCuesOpen] = useState(false);
   const [gardeOpen, setGardeOpen] = useState(false);
   const [velcroOpen, setVelcroOpen] = useState(false);
-  const [semiSoloOpen, setSemiSoloOpen] = useState(false);
   const [overallOpen, setOverallOpen] = useState(false);
   /** Mini-picker d'état au départ, affiché juste après le lancement SOLO. */
   const [soloPickerFor, setSoloPickerFor] = useState<string | null>(null);
   /** Compteurs du jour pour les objectifs (faux signaux 10/j, Overall 1/j,
-      semi solo 60 min/j, minutes de solitude 15 min/j). */
+      minutes de solitude 15 min/j). */
   const [todayCues, setTodayCues] = useState(0);
   const [todayOveralls, setTodayOveralls] = useState(0);
-  const [todaySemiSoloMinutes, setTodaySemiSoloMinutes] = useState(0);
   const [todaySoloMinutes, setTodaySoloMinutes] = useState(0);
   /** Objectifs quotidiens (paramétrables dans Réglages). */
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
-  /** Ubuntu est seul depuis 2 s : panneau qui propose de lancer la session. */
-  const [alonePrompt, setAlonePrompt] = useState(false);
   /** Incrémenté à chaque fetch de l'accueil (resync du widget iOS). */
   const [fetchTick, setFetchTick] = useState(0);
   /** Incrémenté à chaque retour de l'app au premier plan : déclenche un
@@ -167,16 +160,6 @@ export default function HouseScreen() {
     activeSessionRef.current = activeSession;
     activeWalkRef.current = activeWalk;
   }, [positions, objectPos, activeSession, activeWalk]);
-
-  // Délai de grâce avant de proposer la session (le temps de déplacer
-  // les autres avatars de pièce en pièce sans déclencher le panneau).
-  const aloneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (aloneTimerRef.current) clearTimeout(aloneTimerRef.current);
-    },
-    []
-  );
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -212,7 +195,6 @@ export default function HouseScreen() {
       walkRes,
       cuesRes,
       overallRes,
-      semiSoloRes,
       soloRes,
       dogGoals,
     ] = await Promise.all([
@@ -250,11 +232,6 @@ export default function HouseScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('dog_id', dog.id)
         .gte('at', todayStart.toISOString()),
-      supabase
-        .from('semi_solo_sessions')
-        .select('started_at, ended_at')
-        .eq('dog_id', dog.id)
-        .gte('started_at', todayStart.toISOString()),
       supabase
         .from('sessions')
         .select('started_at, ended_at')
@@ -297,14 +274,6 @@ export default function HouseScreen() {
         return sum + Math.max(0, end - new Date(s.started_at).getTime()) / 1000;
       }, 0);
 
-    // Minutes de semi solo cumulées aujourd'hui (objectif 1 h/jour).
-    const semiSoloSeconds = ((semiSoloRes.data as { started_at: string; ended_at: string }[] | null) ?? [])
-      .reduce(
-        (sum, s) =>
-          sum + Math.max(0, new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000,
-        0
-      );
-
     return {
       positions: nextPositions,
       objects: nextObjects,
@@ -314,7 +283,6 @@ export default function HouseScreen() {
       walk: (walkRes.data?.[0] as Activity | undefined) ?? null,
       todayCues: cuesRes.count ?? 0,
       todayOveralls: overallRes.count ?? 0,
-      todaySemiSoloMinutes: Math.round(semiSoloSeconds / 60),
       todaySoloMinutes: Math.round(soloSeconds / 60),
       goals: dogGoals,
     };
@@ -326,12 +294,10 @@ export default function HouseScreen() {
     if (snapshot.objects) setObjectPos(snapshot.objects);
     setLastHeartbeat(snapshot.heartbeat);
     setActiveSession(snapshot.session);
-    if (snapshot.session) setAlonePrompt(false);
     setSessionEpisodes(snapshot.episodes);
     setActiveWalk(snapshot.walk);
     setTodayCues(snapshot.todayCues);
     setTodayOveralls(snapshot.todayOveralls);
-    setTodaySemiSoloMinutes(snapshot.todaySemiSoloMinutes);
     setTodaySoloMinutes(snapshot.todaySoloMinutes);
     setGoals(snapshot.goals);
   }, []);
@@ -466,7 +432,6 @@ export default function HouseScreen() {
           if (!session?.id) return;
           if (session.ended_at === null) {
             setActiveSession(session);
-            setAlonePrompt(false);
           } else {
             setActiveSession((prev) => (prev && prev.id === session.id ? null : prev));
           }
@@ -587,7 +552,6 @@ export default function HouseScreen() {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setAlonePrompt(false);
     startSession();
   }, [startSession, showToast]);
 
@@ -727,7 +691,12 @@ export default function HouseScreen() {
     if (error) console.warn('Toggle exercice non enregistré :', error.message);
   }, []);
 
-  /** Un avatar vient d'être lâché dans une zone (geste local uniquement). */
+  /**
+   * Un avatar vient d'être lâché dans une zone. Le plan ne fait plus que
+   * décrire où tout le monde est (et démarrer/terminer une balade quand
+   * Ubuntu sort) : les sessions de solitude se lancent UNIQUEMENT depuis
+   * le bouton SOLO ou le widget.
+   */
   const handleDrop = useCallback(
     (person: Person, space: Space, x: number, y: number) => {
       // Gros haptique à CHAQUE lâcher (les petits accompagnent le drag).
@@ -749,39 +718,9 @@ export default function HouseScreen() {
       const transition = computeTransition(prev, next);
       if (transition.walkStarted) startWalk();
       if (transition.walkEnded) endWalk();
-      // Ubuntu seul depuis 2 s : on PROPOSE la session (panneau en haut),
-      // elle ne démarre qu'après confirmation.
-      if (transition.aloneStarted && !activeSessionRef.current) {
-        if (aloneTimerRef.current) clearTimeout(aloneTimerRef.current);
-        aloneTimerRef.current = setTimeout(() => {
-          aloneTimerRef.current = null;
-          const current = positionsRef.current;
-          if (!isUbuntuAlone(current) || activeSessionRef.current) return;
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          setAlonePrompt(true);
-        }, 2000);
-      }
-      if (transition.aloneEnded) {
-        if (aloneTimerRef.current) {
-          clearTimeout(aloneTimerRef.current);
-          aloneTimerRef.current = null;
-        }
-        setAlonePrompt(false);
-        if (activeSessionRef.current) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          stopSession();
-        }
-      }
     },
-    [persistPosition, startWalk, endWalk, stopSession, logMatVisit]
+    [persistPosition, startWalk, endWalk, logMatVisit]
   );
-
-  const confirmSession = useCallback(() => {
-    setAlonePrompt(false);
-    const current = positionsRef.current;
-    if (!isUbuntuAlone(current) || activeSessionRef.current) return;
-    startSession();
-  }, [startSession]);
 
   const handleHover = useCallback((space: Space | null) => {
     if (space) Haptics.selectionAsync();
@@ -1002,9 +941,9 @@ export default function HouseScreen() {
         </Animated.View>
       ) : null}
 
-      {/* L'outil de travail : les 7 actions, dans l'espace vert
+      {/* L'outil de travail : les 8 actions, dans l'espace vert
           (masqué quand un panneau occupe le haut de l'écran) */}
-      {!activeSession && !alonePrompt && !soloPickerFor && !basketPlacing ? (
+      {!activeSession && !soloPickerFor && !basketPlacing ? (
         <View style={[styles.actionsWrap, { top: panelTop }]}>
           <ActionGrid
             onSolo={startSolo}
@@ -1014,11 +953,9 @@ export default function HouseScreen() {
             onVelcro={() => setVelcroOpen(true)}
             onCues={() => setCuesOpen(true)}
             onOverall={() => setOverallOpen(true)}
-            onSemiSolo={() => setSemiSoloOpen(true)}
             onGarde={() => setGardeOpen(true)}
             todayCues={todayCues}
             todayOveralls={todayOveralls}
-            todaySemiSoloMinutes={todaySemiSoloMinutes}
             todaySoloMinutes={todaySoloMinutes}
             goals={goals}
           />
@@ -1058,42 +995,6 @@ export default function HouseScreen() {
           onPickParticipants={pickParticipants}
           onDismiss={() => setSoloPickerFor(null)}
         />
-      ) : null}
-
-      {/* Proposition de session : Ubuntu est seul depuis 2 s, on demande
-          avant de lancer (panneau en haut, au-dessus des arbres) */}
-      {alonePrompt && !activeSession ? (
-        <Animated.View
-          entering={SlideInUp.duration(260)}
-          exiting={SlideOutUp.duration(160)}
-          style={[
-            styles.sessionPanel,
-            {
-              top: panelTop,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              boxShadow: `4px 4px 0px 0px ${colors.border}`,
-            },
-          ]}>
-          <Text style={[styles.sessionTitle, { color: colors.accent }]}>
-            ● UBUNTU EST SEUL
-          </Text>
-          <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
-            Ubuntu est resté : {SPACE_LABELS[positions.ubuntu]}. Lancer la session ?
-          </Text>
-          <View style={styles.dialogButtons}>
-            <Pressable
-              onPress={() => setAlonePrompt(false)}
-              style={[styles.dialogButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.dialogButtonText, { color: colors.text }]}>IGNORER</Text>
-            </Pressable>
-            <Pressable
-              onPress={confirmSession}
-              style={[styles.dialogButton, { backgroundColor: colors.accent, borderColor: colors.border }]}>
-              <Text style={[styles.dialogButtonText, { color: colors.accentText }]}>DÉMARRER</Text>
-            </Pressable>
-          </View>
-        </Animated.View>
       ) : null}
 
       {/* Panneau session en cours (boîte de dialogue Pokémon, en haut) —
@@ -1250,19 +1151,6 @@ export default function HouseScreen() {
         onClose={() => setVelcroOpen(false)}
         onSaved={showToast}
       />
-      <SemiSoloModal
-        visible={semiSoloOpen}
-        topOffset={panelTop}
-        dogId={dog?.id ?? null}
-        todayMinutes={todaySemiSoloMinutes}
-        goal={goals.semiSoloMinutes}
-        onClose={() => setSemiSoloOpen(false)}
-        onSaved={(message, minutes) => {
-          setTodaySemiSoloMinutes((n) => n + minutes);
-          showToast(message);
-        }}
-      />
-
       {/* Récap de fin de session */}
       <Modal visible={!!recap} transparent animationType="fade" onRequestClose={() => setRecap(null)}>
         <View style={[styles.modalBackdrop, { paddingTop: panelTop }]}>

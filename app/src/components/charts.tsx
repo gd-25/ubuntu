@@ -8,6 +8,8 @@ import { useTheme } from '@/hooks/use-theme';
 const CHART_HEIGHT = 160;
 const PADDING_TOP = 16;
 const PADDING_BOTTOM = 24;
+/** Place réservée aux libellés quand ils sont écrits à la verticale. */
+const PADDING_BOTTOM_VERTICAL = 46;
 const PLOT_HEIGHT = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 export interface ChartPoint {
@@ -20,10 +22,13 @@ export function BarChart({
   data,
   formatValue,
   color,
+  verticalLabels = false,
 }: {
   data: ChartPoint[];
   formatValue: (value: number) => string;
   color?: string;
+  /** Libellés écrits à la verticale (dates serrées : 14 jours d'affilée). */
+  verticalLabels?: boolean;
 }) {
   const colors = useTheme();
   const [width, setWidth] = useState(0);
@@ -32,24 +37,29 @@ export function BarChart({
   if (data.length === 0) return null;
   const max = Math.max(...data.map((d) => d.value), 1);
   const slot = width / data.length;
-  const barWidth = Math.max(Math.min(slot * 0.6, 48), 6);
+  // Barres plus fines quand les libellés sont verticaux : l'espace entre
+  // deux dates reste visible même sur 14 jours.
+  const barWidth = Math.max(Math.min(slot * (verticalLabels ? 0.5 : 0.6), 48), 5);
+  const axisY = PADDING_TOP + PLOT_HEIGHT;
+  const chartHeight =
+    PADDING_TOP + PLOT_HEIGHT + (verticalLabels ? PADDING_BOTTOM_VERTICAL : PADDING_BOTTOM);
 
   return (
     <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
-        <Svg width={width} height={CHART_HEIGHT}>
+        <Svg width={width} height={chartHeight}>
           <Line
             x1={0}
-            y1={PADDING_TOP + PLOT_HEIGHT}
+            y1={axisY}
             x2={width}
-            y2={PADDING_TOP + PLOT_HEIGHT}
+            y2={axisY}
             stroke={colors.border}
             strokeWidth={1}
           />
           {data.map((point, i) => {
             const h = (point.value / max) * PLOT_HEIGHT;
             const x = i * slot + (slot - barWidth) / 2;
-            const y = PADDING_TOP + PLOT_HEIGHT - h;
+            const y = axisY - h;
             return (
               <Rect key={point.label + i} x={x} y={y} width={barWidth} height={h} rx={3} fill={barColor} />
             );
@@ -58,7 +68,7 @@ export function BarChart({
             <SvgText
               key={'v' + point.label + i}
               x={i * slot + slot / 2}
-              y={PADDING_TOP + PLOT_HEIGHT - (point.value / max) * PLOT_HEIGHT - 5}
+              y={axisY - (point.value / max) * PLOT_HEIGHT - 5}
               fontSize={7}
               fontFamily={APP_FONT}
               fill={colors.textSecondary}
@@ -66,18 +76,25 @@ export function BarChart({
               {formatValue(point.value)}
             </SvgText>
           ))}
-          {data.map((point, i) => (
-            <SvgText
-              key={'l' + point.label + i}
-              x={i * slot + slot / 2}
-              y={CHART_HEIGHT - 8}
-              fontSize={7}
-              fontFamily={APP_FONT}
-              fill={colors.textSecondary}
-              textAnchor="middle">
-              {point.label}
-            </SvgText>
-          ))}
+          {data.map((point, i) => {
+            const cx = i * slot + slot / 2;
+            // Vertical : le texte est ancré sous l'axe et se lit de bas en
+            // haut (rotation −90° autour de son point d'ancrage).
+            const y = verticalLabels ? axisY + 7 : chartHeight - 8;
+            return (
+              <SvgText
+                key={'l' + point.label + i}
+                x={cx}
+                y={y}
+                fontSize={7}
+                fontFamily={APP_FONT}
+                fill={colors.textSecondary}
+                textAnchor={verticalLabels ? 'end' : 'middle'}
+                transform={verticalLabels ? `rotate(-90, ${cx}, ${y})` : undefined}>
+                {point.label}
+              </SvgText>
+            );
+          })}
         </Svg>
       ) : null}
     </View>

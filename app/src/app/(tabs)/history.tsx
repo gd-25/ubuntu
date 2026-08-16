@@ -8,6 +8,7 @@ import Animated, { FadeOut, useAnimatedStyle, type SharedValue } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Chip, DialogButtons, DialogLabel, DialogNotes, PixelDialog } from '@/components/home/pixel-dialog';
+import type { Participant } from '@/components/home/solo-picker';
 import { ScreenTitle } from '@/components/screen-title';
 import { Text } from '@/components/text';
 import { EmptyState } from '@/components/ui';
@@ -77,6 +78,30 @@ const MEAL_KIND_LABELS = { kibble: 'croquettes', pate: 'pâté', other: 'autre' 
 /** Seuil de calme (%) à partir duquel une session est « réussie ». */
 const CALM_SUCCESS_PERCENT = 90;
 
+/** Périodes proposées par le bouton COPIER (`days: null` = tout). */
+interface CopyRange {
+  label: string;
+  days: number | null;
+}
+
+const COPY_RANGES: CopyRange[] = [
+  { label: '3 derniers jours', days: 3 },
+  { label: 'Dernière semaine', days: 7 },
+  { label: 'Dernier mois', days: 30 },
+  { label: 'Tout l’historique', days: null },
+];
+
+/**
+ * Qui a laissé Ubuntu seul (remplace l'ancienne particularité « Départ à
+ * deux ») — repris dans l'export texte des sessions.
+ */
+function participantsLabel(people: Participant[] | undefined): string | null {
+  if (!people || people.length === 0) return null;
+  if (people.includes('greg') && people.includes('fiona')) return 'qui part : Greg et Fiona';
+  if (people.includes('greg')) return 'qui part : Greg seul (Fiona absente)';
+  return 'qui part : Fiona seule (Greg absent)';
+}
+
 const FRACTION_LABELS: Record<number, string> = {
   0.25: '¼',
   0.5: '½',
@@ -128,6 +153,8 @@ export default function HistoryScreen() {
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [enabled, setEnabled] = useState<EventType[]>(ALL_TYPES);
   const [filterOpen, setFilterOpen] = useState(false);
+  /** Menu de période du bouton COPIER. */
+  const [copyOpen, setCopyOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -427,49 +454,85 @@ export default function HistoryScreen() {
   );
 
   /**
-   * COPIER : l'historique du dernier mois en texte brut, pensé pour être
-   * collé dans un LLM (légende en tête, événements groupés par jour, du
-   * plus ancien au plus récent, durées et commentaires inclus).
+   * COPIER : l'historique en texte brut sur la période choisie, pensé pour
+   * être collé dans un LLM (légende en tête, événements groupés par jour,
+   * du plus ancien au plus récent, durées et commentaires inclus).
+   *
+   * Les données sont RECHARGÉES ici : les listes de l'écran sont plafonnées
+   * (100 sessions, 200 activités…) et ne suffisent pas pour « tout
+   * l'historique ».
    */
-  const copyMonth = useCallback(async () => {
-    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-    const sinceIso = since.toISOString();
+  const copyRange = useCallback(async (range: CopyRange) => {
+    setCopyOpen(false);
+    const sinceIso = range.days
+      ? new Date(Date.now() - range.days * 24 * 3600 * 1000).toISOString()
+      : new Date(0).toISOString();
     const dur = (startIso: string, endIso: string | null) =>
       endIso
         ? formatDuration((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
         : 'en cours';
 
-    // Les notes des sessions ne sont pas dans la vue session_summaries.
-    const { data: notesRows } = await supabase
-      .from('sessions')
-      .select('id, notes')
-      .gte('started_at', sinceIso)
-      .not('notes', 'is', null);
-    const sessionNotes = new Map(
-      ((notesRows as { id: string; notes: string }[] | null) ?? []).map((r) => [r.id, r.notes])
-    );
+    const [
+      summariesRes,
+      sessionRowsRes,
+      activitiesRes,
+      nightsRes,
+      overallsRes,
+      semiSolosRes,
+      dayNotesRes,
+    ] = await Promise.all([
+      supabase
+        .from('session_summaries')
+        .select('*')
+        .not('ended_at', 'is', null)
+        .gte('started_at', sinceIso)
+        .order('started_at', { ascending: true })
+        .limit(1000),
+      // Notes et participants ne sont pas dans la vue session_summaries.
+      supabase.from('sessions').select('id, notes, participants').gte('started_at', sinceIso).limit(1000),
+      supabase.from('activities').select('*').gte('at', sinceIso).limit(3000),
+      supabase.from('nights').select('*').gte('ended_at', sinceIso).limit(500),
+      supabase.from('overall_sessions').select('*').gte('at', sinceIso).limit(500),
+      supabase.from('semi_solo_sessions').select('*').gte('started_at', sinceIso).limit(1000),
+      supabase.from('day_notes').select('*').limit(1000),
+    ]);
+
+    const rangeSummaries = (summariesRes.data as SessionSummary[] | null) ?? [];
+    const sessionRows =
+      (sessionRowsRes.data as
+        | { id: string; notes: string | null; participants: Participant[] }[]
+        | null) ?? [];
+    const rangeActivities = (activitiesRes.data as Activity[] | null) ?? [];
+    const rangeNights = (nightsRes.data as Night[] | null) ?? [];
+    const rangeOveralls = (overallsRes.data as OverallSession[] | null) ?? [];
+    const rangeSemiSolos = (semiSolosRes.data as SemiSoloSession[] | null) ?? [];
+    const rangeDayNotes: Record<string, DayNote> = {};
+    for (const n of (dayNotesRes.data as DayNote[] | null) ?? []) rangeDayNotes[n.day] = n;
+
+    const sessionNotes = new Map(sessionRows.map((r) => [r.id, r.notes]));
+    const sessionParticipants = new Map(sessionRows.map((r) => [r.id, r.participants]));
 
     const info = (parts: (string | null | undefined | false)[]) =>
       parts.filter(Boolean).join(', ');
     const lines: { at: string; text: string }[] = [];
 
-    for (const s of summaries) {
-      if (s.started_at < sinceIso) continue;
+    for (const s of rangeSummaries) {
+      const notes = sessionNotes.get(s.session_id);
       lines.push({
         at: s.started_at,
         text:
           `${formatTime(s.started_at)}–${s.ended_at ? formatTime(s.ended_at) : '?'} SESSION SOLO ` +
           `(${dur(s.started_at, s.ended_at)}) — ${info([
+            participantsLabel(sessionParticipants.get(s.session_id)),
             `${s.episode_count} épisode${s.episode_count > 1 ? 's' : ''} de vocalises`,
             `${formatDuration(s.total_vocal_seconds)} vocalisées`,
             `${Math.round(s.calm_percent)} % calme`,
             s.is_exercise === false && 'absence subie (pas un exercice)',
-            sessionNotes.get(s.session_id) ? `notes : ${sessionNotes.get(s.session_id)}` : null,
+            notes ? `notes : ${notes}` : null,
           ])}`,
       });
     }
-    for (const s of semiSolos) {
-      if (s.started_at < sinceIso) continue;
+    for (const s of rangeSemiSolos) {
       lines.push({
         at: s.started_at,
         text:
@@ -477,8 +540,7 @@ export default function HistoryScreen() {
           `(${dur(s.started_at, s.ended_at)})${s.notes ? ` — notes : ${s.notes}` : ''}`,
       });
     }
-    for (const a of activities) {
-      if (a.at < sinceIso) continue;
+    for (const a of rangeActivities) {
       if (a.kind === 'walk') {
         lines.push({
           at: a.at,
@@ -524,8 +586,7 @@ export default function HistoryScreen() {
         });
       }
     }
-    for (const n of nights) {
-      if (n.ended_at < sinceIso) continue;
+    for (const n of rangeNights) {
       lines.push({
         at: n.ended_at,
         text: `${formatTime(n.started_at)}–${formatTime(n.ended_at)} NUIT — ${info([
@@ -535,8 +596,7 @@ export default function HistoryScreen() {
         ])}`,
       });
     }
-    for (const o of overalls) {
-      if (o.at < sinceIso) continue;
+    for (const o of rangeOveralls) {
       lines.push({
         at: o.at,
         text: `${formatTime(o.at)} EXERCICE DE DRESSAGE — ${info([
@@ -557,17 +617,20 @@ export default function HistoryScreen() {
         currentDay = day;
         byDay.push(`\n=== ${day} ===`);
         // Note libre de la journée (ex. où était Ubuntu), en tête du jour.
-        const note = dayNotes[parisDayKey(line.at)];
+        const note = rangeDayNotes[parisDayKey(line.at)];
         if (note) byDay.push(`Note du jour : ${note.content}`);
       }
       byDay.push(`- ${line.text}`);
     }
 
+    const period = range.days
+      ? `${range.label.toLowerCase()}, du ${formatDate(sinceIso)} au ${formatDate(new Date().toISOString())}`
+      : `tout l'historique${lines.length > 0 ? `, du ${formatDate(lines[0].at)} au ${formatDate(new Date().toISOString())}` : ''}`;
     const header = [
-      `HISTORIQUE D'UBUNTU (chien) — 30 derniers jours, du ${formatDate(sinceIso)} au ${formatDate(new Date().toISOString())}.`,
+      `HISTORIQUE D'UBUNTU (chien) — ${period}.`,
       `Contexte : Ubuntu est un chien qu'on entraîne à rester seul (anxiété de séparation). Ses vocalises sont surveillées par caméra pendant les sessions.`,
       `Types d'événements :`,
-      `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise.`,
+      `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise ; « qui part » = qui était là et l'a laissé seul (Greg, Fiona ou les deux).`,
       `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif ${goals.semiSoloMinutes} min/jour).`,
       `- NUIT : où Ubuntu a dormi.`,
       `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
@@ -580,8 +643,11 @@ export default function HistoryScreen() {
 
     await Clipboard.setStringAsync(`${header}\n${byDay.join('\n')}\n`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copié !', `L'historique du dernier mois (${lines.length} événements) est dans le presse-papier.`);
-  }, [summaries, activities, nights, overalls, semiSolos, dayNotes, goals]);
+    Alert.alert(
+      'Copié !',
+      `${range.label} : ${lines.length} événement${lines.length > 1 ? 's' : ''} dans le presse-papier.`
+    );
+  }, [goals]);
 
   const filterCount = enabled.length;
 
@@ -594,7 +660,7 @@ export default function HistoryScreen() {
           right={
             <View style={styles.headerButtons}>
               <Pressable
-                onPress={copyMonth}
+                onPress={() => setCopyOpen(true)}
                 style={[
                   styles.filterButton,
                   { backgroundColor: colors.card, borderColor: colors.border },
@@ -657,6 +723,27 @@ export default function HistoryScreen() {
         )}
         renderItem={({ item }) => <FeedRow item={item} onDelete={() => deleteItem(item)} />}
       />
+
+      {/* COPIER : choix de la période avant de remplir le presse-papier */}
+      <PixelDialog
+        visible={copyOpen}
+        onRequestClose={() => setCopyOpen(false)}
+        title="⧉ COPIER LE JOURNAL"
+        topOffset={insets.top + 40}>
+        <DialogLabel>QUELLE PÉRIODE ?</DialogLabel>
+        {COPY_RANGES.map((range) => (
+          <View key={range.label} style={styles.copyRow}>
+            <Chip
+              label={range.label.toUpperCase()}
+              selected={false}
+              onPress={() => copyRange(range)}
+            />
+          </View>
+        ))}
+        <Pressable onPress={() => setCopyOpen(false)} hitSlop={8} style={styles.copyClose}>
+          <Text style={[styles.copyCloseText, { color: colors.textSecondary }]}>FERMER</Text>
+        </Pressable>
+      </PixelDialog>
 
       {/* Filtres : sélectionner les événements à afficher */}
       <PixelDialog
@@ -828,6 +915,17 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
+  },
+  // Une période par ligne (le Chip est en flex: 1).
+  copyRow: {
+    flexDirection: 'row',
+  },
+  copyClose: {
+    alignSelf: 'center',
+    paddingTop: 4,
+  },
+  copyCloseText: {
+    fontSize: 8,
   },
   content: {
     padding: Spacing.md,

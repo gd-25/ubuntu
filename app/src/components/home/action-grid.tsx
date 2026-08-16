@@ -9,7 +9,7 @@ import type { Goals } from '@/lib/goals';
 /**
  * L'écran d'accueil comme outil de travail : le bouton SOLO (lancement
  * instantané d'une session de solitude) et les actions du quotidien,
- * dans l'espace vert au-dessus de la forêt (5 + 4 boutons).
+ * dans l'espace vert au-dessus de la forêt (5 + 3 boutons).
  */
 export function ActionGrid({
   onSolo,
@@ -19,11 +19,9 @@ export function ActionGrid({
   onVelcro,
   onCues,
   onOverall,
-  onSemiSolo,
   onGarde,
   todayCues,
   todayOveralls,
-  todaySemiSoloMinutes,
   todaySoloMinutes,
   goals,
 }: {
@@ -34,12 +32,9 @@ export function ActionGrid({
   onVelcro: () => void;
   onCues: () => void;
   onOverall: () => void;
-  onSemiSolo: () => void;
   onGarde: () => void;
   todayCues: number;
   todayOveralls: number;
-  /** Minutes de semi solo cumulées aujourd'hui. */
-  todaySemiSoloMinutes: number;
   /** Minutes de solitude cumulées aujourd'hui. */
   todaySoloMinutes: number;
   /** Objectifs quotidiens (paramétrables dans Réglages). */
@@ -68,13 +63,6 @@ export function ActionGrid({
           badge={`${todayOveralls}/${goals.overalls}`}
           badgeDone={todayOveralls >= goals.overalls}
           onPress={onOverall}
-        />
-        <ActionButton
-          emoji="🧍"
-          label="SEMI SOLO"
-          badge={`${todaySemiSoloMinutes}/${goals.semiSoloMinutes} MIN`}
-          badgeDone={todaySemiSoloMinutes >= goals.semiSoloMinutes}
-          onPress={onSemiSolo}
         />
         <ActionButton
           emoji="🚪"
