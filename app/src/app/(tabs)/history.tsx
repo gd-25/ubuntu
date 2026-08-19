@@ -40,6 +40,10 @@ type EventType =
   | 'fake_cue'
   | 'care'
   | 'velcro'
+  | 'training'
+  | 'incident'
+  | 'health'
+  | 'note'
   | 'night'
   | 'overall';
 
@@ -54,6 +58,10 @@ const EVENT_DEFS: { type: EventType; emoji: string; label: string }[] = [
   { type: 'overall', emoji: '🎯', label: 'EXERCICES' },
   { type: 'velcro', emoji: '🍯', label: 'VELCRO' },
   { type: 'care', emoji: '🤝', label: 'GARDES' },
+  { type: 'training', emoji: '🎓', label: 'DRESSAGE' },
+  { type: 'incident', emoji: '⚠️', label: 'INCIDENTS' },
+  { type: 'health', emoji: '🩺', label: 'SANTÉ' },
+  { type: 'note', emoji: '🗒️', label: 'NOTES' },
 ];
 
 const ALL_TYPES = EVENT_DEFS.map((d) => d.type);
@@ -362,6 +370,38 @@ export default function HistoryScreen() {
             seconds != null ? formatDuration(seconds) : null,
             a.notes,
           ]),
+        });
+      } else if (a.kind === 'training' && enabled.includes('training')) {
+        items.push({
+          ...base,
+          type: 'training',
+          title: `🎓 ${formatTime(a.at)}`,
+          detail: info([
+            (a.commands ?? []).join(' + ') || 'dressage',
+            a.success_rating ? `réussite ${a.success_rating}/5` : null,
+            a.notes,
+          ]),
+        });
+      } else if (a.kind === 'incident' && enabled.includes('incident')) {
+        items.push({
+          ...base,
+          type: 'incident',
+          title: `⚠️ ${formatTime(a.at)}`,
+          detail: info(['incident', a.notes]),
+        });
+      } else if (a.kind === 'health' && enabled.includes('health')) {
+        items.push({
+          ...base,
+          type: 'health',
+          title: `🩺 ${formatTime(a.at)}`,
+          detail: info(['santé', a.weight_kg ? `${a.weight_kg} kg` : null, a.notes]),
+        });
+      } else if (a.kind === 'note' && enabled.includes('note')) {
+        items.push({
+          ...base,
+          type: 'note',
+          title: `🗒️ ${formatTime(a.at)}`,
+          detail: info([a.notes ?? 'note']),
         });
       }
     }

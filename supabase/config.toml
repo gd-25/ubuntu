@@ -324,3 +324,12 @@ verify_jwt = false
 
 [functions.ingest-episode]
 verify_jwt = false
+
+[functions.assistant-chat]
+verify_jwt = true
+
+[functions.assistant-transcribe]
+verify_jwt = true
+
+[functions.assistant-ingest-doc]
+verify_jwt = true

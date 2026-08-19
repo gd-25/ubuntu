@@ -69,6 +69,10 @@ const ACTIVITY_TITLES: Record<string, string> = {
   care: '🤝 GARDE',
   velcro: '🍯 VELCRO',
   play: '🎾 JEU',
+  training: '🎓 DRESSAGE',
+  incident: '⚠️ INCIDENT',
+  health: '🩺 SANTÉ',
+  note: '🗒️ NOTE',
   other: '📝 ACTIVITÉ',
 };
 

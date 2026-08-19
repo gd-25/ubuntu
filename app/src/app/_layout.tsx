@@ -85,6 +85,25 @@ function RootNavigator() {
               sheetAllowedDetents: [0.75, 1],
             }}
           />
+          <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="library"
+            options={{
+              headerShown: false,
+              presentation: 'formSheet',
+              sheetGrabberVisible: true,
+              sheetAllowedDetents: [0.75, 1],
+            }}
+          />
+          <Stack.Screen
+            name="dog-profile"
+            options={{
+              headerShown: false,
+              presentation: 'formSheet',
+              sheetGrabberVisible: true,
+              sheetAllowedDetents: [0.75, 1],
+            }}
+          />
         </Stack.Protected>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="login" options={{ headerShown: false }} />

@@ -1,6 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -83,6 +83,7 @@ const EPISODE_DURATIONS = [
  */
 export default function SessionDetailScreen() {
   const colors = useTheme();
+  const router = useRouter();
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -706,6 +707,23 @@ export default function SessionDetailScreen() {
         <Text style={[styles.saveButtonText, { color: colors.accentText }]}>ENREGISTRER</Text>
       </Pressable>
 
+      {/* -------------------------- Débrief par l'expert IA (onglet 🧠) */}
+      <Pressable
+        onPress={() =>
+          router.push({
+            pathname: '/chat/[id]',
+            params: {
+              id: 'new',
+              ask: `Analyse en détail ma session de solitude du ${formatDateTime(session.started_at)} (id ${session.id}) : déroulé des vocalises, moments critiques, le retour, et ce qu'on peut améliorer la prochaine fois.`,
+            },
+          })
+        }
+        style={[styles.expertButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.expertButtonText, { color: colors.text }]}>
+          🧠 ANALYSER AVEC L&apos;EXPERT
+        </Text>
+      </Pressable>
+
       {/* ------------------------------- Autres bruits (tout en bas) -----
           Tout ce que la caméra a entendu sans que l'agent y voie une
           vocalise : les couinements très faibles passent sous le seuil.
@@ -1036,6 +1054,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 2,
+  },
+  expertButton: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  expertButtonText: {
+    fontSize: 9,
   },
   saveButtonText: {
     fontSize: 9,

@@ -130,8 +130,23 @@ export interface SessionTag {
  * 'mat' = Ubuntu est allé sur son tapis (comportement qu'on encourage).
  * 'fake_cue' = faux signaux de départ (objectif 10/jour). 'care' = garde.
  * 'velcro' = pot de colle (il nous suit partout, début/fin + notes).
+ * 'training' = ordres travaillés (commands + success_rating), 'incident' =
+ * événement notable, 'health' = santé/soins, 'note' = fourre-tout — quatre
+ * kinds saisis surtout via l'assistant IA.
  */
-export type ActivityKind = 'walk' | 'meal' | 'play' | 'mat' | 'fake_cue' | 'care' | 'velcro' | 'other';
+export type ActivityKind =
+  | 'walk'
+  | 'meal'
+  | 'play'
+  | 'mat'
+  | 'fake_cue'
+  | 'care'
+  | 'velcro'
+  | 'training'
+  | 'incident'
+  | 'health'
+  | 'note'
+  | 'other';
 
 /** Objets joués pendant un faux signal de départ. */
 export type FakeCue = 'keys' | 'shoes' | 'socks' | 'elevator' | 'stairs' | 'gate';
@@ -159,6 +174,13 @@ export interface Activity {
   /** Garde : nom de la personne + durée. */
   caregiver: string | null;
   duration_minutes: number | null;
+  /** Dressage : ordres travaillés (minuscules) + réussite 1-5. */
+  commands: string[] | null;
+  success_rating: number | null;
+  /** Santé : poids si pesée. */
+  weight_kg: number | null;
+  /** 'assistant' = insérée après validation d'une proposition du chat. */
+  created_via: 'app' | 'assistant';
   created_at: string;
 }
 
@@ -276,6 +298,71 @@ export interface PushToken {
   expo_token: string;
   platform: string;
   created_at: string;
+}
+
+/** Conversation avec l'assistant IA (partagée entre les membres du chien). */
+export interface AssistantConversation {
+  id: string;
+  dog_id: string;
+  /** Généré automatiquement après le premier échange. */
+  title: string | null;
+  created_by: Participant | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Entrée structurée proposée par l'assistant (tool propose_entries),
+ * normalisée côté Edge Function : dates en ISO UTC, kind validé. L'app
+ * l'insère dans `activities` après le tap VALIDER.
+ */
+export interface ProposalEntry {
+  kind: ActivityKind;
+  at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  notes: string | null;
+  commands: string[] | null;
+  success_rating: number | null;
+  weight_kg: number | null;
+  meal_fraction: number | null;
+  off_leash: boolean | null;
+  poop_small: boolean | null;
+  poop_big: boolean | null;
+}
+
+export interface AssistantMessage {
+  id: string;
+  conversation_id: string;
+  dog_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** Qui a écrit le message utilisateur (null pour l'assistant). */
+  author: Participant | null;
+  proposals: ProposalEntry[] | null;
+  proposal_status: 'pending' | 'confirmed' | 'dismissed' | null;
+  created_at: string;
+}
+
+/** Document de la bibliothèque RAG (bucket `library`, indexé en chunks). */
+export interface LibraryDocument {
+  id: string;
+  dog_id: string;
+  title: string;
+  storage_path: string;
+  source_url: string | null;
+  status: 'pending' | 'processing' | 'ready' | 'error';
+  error: string | null;
+  chunk_count: number;
+  created_at: string;
+}
+
+/** Fiche du chien maintenue par l'assistant (et éditable à la main). */
+export interface AssistantProfile {
+  dog_id: string;
+  content: string;
+  updated_by: Participant | null;
+  updated_at: string;
 }
 
 /** Row shape of the `session_summaries` view. */

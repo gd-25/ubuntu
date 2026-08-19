@@ -10,6 +10,7 @@ const TAB_ICONS: Record<string, string> = {
   index: '🏠',
   history: '📖',
   trends: '📊',
+  assistant: '🧠',
   settings: '⚙️',
 };
 
@@ -17,6 +18,7 @@ const TAB_TITLES: Record<string, string> = {
   index: 'MAISON',
   history: 'JOURNAL',
   trends: 'STATS',
+  assistant: 'EXPERT',
   settings: 'OPTIONS',
 };
 
@@ -28,6 +30,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="history" />
       <Tabs.Screen name="trends" />
+      <Tabs.Screen name="assistant" />
       <Tabs.Screen name="settings" />
     </Tabs>
   );
