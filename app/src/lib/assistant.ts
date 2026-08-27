@@ -13,7 +13,9 @@ import type {
   ActivityKind,
   AssistantMessage,
   Participant,
+  ProposalChange,
   ProposalEntry,
+  ProposalTrim,
 } from '@/lib/types';
 
 const FUNCTIONS_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
@@ -159,28 +161,67 @@ export async function reingestDocument(documentId: string): Promise<void> {
   if (data?.error) throw new Error(data.error);
 }
 
-/** VALIDER : insère les propositions dans activities puis marque le message. */
+/**
+ * VALIDER : exécute les opérations proposées (insertions dans activities,
+ * modifications/suppressions d'événements, clôture anticipée de session)
+ * avec la session de l'utilisateur — la RLS reste le garde-fou — puis
+ * marque le message. Les entrées sans `op` datent d'avant les modifications
+ * et sont des insertions.
+ */
 export async function confirmProposals(message: AssistantMessage): Promise<void> {
-  const entries = message.proposals ?? [];
-  if (entries.length > 0) {
-    const rows = entries.map((entry: ProposalEntry) => ({
-      dog_id: message.dog_id,
-      kind: entry.kind,
-      at: entry.at,
-      ended_at: entry.ended_at,
-      duration_minutes: entry.duration_minutes,
-      notes: entry.notes,
-      commands: entry.commands,
-      success_rating: entry.success_rating,
-      weight_kg: entry.weight_kg,
-      meal_fraction: entry.meal_fraction,
-      off_leash: entry.off_leash,
-      poop_small: entry.poop_small,
-      poop_big: entry.poop_big,
-      created_via: 'assistant' as const,
-    }));
-    const { error } = await supabase.from('activities').insert(rows);
-    if (error) throw new Error(error.message);
+  for (const proposal of message.proposals ?? []) {
+    const op = proposal.op ?? 'insert';
+
+    if (op === 'insert') {
+      const entry = proposal as ProposalEntry;
+      const { error } = await supabase.from('activities').insert({
+        dog_id: message.dog_id,
+        kind: entry.kind,
+        at: entry.at,
+        ended_at: entry.ended_at,
+        duration_minutes: entry.duration_minutes,
+        notes: entry.notes,
+        commands: entry.commands,
+        success_rating: entry.success_rating,
+        weight_kg: entry.weight_kg,
+        meal_fraction: entry.meal_fraction,
+        meal_kind: entry.meal_kind ?? null,
+        caregiver: entry.caregiver ?? null,
+        cues: entry.cues ?? null,
+        off_leash: entry.off_leash,
+        poop_small: entry.poop_small,
+        poop_big: entry.poop_big,
+        created_via: 'assistant' as const,
+      });
+      if (error) throw new Error(error.message);
+      continue;
+    }
+
+    if (op === 'update' || op === 'delete') {
+      const change = proposal as ProposalChange;
+      const query =
+        op === 'update'
+          ? supabase.from(change.table).update(change.fields ?? {}).eq('id', change.id)
+          : supabase.from(change.table).delete().eq('id', change.id);
+      const { error } = await query;
+      if (error) throw new Error(`${change.label} : ${error.message}`);
+      continue;
+    }
+
+    if (op === 'trim_session') {
+      const trim = proposal as ProposalTrim;
+      const { error: episodesError } = await supabase
+        .from('vocal_episodes')
+        .update({ dismissed: true })
+        .eq('session_id', trim.session_id)
+        .gte('started_at', trim.end_at);
+      if (episodesError) throw new Error(episodesError.message);
+      const { error: sessionError } = await supabase
+        .from('sessions')
+        .update({ ended_at: trim.end_at, returned_during_vocalization: false })
+        .eq('id', trim.session_id);
+      if (sessionError) throw new Error(sessionError.message);
+    }
   }
   await setProposalStatus(message.id, 'confirmed');
 }

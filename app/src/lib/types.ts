@@ -314,9 +314,11 @@ export interface AssistantConversation {
 /**
  * Entrée structurée proposée par l'assistant (tool propose_entries),
  * normalisée côté Edge Function : dates en ISO UTC, kind validé. L'app
- * l'insère dans `activities` après le tap VALIDER.
+ * l'insère dans `activities` après le tap VALIDER. `op` est absent sur les
+ * messages d'avant l'arrivée des modifications (défaut : insertion).
  */
 export interface ProposalEntry {
+  op?: 'insert';
   kind: ActivityKind;
   at: string;
   ended_at: string | null;
@@ -326,10 +328,39 @@ export interface ProposalEntry {
   success_rating: number | null;
   weight_kg: number | null;
   meal_fraction: number | null;
+  meal_kind: MealKind | null;
+  caregiver: string | null;
+  cues: string[] | null;
   off_leash: boolean | null;
   poop_small: boolean | null;
   poop_big: boolean | null;
 }
+
+/** Modification ou suppression d'un événement existant (tool propose_changes). */
+export interface ProposalChange {
+  op: 'update' | 'delete';
+  table:
+    | 'sessions'
+    | 'activities'
+    | 'nights'
+    | 'semi_solo_sessions'
+    | 'overall_sessions'
+    | 'observed_events';
+  id: string;
+  /** update : champs déjà normalisés (heures en ISO UTC) ; delete : null. */
+  fields: Record<string, unknown> | null;
+  label: string;
+}
+
+/** Clôture anticipée d'une session : fin avancée + vocalises suivantes écartées. */
+export interface ProposalTrim {
+  op: 'trim_session';
+  session_id: string;
+  end_at: string;
+  label: string;
+}
+
+export type ProposalOp = ProposalEntry | ProposalChange | ProposalTrim;
 
 export interface AssistantMessage {
   id: string;
@@ -339,7 +370,7 @@ export interface AssistantMessage {
   content: string;
   /** Qui a écrit le message utilisateur (null pour l'assistant). */
   author: Participant | null;
-  proposals: ProposalEntry[] | null;
+  proposals: ProposalOp[] | null;
   proposal_status: 'pending' | 'confirmed' | 'dismissed' | null;
   created_at: string;
 }

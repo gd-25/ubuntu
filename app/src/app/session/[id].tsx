@@ -586,15 +586,24 @@ export default function SessionDetailScreen() {
       />
 
       {/* ------ Détail des épisodes ET observations, en ordre chrono */}
-      {timeline.map(({ episode, obs }) =>
-        episode ? (
+      {timeline.map(({ episode, obs }) => {
+        // Couinement promu depuis « Autres bruits » : son clip vit dans le
+        // sous-dossier noises/ — la ligne s'affiche en bleu pour le repérer.
+        const isPromotedNoise = episode?.clip_path?.includes('/noises/') ?? false;
+        return episode ? (
           <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
-            <View style={[styles.episodeDot, { backgroundColor: colors.bark }]} />
-            <Text style={[styles.episodeText, { color: colors.text }]}>
+            <View
+              style={[
+                styles.episodeDot,
+                { backgroundColor: isPromotedNoise ? colors.info : colors.bark },
+              ]}
+            />
+            <Text
+              style={[styles.episodeText, { color: isPromotedNoise ? colors.info : colors.text }]}>
               {formatTime(episode.started_at)} ·{' '}
               {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
               {formatVolume(episode.peak_rms) ? ` · ${formatVolume(episode.peak_rms)}` : ''}
-              {episode.source === 'manual' ? ' · MANUEL' : ''}
+              {isPromotedNoise ? ' · COUINEMENT PROMU' : episode.source === 'manual' ? ' · MANUEL' : ''}
               {episode.dismissed ? ' · ÉCARTÉ' : ''}
             </Text>
             {episode.clip_path ? <ClipButton clipPath={episode.clip_path} /> : null}
@@ -623,8 +632,8 @@ export default function SessionDetailScreen() {
               <Text style={[styles.episodeDelete, { color: colors.danger }]}>✕</Text>
             </Pressable>
           </View>
-        ) : null
-      )}
+        ) : null;
+      })}
       {episodes.length === 0 ? (
         <Text style={[styles.episodeText, { color: colors.textSecondary }]}>
           {coverage === 0

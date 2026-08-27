@@ -32,7 +32,12 @@ import {
 } from '@/lib/assistant';
 import { formatDateTime, formatTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import type { AssistantMessage, ProposalEntry } from '@/lib/types';
+import type {
+  AssistantMessage,
+  ProposalChange,
+  ProposalEntry,
+  ProposalTrim,
+} from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
 
 /**
@@ -354,11 +359,16 @@ function ProposalCard({
   return (
     <View style={[styles.proposalCard, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
       <Text style={[styles.proposalTitle, { color: colors.textSecondary }]}>
-        📋 À ENREGISTRER DANS LE JOURNAL
+        📋 À VALIDER DANS LE JOURNAL
       </Text>
-      {entries.map((entry, index) => (
-        <ProposalLine key={index} entry={entry} />
-      ))}
+      {entries.map((proposal, index) => {
+        const op = proposal.op ?? 'insert';
+        if (op === 'insert') return <ProposalLine key={index} entry={proposal as ProposalEntry} />;
+        if (op === 'trim_session') {
+          return <TrimLine key={index} trim={proposal as ProposalTrim} />;
+        }
+        return <ChangeLine key={index} change={proposal as ProposalChange} />;
+      })}
       {message.proposal_status === 'pending' ? (
         <View style={styles.proposalButtons}>
           <Pressable
@@ -396,6 +406,8 @@ function ProposalLine({ entry }: { entry: ProposalEntry }) {
     entry.commands?.length ? entry.commands.join(' + ') : null,
     entry.success_rating ? `réussite ${entry.success_rating}/5` : null,
     entry.weight_kg ? `${entry.weight_kg} kg` : null,
+    entry.caregiver ? `gardé par ${entry.caregiver}` : null,
+    entry.cues?.length ? entry.cues.join(' + ') : null,
     entry.off_leash ? '🐕 liberté' : null,
   ]
     .filter(Boolean)
@@ -409,6 +421,49 @@ function ProposalLine({ entry }: { entry: ProposalEntry }) {
       {entry.notes ? (
         <Text style={[styles.proposalNotes, { color: colors.text }]}>{entry.notes}</Text>
       ) : null}
+    </View>
+  );
+}
+
+/** Valeur d'un champ modifié, lisible (les ISO deviennent des heures de Paris). */
+function fieldValue(value: unknown): string {
+  if (value == null) return '(vide)';
+  if (typeof value === 'boolean') return value ? 'oui' : 'non';
+  if (Array.isArray(value)) return value.join(' + ');
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+    return formatDateTime(value);
+  }
+  return String(value);
+}
+
+function ChangeLine({ change }: { change: ProposalChange }) {
+  const colors = useTheme();
+  const fields = Object.entries(change.fields ?? {});
+  return (
+    <View style={styles.proposalLine}>
+      <Text style={[styles.proposalKind, { color: colors.text }]}>
+        {change.op === 'delete' ? '🗑️ Suppression' : '✏️ Modification'}
+      </Text>
+      <Text style={[styles.proposalNotes, { color: colors.text }]}>{change.label}</Text>
+      {fields.length > 0 ? (
+        <Text style={[styles.proposalDetail, { color: colors.textSecondary }]}>
+          {fields.map(([key, value]) => `${key} → ${fieldValue(value)}`).join(' · ')}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function TrimLine({ trim }: { trim: ProposalTrim }) {
+  const colors = useTheme();
+  return (
+    <View style={styles.proposalLine}>
+      <Text style={[styles.proposalKind, { color: colors.text }]}>✂️ Fin de session ajustée</Text>
+      <Text style={[styles.proposalNotes, { color: colors.text }]}>{trim.label}</Text>
+      <Text style={[styles.proposalDetail, { color: colors.textSecondary }]}>
+        Nouvelle fin : {formatDateTime(trim.end_at)} · les bruits suivants sortent des stats
+        (clips conservés)
+      </Text>
     </View>
   );
 }

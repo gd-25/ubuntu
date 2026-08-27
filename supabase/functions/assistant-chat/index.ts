@@ -237,6 +237,9 @@ const TOOLS = [
                 success_rating: { type: "integer", description: "training : réussite 1-5" },
                 weight_kg: { type: "number", description: "health : poids si pesée" },
                 meal_fraction: { type: "number", description: "meal : fraction de ration (0.25-1)" },
+                meal_kind: { type: "string", enum: ["kibble", "pate", "other"], description: "meal : type de repas" },
+                caregiver: { type: "string", description: "care : QUI garde le chien (prénom) — toujours le remplir pour une garde" },
+                cues: { type: "array", items: { type: "string" }, description: "fake_cue : objets joués (keys, shoes, socks, elevator, stairs, gate)" },
                 off_leash: { type: "boolean", description: "walk : lâché en liberté" },
                 poop_small: { type: "boolean" },
                 poop_big: { type: "boolean" },
@@ -249,9 +252,64 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "propose_changes",
+      description:
+        "Propose de MODIFIER ou SUPPRIMER des événements existants (l'utilisateur validera d'un tap). Récupère d'abord l'id exact via get_sessions/get_session_detail/get_activities/get_nights/get_exercises. Heures au format AAAA-MM-JJTHH:MM(:SS) en HEURE DE PARIS.",
+      parameters: {
+        type: "object",
+        properties: {
+          changes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                action: { type: "string", enum: ["update", "delete"] },
+                table: {
+                  type: "string",
+                  enum: ["sessions", "activities", "nights", "semi_solo_sessions", "overall_sessions", "observed_events"],
+                },
+                id: { type: "string", description: "id de la ligne à modifier/supprimer" },
+                fields: {
+                  type: "object",
+                  description: "update : les champs à changer et leurs nouvelles valeurs (uniquement ceux qui changent)",
+                },
+                label: { type: "string", description: "Description courte du changement en français, affichée à l'utilisateur" },
+              },
+              required: ["action", "table", "id", "label"],
+            },
+          },
+        },
+        required: ["changes"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_session_trim",
+      description:
+        "Propose de clore une session de solitude plus tôt (ex. les derniers bruits étaient le retour d'un humain) : la fin de session passe à end_at et toutes les vocalises à partir de cet instant sont écartées des stats. L'utilisateur valide d'un tap.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: { type: "string" },
+          end_at: {
+            type: "string",
+            description: "Nouvelle fin, AAAA-MM-JJTHH:MM:SS heure de Paris (= début du premier bruit à écarter, cf. debut_iso dans get_session_detail)",
+          },
+          label: { type: "string", description: "Raison courte en français (ex. « Retour de Fiona »)" },
+        },
+        required: ["session_id", "end_at"],
+      },
+    },
+  },
 ] as const;
 
 interface ProposalEntry {
+  op: "insert";
   kind: string;
   at: string;
   ended_at: string | null;
@@ -261,10 +319,50 @@ interface ProposalEntry {
   success_rating: number | null;
   weight_kg: number | null;
   meal_fraction: number | null;
+  meal_kind: string | null;
+  caregiver: string | null;
+  cues: string[] | null;
   off_leash: boolean | null;
   poop_small: boolean | null;
   poop_big: boolean | null;
 }
+
+interface ProposalChange {
+  op: "update" | "delete";
+  table: string;
+  id: string;
+  fields: Record<string, unknown> | null;
+  label: string;
+}
+
+interface ProposalTrim {
+  op: "trim_session";
+  session_id: string;
+  end_at: string;
+  label: string;
+}
+
+type ProposalOp = ProposalEntry | ProposalChange | ProposalTrim;
+
+/** Champs modifiables par table via propose_changes ('ts' = heure de Paris
+ * naïve à convertir en UTC, 'raw' = valeur passée telle quelle). */
+const UPDATABLE_FIELDS: Record<string, Record<string, "ts" | "raw">> = {
+  sessions: {
+    started_at: "ts", ended_at: "ts", notes: "raw", solitude_type: "raw",
+    departure_state: "raw", departure_type: "raw", is_exercise: "raw",
+    greg_location: "raw", fiona_location: "raw", participants: "raw",
+  },
+  activities: {
+    kind: "raw", at: "ts", ended_at: "ts", duration_minutes: "raw", notes: "raw",
+    commands: "raw", success_rating: "raw", weight_kg: "raw", meal_fraction: "raw",
+    meal_kind: "raw", caregiver: "raw", cues: "raw", off_leash: "raw",
+    poop_small: "raw", poop_big: "raw",
+  },
+  nights: { started_at: "ts", ended_at: "ts", location: "raw", notes: "raw" },
+  semi_solo_sessions: { started_at: "ts", ended_at: "ts", notes: "raw" },
+  overall_sessions: { at: "ts", duration_minutes: "raw", treats_count: "raw", notes: "raw" },
+  observed_events: { kind: "raw", at: "ts" },
+};
 
 const TOOL_STATUS: Record<string, string> = {
   get_sessions: "Consulte les sessions…",
@@ -276,6 +374,8 @@ const TOOL_STATUS: Record<string, string> = {
   save_memory: "Mémorise…",
   update_profile: "Met à jour la fiche…",
   propose_entries: "Prépare une proposition…",
+  propose_changes: "Prépare une modification…",
+  propose_session_trim: "Prépare l'ajustement de la session…",
 };
 
 // --------------------------------------------------------------- exécution tools
@@ -286,7 +386,7 @@ async function runTool(
   author: string,
   name: string,
   args: Record<string, any>,
-  pendingProposals: ProposalEntry[],
+  pendingProposals: ProposalOp[],
 ): Promise<string> {
   if (name === "get_sessions") {
     const days = Math.min(Number(args.days) || 30, 366);
@@ -338,7 +438,7 @@ async function runTool(
           .limit(300),
         db
           .from("observed_events")
-          .select("kind, at")
+          .select("id, kind, at")
           .eq("session_id", id)
           .order("at", { ascending: true }),
         db.from("session_tags").select("tags(label)").eq("session_id", id),
@@ -363,11 +463,13 @@ async function runTool(
         premiere_vocalise_apres_s: summary.time_to_first_vocalization_seconds,
       },
       observations: (events ?? []).map((e: Record<string, any>) => ({
+        id: e.id,
         quoi: e.kind,
         quand: fmtParis(e.at, true),
       })),
       vocalises: (episodes ?? []).map((e: Record<string, any>) => ({
         debut: new Date(e.started_at).toLocaleTimeString("fr-FR", { timeZone: PARIS }),
+        debut_iso: e.started_at,
         duree_s: Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 1000),
         type: e.kind,
         vol_rms: e.peak_rms,
@@ -379,7 +481,7 @@ async function runTool(
     let query = db
       .from("activities")
       .select(
-        "kind, at, ended_at, duration_minutes, notes, commands, success_rating, weight_kg, meal_fraction, meal_kind, off_leash, poop_small, poop_big, cues, caregiver",
+        "id, kind, at, ended_at, duration_minutes, notes, commands, success_rating, weight_kg, meal_fraction, meal_kind, off_leash, poop_small, poop_big, cues, caregiver",
         { count: "exact" },
       )
       .eq("dog_id", dogId)
@@ -392,7 +494,7 @@ async function runTool(
     const { data, count, error } = await query;
     if (error) return `Erreur : ${error.message}`;
     const rows = (data ?? []).map((a: Record<string, any>) => {
-      const row: Record<string, unknown> = { kind: a.kind, quand: fmtParis(a.at) };
+      const row: Record<string, unknown> = { id: a.id, kind: a.kind, quand: fmtParis(a.at) };
       if (a.ended_at) row.fin = fmtParis(a.ended_at);
       if (a.duration_minutes) row.duree_min = a.duration_minutes;
       if (a.notes) row.notes = String(a.notes).slice(0, 300);
@@ -414,7 +516,7 @@ async function runTool(
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const { data, error } = await db
       .from("nights")
-      .select("started_at, ended_at, location, notes")
+      .select("id, started_at, ended_at, location, notes")
       .eq("dog_id", dogId)
       .gte("started_at", since)
       .order("started_at", { ascending: false })
@@ -422,6 +524,7 @@ async function runTool(
     if (error) return `Erreur : ${error.message}`;
     return JSON.stringify(
       (data ?? []).map((n: Record<string, any>) => ({
+        id: n.id,
         nuit_du: fmtParis(n.started_at),
         ou: n.location,
         notes: n.notes,
@@ -435,14 +538,14 @@ async function runTool(
     const [{ data: semiSolo }, { data: overalls }, { data: goals }] = await Promise.all([
       db
         .from("semi_solo_sessions")
-        .select("started_at, ended_at, notes")
+        .select("id, started_at, ended_at, notes")
         .eq("dog_id", dogId)
         .gte("started_at", since)
         .order("started_at", { ascending: false })
         .limit(60),
       db
         .from("overall_sessions")
-        .select("at, duration_minutes, treats_count, notes")
+        .select("id, at, duration_minutes, treats_count, notes")
         .eq("dog_id", dogId)
         .gte("at", since)
         .order("at", { ascending: false })
@@ -452,11 +555,13 @@ async function runTool(
     return JSON.stringify({
       objectifs_quotidiens: goals,
       semi_solo: (semiSolo ?? []).map((s: Record<string, any>) => ({
+        id: s.id,
         debut: fmtParis(s.started_at),
         duree_min: Math.round((Date.parse(s.ended_at) - Date.parse(s.started_at)) / 60_000),
         notes: s.notes,
       })),
       exercices_dressage: (overalls ?? []).map((o: Record<string, any>) => ({
+        id: o.id,
         quand: fmtParis(o.at),
         duree_min: o.duration_minutes,
         friandises: o.treats_count,
@@ -517,6 +622,7 @@ async function runTool(
         continue;
       }
       normalized.push({
+        op: "insert",
         kind,
         at,
         ended_at: e.ended_at ? parisToUtc(String(e.ended_at)) : null,
@@ -534,6 +640,11 @@ async function runTool(
           Number.isFinite(e.meal_fraction) && e.meal_fraction > 0 && e.meal_fraction <= 1
             ? e.meal_fraction
             : null,
+        meal_kind: ["kibble", "pate", "other"].includes(e.meal_kind) ? e.meal_kind : null,
+        caregiver: e.caregiver ? String(e.caregiver).slice(0, 80) : null,
+        cues: Array.isArray(e.cues)
+          ? e.cues.map((c: unknown) => String(c).toLowerCase().trim()).filter(Boolean)
+          : null,
         off_leash: typeof e.off_leash === "boolean" ? e.off_leash : null,
         poop_small: typeof e.poop_small === "boolean" ? e.poop_small : null,
         poop_big: typeof e.poop_big === "boolean" ? e.poop_big : null,
@@ -545,6 +656,96 @@ async function runTool(
       `${normalized.length} entrée(s) prête(s) — une carte de validation s'affiche à l'utilisateur. ` +
       `Confirme brièvement sans re-détailler chaque entrée.` +
       (rejected.length ? ` Rejetées : ${rejected.join(", ")}.` : "")
+    );
+  }
+
+  if (name === "propose_changes") {
+    const changes = Array.isArray(args.changes) ? args.changes.slice(0, 10) : [];
+    const rejected: string[] = [];
+    let accepted = 0;
+    for (const c of changes) {
+      const table = String(c?.table ?? "");
+      const rowId = String(c?.id ?? "");
+      const action = c?.action === "delete" ? "delete" : "update";
+      const allowed = UPDATABLE_FIELDS[table];
+      if (!allowed) {
+        rejected.push(`${table || "?"} (table invalide)`);
+        continue;
+      }
+      // Jamais d'id deviné : il doit venir des outils de lecture, et la
+      // ligne doit exister (la RLS garantit au passage qu'elle est au foyer).
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rowId)) {
+        rejected.push(
+          `${table} (id "${rowId.slice(0, 20)}" invalide — récupère l'id réel via get_activities/get_sessions/get_session_detail avant de proposer)`,
+        );
+        continue;
+      }
+      const { data: existing } = await db.from(table).select("id").eq("id", rowId).maybeSingle();
+      if (!existing) {
+        rejected.push(`${table}/${rowId.slice(0, 8)} (ligne introuvable — vérifie l'id via les outils de lecture)`);
+        continue;
+      }
+      let fields: Record<string, unknown> | null = null;
+      if (action === "update") {
+        fields = {};
+        for (const [key, value] of Object.entries(c.fields ?? {})) {
+          if (!(key in allowed)) continue;
+          if (allowed[key] === "ts" && value != null) {
+            const iso = parisToUtc(String(value));
+            if (iso) fields[key] = iso;
+          } else {
+            fields[key] = value;
+          }
+        }
+        if (Object.keys(fields).length === 0) {
+          rejected.push(`${table}/${rowId.slice(0, 8)} (aucun champ modifiable)`);
+          continue;
+        }
+      }
+      pendingProposals.push({
+        op: action,
+        table,
+        id: rowId,
+        fields,
+        label: String(c.label ?? "").slice(0, 200) || `${action} ${table}`,
+      });
+      accepted++;
+    }
+    if (accepted === 0) return `Aucun changement valide (${rejected.join(", ")}).`;
+    return (
+      `${accepted} changement(s) prêt(s) — carte de validation affichée à l'utilisateur. ` +
+      `Confirme brièvement.` +
+      (rejected.length ? ` Rejetés : ${rejected.join(", ")}.` : "")
+    );
+  }
+
+  if (name === "propose_session_trim") {
+    const sessionId = String(args.session_id ?? "");
+    const endAt = args.end_at ? parisToUtc(String(args.end_at)) : null;
+    if (!sessionId || !endAt) return "session_id ou end_at invalide.";
+    const { data: session } = await db
+      .from("sessions")
+      .select("id, started_at, ended_at")
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (!session) return "Session introuvable.";
+    if (endAt <= session.started_at) return "end_at est avant le début de la session.";
+    const { count } = await db
+      .from("vocal_episodes")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .eq("dismissed", false)
+      .gte("started_at", endAt);
+    pendingProposals.push({
+      op: "trim_session",
+      session_id: sessionId,
+      end_at: endAt,
+      label: String(args.label ?? "").slice(0, 200) ||
+        `Fin de session avancée à ${fmtParis(endAt, true)} (${count ?? 0} bruit(s) écarté(s))`,
+    });
+    return (
+      `Ajustement prêt : fin à ${fmtParis(endAt, true)}, ${count ?? 0} vocalise(s) seront écartées ` +
+      `des stats (clips conservés). Carte de validation affichée — confirme brièvement.`
     );
   }
 
@@ -621,7 +822,8 @@ ${sessionLines || "(aucune)"}
 
 RÈGLES :
 - Utilise les outils pour toute question factuelle (sessions, journal, stats) au lieu de deviner. Pour analyser une session précise, get_sessions puis get_session_detail.
-- Dès que l'utilisateur RAPPORTE des faits datés (balade, repas, entraînement d'ordres, incident, soin, pesée…), appelle propose_entries dans le même tour — c'est lui qui valide, toi tu proposes. Une balade racontée = une entrée walk ; des ordres travaillés pendant la balade = une entrée training séparée avec commands ; un incident marquant = une entrée incident. Ce qui ne rentre dans aucune case = note.
+- Dès que l'utilisateur RAPPORTE des faits datés (balade, repas, entraînement d'ordres, incident, soin, pesée…), appelle propose_entries dans le même tour — c'est lui qui valide, toi tu proposes. Une balade racontée = une entrée walk ; des ordres travaillés pendant la balade = une entrée training séparée avec commands ; un incident marquant = une entrée incident ; une garde = care avec caregiver (QUI garde) rempli. Ce qui ne rentre dans aucune case = note.
+- Pour CORRIGER ou SUPPRIMER un événement existant (heure fausse, note à changer, doublon…), récupère son id via les outils de lecture puis appelle propose_changes. Cas particulier fréquent : des bruits en fin de session qui sont en fait le retour d'un humain → propose_session_trim avec le debut_iso du premier bruit à écarter (la session se termine là et ces bruits sortent des stats).
 - Mémorise avec save_memory les faits durables (déclencheurs, préférences, ce qui marche) — pas les événements ponctuels, qui vont dans propose_entries.
 - Appuie tes conseils sur search_library quand la question s'y prête, et cite le document.
 - Ne prescris jamais de médicament ; pour le médical sérieux, renvoie au vétérinaire.
@@ -785,7 +987,7 @@ Deno.serve(async (req) => {
           { role: "user", content: `[${who === "fiona" ? "Fiona" : "Greg"}] ${message}` },
         ];
 
-        const pendingProposals: ProposalEntry[] = [];
+        const pendingProposals: ProposalOp[] = [];
         let finalText = "";
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -846,8 +1048,14 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Le modèle rappelle parfois le même tool dans un tour suivant :
+        // on ne garde qu'un exemplaire de chaque opération identique.
+        const proposals = [
+          ...new Map(pendingProposals.map((p) => [JSON.stringify(p), p])).values(),
+        ];
+
         if (!finalText.trim()) {
-          finalText = pendingProposals.length
+          finalText = proposals.length
             ? "J'ai préparé une proposition d'enregistrement, valide-la ci-dessous."
             : "Je n'ai pas réussi à formuler de réponse, réessaie.";
           send("delta", { text: finalText });
@@ -860,8 +1068,8 @@ Deno.serve(async (req) => {
             dog_id,
             role: "assistant",
             content: finalText,
-            proposals: pendingProposals.length ? pendingProposals : null,
-            proposal_status: pendingProposals.length ? "pending" : null,
+            proposals: proposals.length ? proposals : null,
+            proposal_status: proposals.length ? "pending" : null,
           })
           .select("*")
           .single();
