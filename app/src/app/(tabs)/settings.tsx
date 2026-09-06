@@ -50,7 +50,6 @@ export default function SettingsScreen() {
   const [goalInputs, setGoalInputs] = useState({
     cues: String(DEFAULT_GOALS.cues),
     overalls: String(DEFAULT_GOALS.overalls),
-    semiSoloMinutes: String(DEFAULT_GOALS.semiSoloMinutes),
     soloMinutes: String(DEFAULT_GOALS.soloMinutes),
   });
   const [isSavingGoals, setIsSavingGoals] = useState(false);
@@ -162,7 +161,6 @@ export default function SettingsScreen() {
       setGoalInputs({
         cues: String(goals.cues),
         overalls: String(goals.overalls),
-        semiSoloMinutes: String(goals.semiSoloMinutes),
         soloMinutes: String(goals.soloMinutes),
       });
     });
@@ -180,7 +178,6 @@ export default function SettingsScreen() {
     const goals = {
       cues: parse(goalInputs.cues, DEFAULT_GOALS.cues),
       overalls: parse(goalInputs.overalls, DEFAULT_GOALS.overalls),
-      semiSoloMinutes: parse(goalInputs.semiSoloMinutes, DEFAULT_GOALS.semiSoloMinutes),
       soloMinutes: parse(goalInputs.soloMinutes, DEFAULT_GOALS.soloMinutes),
     };
     setIsSavingGoals(true);
@@ -193,7 +190,6 @@ export default function SettingsScreen() {
     setGoalInputs({
       cues: String(goals.cues),
       overalls: String(goals.overalls),
-      semiSoloMinutes: String(goals.semiSoloMinutes),
       soloMinutes: String(goals.soloMinutes),
     });
     Alert.alert('Enregistré', 'Les objectifs quotidiens sont à jour.');
@@ -416,11 +412,6 @@ export default function SettingsScreen() {
             label="Exercices (par jour)"
             value={goalInputs.overalls}
             onChange={(v) => setGoalInputs((prev) => ({ ...prev, overalls: v }))}
-          />
-          <GoalRow
-            label="Semi solo (min par jour)"
-            value={goalInputs.semiSoloMinutes}
-            onChange={(v) => setGoalInputs((prev) => ({ ...prev, semiSoloMinutes: v }))}
           />
           <GoalRow
             label="Solo (min par jour)"

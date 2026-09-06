@@ -161,7 +161,7 @@ const TOOLS = [
     function: {
       name: "get_exercises",
       description:
-        "Exercices d'entraînement à la solitude des N derniers jours : sessions semi-solo (seul dans une pièce), exercices de dressage type protocole Overall, et les objectifs quotidiens du foyer.",
+        "Exercices d'entraînement à la solitude des N derniers jours : exercices de dressage type protocole Overall, et les objectifs quotidiens du foyer.",
       parameters: {
         type: "object",
         properties: { days: { type: "integer", description: "Défaut 30" } },
@@ -269,7 +269,7 @@ const TOOLS = [
                 action: { type: "string", enum: ["update", "delete"] },
                 table: {
                   type: "string",
-                  enum: ["sessions", "activities", "nights", "semi_solo_sessions", "overall_sessions", "observed_events"],
+                  enum: ["sessions", "activities", "nights", "overall_sessions", "observed_events"],
                 },
                 id: { type: "string", description: "id de la ligne à modifier/supprimer" },
                 fields: {
@@ -359,7 +359,6 @@ const UPDATABLE_FIELDS: Record<string, Record<string, "ts" | "raw">> = {
     poop_small: "raw", poop_big: "raw",
   },
   nights: { started_at: "ts", ended_at: "ts", location: "raw", notes: "raw" },
-  semi_solo_sessions: { started_at: "ts", ended_at: "ts", notes: "raw" },
   overall_sessions: { at: "ts", duration_minutes: "raw", treats_count: "raw", notes: "raw" },
   observed_events: { kind: "raw", at: "ts" },
 };
@@ -535,14 +534,7 @@ async function runTool(
   if (name === "get_exercises") {
     const days = Math.min(Number(args.days) || 30, 366);
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    const [{ data: semiSolo }, { data: overalls }, { data: goals }] = await Promise.all([
-      db
-        .from("semi_solo_sessions")
-        .select("id, started_at, ended_at, notes")
-        .eq("dog_id", dogId)
-        .gte("started_at", since)
-        .order("started_at", { ascending: false })
-        .limit(60),
+    const [{ data: overalls }, { data: goals }] = await Promise.all([
       db
         .from("overall_sessions")
         .select("id, at, duration_minutes, treats_count, notes")
@@ -554,12 +546,6 @@ async function runTool(
     ]);
     return JSON.stringify({
       objectifs_quotidiens: goals,
-      semi_solo: (semiSolo ?? []).map((s: Record<string, any>) => ({
-        id: s.id,
-        debut: fmtParis(s.started_at),
-        duree_min: Math.round((Date.parse(s.ended_at) - Date.parse(s.started_at)) / 60_000),
-        notes: s.notes,
-      })),
       exercices_dressage: (overalls ?? []).map((o: Record<string, any>) => ({
         id: o.id,
         quand: fmtParis(o.at),

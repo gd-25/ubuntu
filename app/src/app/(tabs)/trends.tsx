@@ -118,7 +118,7 @@ export default function TrendsScreen() {
     return best;
   }, [summaries, participantsById]);
 
-  // Minutes de solitude (sessions SOLO, pas semi solo) par jour —
+  // Minutes de solitude (sessions SOLO) par jour —
   // les 14 derniers jours avec au moins une session.
   const dailySoloMinutes: ChartPoint[] = useMemo(() => {
     const byDay = new Map<string, number>();
@@ -242,7 +242,7 @@ export default function TrendsScreen() {
                   verticalLabels
                 />
                 <ChartCaption>
-                  {`Minutes passées seul (sessions SOLO, pas semi solo) par jour — objectif ${goals.soloMinutes} min par jour.`}
+                  {`Minutes passées seul (sessions SOLO) par jour — objectif ${goals.soloMinutes} min par jour.`}
                 </ChartCaption>
               </>
             ) : (

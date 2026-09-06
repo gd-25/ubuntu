@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ClipButton, EpisodeRow } from '@/components/episode-row';
 import { EpisodeTimeline } from '@/components/episode-timeline';
 import {
   Chip,
@@ -30,7 +31,6 @@ import {
 import { Text, TextInput } from '@/components/text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { openEpisodeClip } from '@/lib/clips';
 import {
   episodeDurationSeconds,
   formatDateTime,
@@ -104,8 +104,9 @@ export default function SessionDetailScreen() {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  // Static "now" for the timeline right edge when viewing an ongoing session.
-  const [nowMs] = useState(() => Date.now());
+  // Right edge of the timeline for an ongoing session — refreshed by the
+  // 15 s live interval below (static once the session is closed).
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Modale « ajouter un épisode » (même UI que les modales de la Maison).
   const [episodeOpen, setEpisodeOpen] = useState(false);
@@ -142,7 +143,7 @@ export default function SessionDetailScreen() {
       pas l'id de session au moment où il les enregistre). */
   const fetchNoises = useCallback(
     async (row: Session) => {
-      const endMs = row.ended_at ? new Date(row.ended_at).getTime() : nowMs;
+      const endMs = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
       const { data, error } = await supabase
         .from('ambient_noises')
         .select('*')
@@ -157,7 +158,7 @@ export default function SessionDetailScreen() {
       }
       setNoises((data as AmbientNoise[] | null) ?? []);
     },
-    [nowMs]
+    []
   );
 
   useEffect(() => {
@@ -200,13 +201,13 @@ export default function SessionDetailScreen() {
             .lte(
               'at',
               new Date(
-                (row.ended_at ? new Date(row.ended_at).getTime() : nowMs) + 75_000
+                (row.ended_at ? new Date(row.ended_at).getTime() : Date.now()) + 75_000
               ).toISOString()
             ),
         ]);
         tagRows = (tagsRes.data as Tag[] | null) ?? [];
         if (!beatsRes.error && beatsRes.data) {
-          const endMs = row.ended_at ? new Date(row.ended_at).getTime() : nowMs;
+          const endMs = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
           const minutes = Math.max(
             1,
             Math.round((endMs - new Date(row.started_at).getTime()) / 60_000)
@@ -233,7 +234,20 @@ export default function SessionDetailScreen() {
     return () => {
       ignore = true;
     };
-  }, [id, nowMs, fetchNoises]);
+  }, [id, fetchNoises]);
+
+  // Session encore EN COURS (ouverte depuis le panneau live) : les épisodes
+  // continuent d'arriver — refetch léger + bord droit de la frise toutes
+  // les 15 s, sans recharger tout l'écran (les notes en cours de frappe
+  // resteraient sinon écrasées).
+  useEffect(() => {
+    if (!session || session.ended_at) return;
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+      fetchEpisodesAndSummary();
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [session, fetchEpisodesAndSummary]);
 
   const toggleTag = async (tag: Tag) => {
     if (!session) return;
@@ -505,9 +519,38 @@ export default function SessionDetailScreen() {
     );
   }
 
-  const durationSeconds = session.ended_at
-    ? (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000
+  // Durée écoulée (jusqu'à maintenant si la session est en cours) et stats
+  // dérivées des épisodes non écartés : vocal, volume moyen, silences.
+  const sessionStartMs = new Date(session.started_at).getTime();
+  const sessionEndMs = session.ended_at ? new Date(session.ended_at).getTime() : nowMs;
+  const elapsedSeconds = Math.max(1, (sessionEndMs - sessionStartMs) / 1000);
+  const activeEpisodes = episodes.filter((e) => !e.dismissed);
+  const vocalSeconds = activeEpisodes.reduce(
+    (sum, e) => sum + episodeDurationSeconds(e.started_at, e.ended_at),
+    0
+  );
+  const rmsValues = activeEpisodes
+    .map((e) => e.peak_rms)
+    .filter((v): v is number => v != null && v > 0);
+  const avgRms = rmsValues.length
+    ? rmsValues.reduce((a, b) => a + b, 0) / rmsValues.length
     : null;
+  // Silences : début → 1er épisode, entre épisodes, dernier → fin/maintenant.
+  const silenceGaps: number[] = [];
+  {
+    let cursor = sessionStartMs;
+    for (const e of activeEpisodes) {
+      const from = new Date(e.started_at).getTime();
+      if (from > cursor) silenceGaps.push((from - cursor) / 1000);
+      cursor = Math.max(cursor, new Date(e.ended_at).getTime());
+    }
+    if (sessionEndMs > cursor) silenceGaps.push((sessionEndMs - cursor) / 1000);
+  }
+  const maxSilence = silenceGaps.length ? Math.max(...silenceGaps) : elapsedSeconds;
+  const avgSilence = silenceGaps.length
+    ? silenceGaps.reduce((a, b) => a + b, 0) / silenceGaps.length
+    : elapsedSeconds;
+  const calmPercent = Math.max(0, Math.min(100, 100 * (1 - vocalSeconds / elapsedSeconds)));
 
   // Même code couleur que le Journal : session réussie (≥ 90 % de calme)
   // → pastille verte, sinon rouge.
@@ -537,25 +580,20 @@ export default function SessionDetailScreen() {
         {session.is_exercise === false ? ' · SUBIE' : ''}
       </Text>
 
-      {/* ------------------------------------------------------- Stats */}
+      {/* ---------------------------------------------- Stats (2 × 3) */}
       <View style={styles.statRow}>
-        <StatBox
-          label="DURÉE TOTALE"
-          value={durationSeconds !== null ? formatDuration(durationSeconds) : '—'}
-        />
-        <StatBox
-          label="PLUS LONG ÉPISODE"
-          value={summary ? formatDuration(summary.longest_episode_seconds) : '—'}
-        />
+        <StatBox label="DURÉE TOTALE" value={formatDuration(elapsedSeconds)} />
+        <StatBox label="VOCAL" value={formatDuration(vocalSeconds)} />
+        <StatBox label="VOL MOYEN" value={formatVolume(avgRms)?.replace('VOL ', '') ?? '—'} />
+      </View>
+      <View style={styles.statRow}>
+        <StatBox label="SILENCE MOYEN" value={formatDuration(avgSilence)} />
+        <StatBox label="SILENCE MAX" value={formatDuration(maxSilence)} />
         <StatBox
           label="% CALME"
-          value={coverage === 0 || !summary ? '—' : `${Math.round(summary.calm_percent)}%`}
+          value={coverage === 0 ? '—' : `${Math.round(calmPercent)}%`}
           valueColor={
-            coverage !== 0 && summary
-              ? summary.calm_percent >= 90
-                ? colors.success
-                : colors.danger
-              : undefined
+            coverage !== 0 ? (calmPercent >= 90 ? colors.success : colors.danger) : undefined
           }
         />
       </View>
@@ -587,26 +625,8 @@ export default function SessionDetailScreen() {
 
       {/* ------ Détail des épisodes ET observations, en ordre chrono */}
       {timeline.map(({ episode, obs }) => {
-        // Couinement promu depuis « Autres bruits » : son clip vit dans le
-        // sous-dossier noises/ — la ligne s'affiche en bleu pour le repérer.
-        const isPromotedNoise = episode?.clip_path?.includes('/noises/') ?? false;
         return episode ? (
-          <View key={episode.id} style={[styles.episodeRow, episode.dismissed && styles.dismissed]}>
-            <View
-              style={[
-                styles.episodeDot,
-                { backgroundColor: isPromotedNoise ? colors.info : colors.bark },
-              ]}
-            />
-            <Text
-              style={[styles.episodeText, { color: isPromotedNoise ? colors.info : colors.text }]}>
-              {formatTime(episode.started_at)} ·{' '}
-              {formatDuration(episodeDurationSeconds(episode.started_at, episode.ended_at))}
-              {formatVolume(episode.peak_rms) ? ` · ${formatVolume(episode.peak_rms)}` : ''}
-              {isPromotedNoise ? ' · COUINEMENT PROMU' : episode.source === 'manual' ? ' · MANUEL' : ''}
-              {episode.dismissed ? ' · ÉCARTÉ' : ''}
-            </Text>
-            {episode.clip_path ? <ClipButton clipPath={episode.clip_path} /> : null}
+          <EpisodeRow key={episode.id} episode={episode}>
             {episode.source === 'manual' ? (
               <Pressable onPress={() => deleteManualEpisode(episode)} hitSlop={8}>
                 <Text style={[styles.episodeDelete, { color: colors.danger }]}>✕</Text>
@@ -622,7 +642,7 @@ export default function SessionDetailScreen() {
                 </Text>
               </Pressable>
             )}
-          </View>
+          </EpisodeRow>
         ) : obs ? (
           <View key={obs.id} style={styles.episodeRow}>
             <Text style={[styles.episodeText, { color: colors.text }]}>
@@ -872,40 +892,6 @@ export default function SessionDetailScreen() {
   );
 }
 
-/** Bouton pixel « voir le clip vidéo » d'un épisode (URL signée 1 h). */
-function ClipButton({ clipPath }: { clipPath: string }) {
-  const colors = useTheme();
-  const [isOpening, setIsOpening] = useState(false);
-
-  const open = async () => {
-    setIsOpening(true);
-    try {
-      await openEpisodeClip(clipPath);
-    } catch (error) {
-      Alert.alert('Erreur', error instanceof Error ? error.message : 'Clip indisponible.');
-    } finally {
-      setIsOpening(false);
-    }
-  };
-
-  return (
-    <Pressable
-      onPress={open}
-      disabled={isOpening}
-      hitSlop={8}
-      style={[
-        styles.clipButton,
-        { backgroundColor: colors.accent, borderColor: colors.border, opacity: isOpening ? 0.5 : 1 },
-      ]}>
-      {isOpening ? (
-        <ActivityIndicator size="small" color={colors.accentText} />
-      ) : (
-        <Text style={[styles.clipButtonText, { color: colors.accentText }]}>▶ CLIP</Text>
-      )}
-    </Pressable>
-  );
-}
-
 /** Petite carte de stat pixel (valeur + libellé). */
 function StatBox({
   label,
@@ -983,11 +969,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  episodeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-  },
   episodeText: {
     fontSize: 7,
     lineHeight: 11,
@@ -1003,19 +984,6 @@ const styles = StyleSheet.create({
   noiseHelp: {
     fontSize: 6.5,
     lineHeight: 11,
-  },
-  // Épisode écarté : visible mais grisé (il reste consultable, clip inclus).
-  dismissed: {
-    opacity: 0.45,
-  },
-  clipButton: {
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  clipButtonText: {
-    fontSize: 7,
   },
   addEpisode: {
     alignSelf: 'flex-end',

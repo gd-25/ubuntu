@@ -249,20 +249,34 @@ export function locationRowTitle(person: Participant, past: boolean): string {
  */
 export function SoloPicker({
   top,
+  suggestedMinutes,
   onPickState,
   onPickLocation,
   onPickParticipants,
+  onPickTarget,
   onDismiss,
 }: {
   top: number;
+  /** Palier suggéré (minutes) — pré-sélectionné, modifiable en un tap. */
+  suggestedMinutes: number | null;
   onPickState: (state: DepartureState) => void;
   /** Localisation d'UN participant (appelé une fois par ligne). */
   onPickLocation: (person: Participant, location: HumanLocation) => void;
   onPickParticipants: (participants: Participant[]) => void;
+  /** Durée visée de la session (minutes). */
+  onPickTarget: (minutes: number) => void;
   onDismiss: () => void;
 }) {
   const colors = useTheme();
   const [pickedState, setPickedState] = useState<DepartureState | null>(null);
+  const [target, setTarget] = useState<number | null>(suggestedMinutes);
+  // La suggestion peut arriver après le montage (requête async) : elle
+  // pré-sélectionne le palier tant que l'utilisateur n'a rien choisi.
+  const [prevSuggested, setPrevSuggested] = useState(suggestedMinutes);
+  if (suggestedMinutes !== prevSuggested) {
+    setPrevSuggested(suggestedMinutes);
+    if (target == null && suggestedMinutes != null) setTarget(suggestedMinutes);
+  }
   const [locations, setLocations] = useState<Record<Participant, HumanLocation | null>>({
     fiona: null,
     greg: null,
@@ -287,6 +301,16 @@ export function SoloPicker({
     onPickState(state);
     maybeClose(state, locations, participants);
   };
+
+  const pickTarget = (minutes: number) => {
+    setTarget(minutes);
+    onPickTarget(minutes);
+  };
+
+  /** Chips de durée : les paliers usuels + la suggestion (dédupliqués). */
+  const targetChoices = Array.from(
+    new Set([5, 15, 30, 60, 120, ...(suggestedMinutes ? [suggestedMinutes] : [])])
+  ).sort((a, b) => a - b);
 
   const pickLocation = (person: Participant, location: HumanLocation) => {
     const next = { ...locations, [person]: location };
@@ -328,6 +352,45 @@ export function SoloPicker({
           </Pressable>
         }
       />
+      {/* Le levier n°1 : partir quand il suit = ~13 % de vocalises en
+          moyenne, contre ~2 % endormi. Un rappel, pas un interdit. */}
+      {pickedState === 'following' ? (
+        <View style={[styles.warning, { borderColor: colors.danger }]}>
+          <Text style={[styles.warningText, { color: colors.danger }]}>
+            👀 DÉPART À HAUT RISQUE : QUAND IL SUIT, ~13% DE VOCALISES (VS 2% ENDORMI).
+            ATTENDRE 10 MIN QU&apos;IL SE POSE ?
+          </Text>
+        </View>
+      ) : null}
+      {/* Palier visé : pré-rempli par la suggestion, modifiable en un tap. */}
+      <SectionTitle>
+        OBJECTIF DE DURÉE ?{suggestedMinutes ? ` (SUGGÉRÉ : ${suggestedMinutes} MIN)` : ''}
+      </SectionTitle>
+      <View style={styles.row}>
+        {targetChoices.map((minutes) => {
+          const selected = target === minutes;
+          return (
+            <Pressable
+              key={minutes}
+              onPress={() => pickTarget(minutes)}
+              style={[
+                styles.targetChip,
+                {
+                  backgroundColor: selected ? colors.accent : colors.background,
+                  borderColor: selected ? colors.accent : colors.border,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.targetChipText,
+                  { color: selected ? colors.accentText : colors.text },
+                ]}>
+                {minutes >= 60 ? `${minutes / 60} H` : `${minutes}`}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <ParticipantsRow value={participants} onToggle={toggleParticipant} />
       {/* Une ligne de localisation PAR participant coché. */}
       {PARTICIPANTS.filter(({ value }) => participants.includes(value)).map(({ value }) => (
@@ -395,5 +458,26 @@ const styles = StyleSheet.create({
   },
   hallway: {
     backgroundColor: '#55555E',
+  },
+  warning: {
+    borderWidth: 2,
+    borderRadius: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  warningText: {
+    fontSize: 6.5,
+    lineHeight: 11,
+  },
+  targetChip: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 2,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  targetChipText: {
+    fontSize: 7,
   },
 });

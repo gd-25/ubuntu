@@ -25,7 +25,6 @@ import type {
   HumanLocation,
   Night,
   OverallSession,
-  SemiSoloSession,
   SessionSummary,
 } from '@/lib/types';
 import { useDog } from '@/lib/use-dog';
@@ -33,7 +32,6 @@ import { useDog } from '@/lib/use-dog';
 /** Types d'événements du journal (filtrables). */
 type EventType =
   | 'session'
-  | 'semi_solo'
   | 'walk'
   | 'meal'
   | 'mat'
@@ -49,7 +47,6 @@ type EventType =
 
 const EVENT_DEFS: { type: EventType; emoji: string; label: string }[] = [
   { type: 'session', emoji: '🔴', label: 'SESSIONS' },
-  { type: 'semi_solo', emoji: '🧍', label: 'SEMI SOLO' },
   { type: 'night', emoji: '🌙', label: 'NUITS' },
   { type: 'walk', emoji: '🚶', label: 'SORTIES' },
   { type: 'meal', emoji: '🍖', label: 'REPAS' },
@@ -166,7 +163,7 @@ interface FeedItem {
   /** Route du détail (éditable pour tout sauf les sessions). */
   href: Href;
   /** Table + id pour la suppression par swipe. */
-  table: 'sessions' | 'activities' | 'nights' | 'overall_sessions' | 'semi_solo_sessions';
+  table: 'sessions' | 'activities' | 'nights' | 'overall_sessions';
   id: string;
 }
 
@@ -187,7 +184,6 @@ export default function HistoryScreen() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [nights, setNights] = useState<Night[]>([]);
   const [overalls, setOveralls] = useState<OverallSession[]>([]);
-  const [semiSolos, setSemiSolos] = useState<SemiSoloSession[]>([]);
   /** Notes de journée, indexées par jour AAAA-MM-JJ. */
   const [dayNotes, setDayNotes] = useState<Record<string, DayNote>>({});
   /** Jour en cours d'édition dans la modale note (clé + libellé). */
@@ -209,7 +205,6 @@ export default function HistoryScreen() {
       activitiesRes,
       nightsRes,
       overallsRes,
-      semiSolosRes,
       dayNotesRes,
     ] = await Promise.all([
       supabase
@@ -227,11 +222,6 @@ export default function HistoryScreen() {
       supabase.from('activities').select('*').order('at', { ascending: false }).limit(200),
       supabase.from('nights').select('*').order('started_at', { ascending: false }).limit(60),
       supabase.from('overall_sessions').select('*').order('at', { ascending: false }).limit(60),
-      supabase
-        .from('semi_solo_sessions')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(100),
       supabase.from('day_notes').select('*').order('day', { ascending: false }).limit(120),
     ]);
     if (sessionsRes.error)
@@ -245,7 +235,6 @@ export default function HistoryScreen() {
     setActivities((activitiesRes.data as Activity[] | null) ?? []);
     setNights((nightsRes.data as Night[] | null) ?? []);
     setOveralls((overallsRes.data as OverallSession[] | null) ?? []);
-    setSemiSolos((semiSolosRes.data as SemiSoloSession[] | null) ?? []);
     const notesByDay: Record<string, DayNote> = {};
     for (const n of (dayNotesRes.data as DayNote[] | null) ?? []) notesByDay[n.day] = n;
     setDayNotes(notesByDay);
@@ -405,22 +394,6 @@ export default function HistoryScreen() {
         });
       }
     }
-    if (enabled.includes('semi_solo')) {
-      for (const s of semiSolos) {
-        const seconds =
-          (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
-        items.push({
-          key: `ss-${s.id}`,
-          type: 'semi_solo',
-          at: s.started_at,
-          title: `🧍 ${formatTime(s.started_at)} → ${formatTime(s.ended_at)}`,
-          detail: info(['semi solo', formatDuration(seconds), s.notes]),
-          href: { pathname: '/event/[kind]/[id]', params: { kind: 'semi_solo', id: s.id } },
-          table: 'semi_solo_sessions',
-          id: s.id,
-        });
-      }
-    }
     if (enabled.includes('night')) {
       for (const n of nights) {
         items.push({
@@ -470,7 +443,7 @@ export default function HistoryScreen() {
       else byDay.push({ title, dayKey: parisDayKey(item.at), data: [item] });
     }
     return byDay;
-  }, [summaries, sessionExtras, activities, nights, overalls, semiSolos, enabled]);
+  }, [summaries, sessionExtras, activities, nights, overalls, enabled]);
 
   /** Enregistre (upsert) ou efface la note du jour en cours d'édition. */
   const saveDayNote = useCallback(async () => {
@@ -574,7 +547,6 @@ export default function HistoryScreen() {
       activitiesRes,
       nightsRes,
       overallsRes,
-      semiSolosRes,
       dayNotesRes,
     ] = await Promise.all([
       supabase
@@ -593,7 +565,6 @@ export default function HistoryScreen() {
       supabase.from('activities').select('*').gte('at', sinceIso).limit(3000),
       supabase.from('nights').select('*').gte('ended_at', sinceIso).limit(500),
       supabase.from('overall_sessions').select('*').gte('at', sinceIso).limit(500),
-      supabase.from('semi_solo_sessions').select('*').gte('started_at', sinceIso).limit(1000),
       supabase.from('day_notes').select('*').limit(1000),
     ]);
 
@@ -603,7 +574,6 @@ export default function HistoryScreen() {
     const rangeActivities = (activitiesRes.data as Activity[] | null) ?? [];
     const rangeNights = (nightsRes.data as Night[] | null) ?? [];
     const rangeOveralls = (overallsRes.data as OverallSession[] | null) ?? [];
-    const rangeSemiSolos = (semiSolosRes.data as SemiSoloSession[] | null) ?? [];
     const rangeDayNotes: Record<string, DayNote> = {};
     for (const n of (dayNotesRes.data as DayNote[] | null) ?? []) rangeDayNotes[n.day] = n;
 
@@ -632,14 +602,6 @@ export default function HistoryScreen() {
             s.is_exercise === false && 'absence subie (pas un exercice)',
             notes ? `notes : ${notes}` : null,
           ])}`,
-      });
-    }
-    for (const s of rangeSemiSolos) {
-      lines.push({
-        at: s.started_at,
-        text:
-          `${formatTime(s.started_at)}–${formatTime(s.ended_at)} SEMI SOLO ` +
-          `(${dur(s.started_at, s.ended_at)})${s.notes ? ` — notes : ${s.notes}` : ''}`,
       });
     }
     for (const a of rangeActivities) {
@@ -733,7 +695,6 @@ export default function HistoryScreen() {
       `Contexte : Ubuntu est un chien qu'on entraîne à rester seul (anxiété de séparation). Ses vocalises sont surveillées par caméra pendant les sessions.`,
       `Types d'événements :`,
       `- SESSION SOLO : Ubuntu seul à la maison (ou sur le palier) ; « % calme » = part du temps sans vocalise ; « qui part » = qui était là et l'a laissé seul (Greg, Fiona ou les deux) ; « où ils étaient » = couloir (sur le palier), en bas (dans l'immeuble) ou dehors.`,
-      `- SEMI SOLO : Ubuntu seul dans une pièce pendant qu'un humain est dans une autre pièce (objectif ${goals.semiSoloMinutes} min/jour).`,
       `- NUIT : où Ubuntu a dormi.`,
       `- SORTIE : balade. REPAS : nourriture. VISITE DU TAPIS : il va de lui-même se poser sur son tapis.`,
       `- FAUX SIGNAL DE DÉPART : désensibilisation (on joue avec clés/chaussures… sans partir, objectif ${goals.cues}/jour).`,

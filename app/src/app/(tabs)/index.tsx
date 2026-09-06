@@ -14,7 +14,6 @@ import Animated, { SlideInUp, SlideOutUp, useSharedValue } from 'react-native-re
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarSprite, type AvatarSpots } from '@/components/avatar-sprite';
-import { EpisodeTimeline } from '@/components/episode-timeline';
 import { GridDots } from '@/components/grid-dots';
 import { ActionGrid } from '@/components/home/action-grid';
 import { CuesModal } from '@/components/home/cues-modal';
@@ -22,6 +21,7 @@ import { DodoModal } from '@/components/home/dodo-modal';
 import { FeedModal } from '@/components/home/feed-modal';
 import { GardeModal } from '@/components/home/garde-modal';
 import { OverallModal } from '@/components/home/overall-modal';
+import { SessionPanel } from '@/components/home/session-panel';
 import { SoloPicker } from '@/components/home/solo-picker';
 import { SortieModal } from '@/components/home/sortie-modal';
 import { VelcroModal } from '@/components/home/velcro-modal';
@@ -38,7 +38,7 @@ import {
   OBSERVED_LABELS,
   secondsSince,
 } from '@/lib/format';
-import { DEFAULT_GOALS, fetchGoals, type Goals } from '@/lib/goals';
+import { DEFAULT_GOALS, fetchGoals, suggestTargetMinutes, type Goals } from '@/lib/goals';
 import {
   BASKET_HOME,
   computeTransition,
@@ -140,7 +140,11 @@ export default function HouseScreen() {
   const [todaySoloMinutes, setTodaySoloMinutes] = useState(0);
   /** Objectifs quotidiens (paramétrables dans Réglages). */
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
+  /** Palier suggéré pour la prochaine session (dérivé des 3 dernières). */
+  const [suggestedTarget, setSuggestedTarget] = useState<number | null>(null);
   const [recap, setRecap] = useState<SessionSummary | null>(null);
+  /** Exercice / subie de la session tout juste terminée (modale RÉCAP). */
+  const [recapExercise, setRecapExercise] = useState(true);
   const [lastQuickLog, setLastQuickLog] = useState<string | null>(null);
   /** Incrémenté à chaque fetch de l'accueil (resync du widget iOS). */
   const [fetchTick, setFetchTick] = useState(0);
@@ -155,12 +159,14 @@ export default function HouseScreen() {
   const objectPosRef = useRef(objectPos);
   const activeSessionRef = useRef(activeSession);
   const activeWalkRef = useRef(activeWalk);
+  const suggestedTargetRef = useRef(suggestedTarget);
   useEffect(() => {
     positionsRef.current = positions;
     objectPosRef.current = objectPos;
     activeSessionRef.current = activeSession;
     activeWalkRef.current = activeWalk;
-  }, [positions, objectPos, activeSession, activeWalk]);
+    suggestedTargetRef.current = suggestedTarget;
+  }, [positions, objectPos, activeSession, activeWalk, suggestedTarget]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -206,6 +212,7 @@ export default function HouseScreen() {
       overallRes,
       soloRes,
       dogGoals,
+      nextTarget,
     ] = await Promise.all([
       supabase.from('avatar_positions').select('*').eq('dog_id', dog.id),
       supabase.from('object_positions').select('*').eq('dog_id', dog.id),
@@ -247,6 +254,7 @@ export default function HouseScreen() {
         .eq('dog_id', dog.id)
         .gte('started_at', todayStart.toISOString()),
       fetchGoals(dog.id),
+      suggestTargetMinutes(dog.id),
     ]);
 
     const session = (sessionRes.data?.[0] as Session | undefined) ?? null;
@@ -294,6 +302,7 @@ export default function HouseScreen() {
       todayOveralls: overallRes.count ?? 0,
       todaySoloMinutes: Math.round(soloSeconds / 60),
       goals: dogGoals,
+      suggestedTarget: nextTarget,
     };
   }, [dog]);
 
@@ -309,6 +318,7 @@ export default function HouseScreen() {
     setTodayOveralls(snapshot.todayOveralls);
     setTodaySoloMinutes(snapshot.todaySoloMinutes);
     setGoals(snapshot.goals);
+    setSuggestedTarget(snapshot.suggestedTarget);
   }, []);
 
   useFocusEffect(
@@ -538,6 +548,9 @@ export default function HouseScreen() {
         solitude_type: 'away',
         departure_type: departureTypeOf(positionsRef.current),
         is_exercise: true,
+        // Le palier suggéré part comme objectif par défaut ; le SoloPicker
+        // permet d'en choisir un autre dans la foulée.
+        target_minutes: suggestedTargetRef.current,
       })
       .select()
       .single();
@@ -678,30 +691,51 @@ export default function HouseScreen() {
         showToast('⚠️ CLÔTURE IMPOSSIBLE — RÉESSAYEZ');
         return;
       }
-      // Récap seulement pour les vraies absences (≥ 10 min) — les micro
-      // sorties n'en ont pas besoin.
-      if (secondsSince(session.started_at) < 600) return;
+      // Récap systématique : c'est là que se pose la question exercice /
+      // absence subie (les chips ont quitté le panneau live).
       const { data: summary } = await supabase
         .from('session_summaries')
         .select('*')
         .eq('session_id', session.id)
         .maybeSingle();
+      setRecapExercise(session.is_exercise !== false);
       setRecap((summary as SessionSummary | null) ?? null);
     })();
   }, [showToast]);
 
-  /** Toggle exercice / absence subie sur la session en cours (optimiste). */
-  const setExercise = useCallback(async (isExercise: boolean) => {
-    const session = activeSessionRef.current;
-    if (!session || session.is_exercise === isExercise) return;
-    Haptics.selectionAsync();
-    setActiveSession((prev) => (prev ? { ...prev, is_exercise: isExercise } : prev));
-    const { error } = await supabase
-      .from('sessions')
-      .update({ is_exercise: isExercise })
-      .eq('id', session.id);
-    if (error) console.warn('Toggle exercice non enregistré :', error.message);
-  }, []);
+  /** Exercice / absence subie, depuis la modale RÉCAP (optimiste). */
+  const setRecapExerciseChoice = useCallback(
+    async (isExercise: boolean) => {
+      const summary = recap;
+      if (!summary || recapExercise === isExercise) return;
+      Haptics.selectionAsync();
+      setRecapExercise(isExercise);
+      const { error } = await supabase
+        .from('sessions')
+        .update({ is_exercise: isExercise })
+        .eq('id', summary.session_id);
+      if (error) console.warn('Toggle exercice non enregistré :', error.message);
+    },
+    [recap, recapExercise]
+  );
+
+  /** Objectif de durée choisi dans le SoloPicker (le palier visé). */
+  const pickTargetMinutes = useCallback(
+    async (minutes: number) => {
+      const sessionId = soloPickerFor;
+      if (!sessionId) return;
+      Haptics.selectionAsync();
+      setActiveSession((prev) =>
+        prev && prev.id === sessionId ? { ...prev, target_minutes: minutes } : prev
+      );
+      const { error } = await supabase
+        .from('sessions')
+        .update({ target_minutes: minutes })
+        .eq('id', sessionId);
+      if (error) console.warn('Objectif de durée non enregistré :', error.message);
+    },
+    [soloPickerFor]
+  );
 
   /**
    * Un avatar vient d'être lâché dans une zone. Le plan ne fait plus que
@@ -830,16 +864,6 @@ export default function HouseScreen() {
     if (secondsSince(lastHeartbeat.at, now) > HEARTBEAT_FRESH_SECONDS) return 'stale';
     return lastHeartbeat.status;
   }, [lastHeartbeat, now]);
-
-  const totalVocalSeconds = useMemo(
-    () =>
-      sessionEpisodes.reduce(
-        (sum, e) =>
-          sum + (new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()) / 1000,
-        0
-      ),
-    [sessionEpisodes]
-  );
 
   // Échelle carte → écran : la carte remplit l'espace disponible sans déformation.
   const scale =
@@ -1002,9 +1026,11 @@ export default function HouseScreen() {
       {soloPickerFor ? (
         <SoloPicker
           top={panelTop + 22}
+          suggestedMinutes={suggestedTarget}
           onPickState={pickDepartureState}
           onPickLocation={pickHumanLocation}
           onPickParticipants={pickParticipants}
+          onPickTarget={pickTargetMinutes}
           onDismiss={() => setSoloPickerFor(null)}
         />
       ) : null}
@@ -1012,92 +1038,19 @@ export default function HouseScreen() {
       {/* Panneau session en cours (boîte de dialogue Pokémon, en haut) —
           laisse la place au mini-picker d'état au départ juste après SOLO */}
       {activeSession && !soloPickerFor ? (
-        <Animated.View
-          entering={SlideInUp.duration(260)}
-          style={[
-            styles.sessionPanel,
-            {
-              top: panelTop,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              boxShadow: `4px 4px 0px 0px ${colors.border}`,
-            },
-          ]}>
-          <View style={styles.sessionHeader}>
-            <Text style={[styles.sessionTitle, { color: colors.accent }]}>
-              {activeSession.solitude_type === 'in_home' ? '● SEMI-SEUL (AUTRE PIÈCE)' : '● SEUL'}
-            </Text>
-            <Text style={[styles.sessionChrono, { color: colors.text }]}>
-              {formatChrono(secondsSince(activeSession.started_at, now))}
-            </Text>
-          </View>
-          <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
-            Départ {formatTime(activeSession.started_at)} · vocal{' '}
-            {formatDuration(totalVocalSeconds)} · {sessionEpisodes.length} épisode
-            {sessionEpisodes.length > 1 ? 's' : ''}
-          </Text>
-          <EpisodeTimeline
-            episodes={sessionEpisodes}
-            sessionStart={activeSession.started_at}
-            sessionEnd={null}
-            nowMs={now}
-          />
-          {/* Exercice d'entraînement ou absence subie (courses…) ? Les
-              absences subies sont filtrables dans les stats. */}
-          <View style={styles.exerciseRow}>
-            <Pressable
-              onPress={() => setExercise(true)}
-              style={[
-                styles.exerciseChip,
-                {
-                  backgroundColor: activeSession.is_exercise ? colors.accent : colors.background,
-                  borderColor: colors.border,
-                },
-              ]}>
-              <Text
-                style={[
-                  styles.exerciseChipText,
-                  { color: activeSession.is_exercise ? colors.accentText : colors.text },
-                ]}>
-                🎯 EXERCICE
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setExercise(false)}
-              style={[
-                styles.exerciseChip,
-                {
-                  backgroundColor: !activeSession.is_exercise ? colors.accent : colors.background,
-                  borderColor: colors.border,
-                },
-              ]}>
-              <Text
-                style={[
-                  styles.exerciseChipText,
-                  { color: !activeSession.is_exercise ? colors.accentText : colors.text },
-                ]}>
-                🛒 SUBIE
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.quickRow}>
-            <QuickChip label="😢" onPress={logManualWhine} />
-            {/* Les deux marques de soulagement : assis et couché. */}
-            <QuickChip label="🐩" onPress={() => logObservation('sit')} />
-            <QuickChip label="🛏" onPress={() => logObservation('down')} />
-            <QuickChip label="😰" onPress={() => logObservation('panic')} />
-            <Pressable
-              onPress={stopSession}
-              style={[styles.stopChip, { backgroundColor: colors.danger, borderColor: colors.border }]}>
-              <Text style={[styles.stopChipText, { color: colors.accentText }]}>TERMINER</Text>
-            </Pressable>
-          </View>
-          {lastQuickLog ? (
-            <Text style={[styles.sessionDetail, { color: colors.textSecondary }]}>
-              {lastQuickLog}
-            </Text>
-          ) : null}
-        </Animated.View>
+        <SessionPanel
+          session={activeSession}
+          episodes={sessionEpisodes}
+          now={now}
+          top={panelTop}
+          lastQuickLog={lastQuickLog}
+          onLogWhine={logManualWhine}
+          onLogObservation={logObservation}
+          onStop={stopSession}
+          onOpenDetail={() =>
+            router.push({ pathname: '/session/[id]', params: { id: activeSession.id } })
+          }
+        />
       ) : null}
 
       {/* Les modales des actions du quotidien */}
@@ -1193,6 +1146,45 @@ export default function HouseScreen() {
               <RecapRow label="TEMPS VOCALISÉ" value={formatDuration(recap.total_vocal_seconds)} />
               <RecapRow label="ÉPISODES" value={String(recap.episode_count)} />
               <RecapRow label="CALME" value={`${Math.round(recap.calm_percent)} %`} />
+              {/* Exercice d'entraînement ou absence subie (courses…) ? La
+                  question se pose une fois la session finie — les absences
+                  subies sont filtrables dans les stats. */}
+              <View style={styles.exerciseRow}>
+                <Pressable
+                  onPress={() => setRecapExerciseChoice(true)}
+                  style={[
+                    styles.exerciseChip,
+                    {
+                      backgroundColor: recapExercise ? colors.accent : colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.exerciseChipText,
+                      { color: recapExercise ? colors.accentText : colors.text },
+                    ]}>
+                    🎯 EXERCICE
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setRecapExerciseChoice(false)}
+                  style={[
+                    styles.exerciseChip,
+                    {
+                      backgroundColor: !recapExercise ? colors.accent : colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.exerciseChipText,
+                      { color: !recapExercise ? colors.accentText : colors.text },
+                    ]}>
+                    🛒 SUBIE
+                  </Text>
+                </Pressable>
+              </View>
               <View style={styles.dialogButtons}>
                 <Pressable
                   onPress={() => {
@@ -1214,24 +1206,6 @@ export default function HouseScreen() {
         </View>
       </Modal>
     </View>
-  );
-}
-
-function QuickChip({ label, onPress }: { label: string; onPress: () => void }) {
-  const colors = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickChip,
-        {
-          backgroundColor: colors.background,
-          borderColor: colors.border,
-          opacity: pressed ? 0.6 : 1,
-        },
-      ]}>
-      <Text style={styles.quickChipText}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -1311,19 +1285,6 @@ const styles = StyleSheet.create({
     fontSize: 8,
     marginTop: 2,
   },
-  // Panneau ancré en haut de l'écran (le `top` exact dépend des insets).
-  // Padding vertical généreux : les chips emoji ne doivent jamais déborder.
-  sessionPanel: {
-    position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
-    borderWidth: 3,
-    borderRadius: 2,
-    padding: Spacing.md,
-    paddingBottom: Spacing.md + 2,
-    gap: 10,
-    zIndex: 120,
-  },
   exerciseRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -1338,54 +1299,6 @@ const styles = StyleSheet.create({
   },
   exerciseChipText: {
     fontSize: 7,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  sessionTitle: {
-    fontSize: 9,
-    flexShrink: 1,
-  },
-  sessionChrono: {
-    fontSize: 16,
-    fontVariant: ['tabular-nums'],
-  },
-  sessionDetail: {
-    fontSize: 7,
-    lineHeight: 12,
-  },
-  quickRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  // Hauteur FIXE et contenu centré : les emojis ne débordent plus des chips.
-  quickChip: {
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingHorizontal: 10,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickChipText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  stopChip: {
-    marginLeft: 'auto',
-    borderWidth: 2,
-    borderRadius: 2,
-    paddingHorizontal: 10,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopChipText: {
-    fontSize: 8,
   },
   // Dialogues alignés en haut (dans l'espace vert au-dessus des arbres).
   modalBackdrop: {

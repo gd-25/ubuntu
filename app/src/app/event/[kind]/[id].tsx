@@ -19,7 +19,6 @@ import type {
   Night,
   NightLocation,
   OverallSession,
-  SemiSoloSession,
 } from '@/lib/types';
 
 const MEAL_FRACTIONS = [
@@ -90,7 +89,6 @@ export default function EventDetailScreen() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [night, setNight] = useState<Night | null>(null);
   const [overall, setOverall] = useState<OverallSession | null>(null);
-  const [semiSolo, setSemiSolo] = useState<SemiSoloSession | null>(null);
 
   // Champs éditables (initialisés au chargement de la ligne).
   /** Jour de l'événement (pour les nuits : jour du coucher). */
@@ -155,19 +153,6 @@ export default function EventDetailScreen() {
         setStartTime(new Date(row.at));
         setNotes(row.notes ?? '');
         setDuration(row.duration_minutes);
-      } else if (kind === 'semi_solo') {
-        const { data } = await supabase
-          .from('semi_solo_sessions')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-        const row = data as SemiSoloSession | null;
-        if (!row) return;
-        setSemiSolo(row);
-        setDay(new Date(row.started_at));
-        setStartTime(new Date(row.started_at));
-        setEndTime(new Date(row.ended_at));
-        setNotes(row.notes ?? '');
       }
     })();
   }, [kind, id]);
@@ -222,16 +207,6 @@ export default function EventDetailScreen() {
           notes: notes.trim() || null,
         })
         .eq('id', overall.id));
-    } else if (kind === 'semi_solo' && semiSolo) {
-      const range = rangeOnDay(day, startTime, endTime);
-      ({ error } = await supabase
-        .from('semi_solo_sessions')
-        .update({
-          started_at: range.start.toISOString(),
-          ended_at: range.end.toISOString(),
-          notes: notes.trim() || null,
-        })
-        .eq('id', semiSolo.id));
     }
     if (error) {
       Alert.alert('Erreur', `Modification impossible : ${error.message}`);
@@ -243,13 +218,7 @@ export default function EventDetailScreen() {
 
   const remove = () => {
     const table =
-      kind === 'activity'
-        ? 'activities'
-        : kind === 'night'
-          ? 'nights'
-          : kind === 'semi_solo'
-            ? 'semi_solo_sessions'
-            : 'overall_sessions';
+      kind === 'activity' ? 'activities' : kind === 'night' ? 'nights' : 'overall_sessions';
     Alert.alert('Supprimer cette entrée ?', 'Cette action est définitive.', [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -273,11 +242,9 @@ export default function EventDetailScreen() {
       ? '🌙 NUIT'
       : kind === 'overall'
         ? '🎯 EXERCICE'
-        : kind === 'semi_solo'
-          ? '🧍 SEMI SOLO'
-          : ACTIVITY_TITLES[activity?.kind ?? ''] ?? '…';
+        : ACTIVITY_TITLES[activity?.kind ?? ''] ?? '…';
 
-  const loaded = activity || night || overall || semiSolo;
+  const loaded = activity || night || overall;
 
   return (
     <ScrollView
@@ -301,13 +268,7 @@ export default function EventDetailScreen() {
           <View style={styles.timeRow}>
               <View style={styles.timeCol}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  {kind === 'night'
-                    ? 'COUCHER'
-                    : kind === 'semi_solo'
-                      ? 'DÉBUT'
-                      : hasEnd
-                        ? 'DÉPART'
-                        : 'HEURE'}
+                  {kind === 'night' ? 'COUCHER' : hasEnd ? 'DÉPART' : 'HEURE'}
                 </Text>
                 <DateTimePicker
                   value={startTime}
@@ -319,10 +280,10 @@ export default function EventDetailScreen() {
                   }}
                 />
               </View>
-              {kind === 'night' || kind === 'semi_solo' || hasEnd ? (
+              {kind === 'night' || hasEnd ? (
                 <View style={styles.timeCol}>
                   <Text style={[styles.label, { color: colors.textSecondary }]}>
-                    {kind === 'night' ? 'LEVER' : kind === 'semi_solo' ? 'FIN' : 'ARRIVÉE'}
+                    {kind === 'night' ? 'LEVER' : 'ARRIVÉE'}
                   </Text>
                   <DateTimePicker
                     value={endTime}

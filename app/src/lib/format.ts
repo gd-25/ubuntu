@@ -140,6 +140,13 @@ export const KIND_LABELS: Record<string, string> = {
   whine: 'Gémissement',
 };
 
+/** Emoji par type de vocalise (listes d'épisodes, panneau live). */
+export const KIND_EMOJI: Record<string, string> = {
+  bark: '🐶',
+  howl: '🌕',
+  whine: '😢',
+};
+
 /**
  * Volume d'un épisode (RMS max 0..1, mesuré par l'agent) sur une échelle
  * 1-5 lisible. Repères issus des clips réels : ~0.003 couinement discret,

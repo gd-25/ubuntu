@@ -44,6 +44,8 @@ export interface Session {
   fiona_location: HumanLocation | null;
   /** Qui participe à l'exercice (un absent n'était pas dans l'appart). */
   participants: ('greg' | 'fiona')[];
+  /** Durée visée au lancement (minutes) — le palier d'entraînement. */
+  target_minutes: number | null;
 }
 
 export interface VocalEpisode {
@@ -235,19 +237,6 @@ export interface OverallSession {
   created_at: string;
 }
 
-/**
- * Session semi solo saisie a posteriori : Ubuntu seul dans une pièce
- * pendant qu'un humain est dans une autre. Juste début, fin et notes.
- */
-export interface SemiSoloSession {
-  id: string;
-  dog_id: string;
-  started_at: string;
-  ended_at: string;
-  notes: string | null;
-  created_at: string;
-}
-
 /** Note libre attachée à une journée du Journal (ex. où était Ubuntu). */
 export interface DayNote {
   id: string;
@@ -343,7 +332,6 @@ export interface ProposalChange {
     | 'sessions'
     | 'activities'
     | 'nights'
-    | 'semi_solo_sessions'
     | 'overall_sessions'
     | 'observed_events';
   id: string;
